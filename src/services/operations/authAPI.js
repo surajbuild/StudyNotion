@@ -27,11 +27,6 @@ export const sendOtp = (email, navigate) => async (dispatch) => {
       checkUserPresent: true, // tells the backend to verify email isn't already registered
     });
 
-    // ✅ FIX: Removed all console.log debug statements.
-    // Debug logs like `console.log("SENDOTP API RESPONSE...", response)` fire on
-    // every call and can leak user data (email, tokens) in production.
-    // Use a proper logger or remove them before shipping.
-
     if (!response.data.success) {
       throw new Error(
         response.data.message || "Could not send OTP. Please try again later."
@@ -126,17 +121,12 @@ export const login = (email, password, navigate) => async (dispatch) => {
     // Store the JWT in Redux
     dispatch(setToken(response.data.token));
 
-    // ✅ FIX: Generate a fallback avatar only when the server did not return one.
-    // DiceBear's /initials endpoint creates a unique SVG from the user's initials.
     const userImage = response.data.user.image
       ? response.data.user.image
       : `https://api.dicebear.com/6.x/initials/svg?seed=${response.data.user.firstName}+${response.data.user.lastName}`;
 
     dispatch(setUser({ ...response.data.user, image: userImage }));
 
-    // ✅ Persist session to localStorage so a page refresh doesn't log the user out.
-    // Token is stored as a plain string (NOT JSON.stringify'd) because it is
-    // already a string.  Wrapping it would add extra quotes that break the
     // Authorization header later.
     localStorage.setItem("token", response.data.token);
     localStorage.setItem("user", JSON.stringify(response.data.user));
@@ -223,10 +213,7 @@ export const resetPassword =
       }
 
       toast.success("Password Reset Successfully.", { id: toastId });
-      // ✅ Enhancement: after a successful reset the user should be directed
-      // to the login page so they can sign in with their new password.
-      // (Navigate is intentionally NOT passed here to keep the function
-      //  signature stable — the caller (UpdatePassword) can handle this.)
+
     } catch (error) {
       const errorMessage =
         error?.response?.data?.message ||

@@ -146,10 +146,6 @@ exports.deleteSubSection = async (req, res) => {
             { $pull: { subSection: subSectionId } }
         );
 
-        // ✅ FIX: Was returning `updatedSubSection` (fetched BEFORE deletion —
-        // stale pre-delete data) rather than the updated section after the
-        // $pull.  Now we fetch the updated section AFTER the $pull so the
-        // frontend gets accurate state.
         if (sectionId) {
             const updatedCourse = await getPopulatedCourse(sectionId);
             if (updatedCourse) {

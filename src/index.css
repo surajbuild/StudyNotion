@@ -1,4 +1,4 @@
-/* ✅ Single entry-point CSS file (Tailwind directives MUST stay here) */
+/* Single entry-point CSS file (Tailwind directives MUST stay here) */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

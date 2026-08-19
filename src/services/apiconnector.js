@@ -1,10 +1,5 @@
 import axios from "axios";
 
-// ✅ FIX: Replaced hardcoded 'http://localhost:4000/api/v1' with the environment variable.
-// The .env file already defines REACT_APP_BASE_URL for exactly this purpose.
-// Hardcoding the URL means the app can ONLY talk to localhost — deploying to
-// staging or production requires editing source code.  Using the env variable
-// lets you change the backend URL per environment with zero code changes.
 export const axiosInstance = axios.create({
   baseURL: process.env.REACT_APP_BASE_URL,
 });

@@ -2,23 +2,14 @@
 module.exports = {
   content: ["./src/**/*.{js,jsx,ts,tsx}"],
   theme: {
-    // ✅ FIX: Moved fontFamily inside `extend` (was at root level).
-    // When fontFamily is at the root of `theme`, it completely REPLACES
-    // Tailwind's default font stack (including `sans-serif` fallbacks).
-    // Placing it inside `extend` ADDS these fonts alongside the defaults,
-    // so utility classes like `font-sans` still work as expected.
+
     extend: {
       fontFamily: {
         inter: ["Inter", "sans-serif"],
         "edu-sa": ["Edu SA Beginner", "cursive"],
         mono: ["Roboto Mono", "monospace"],
       },
-      // ✅ FIX: Merged animation, keyframes, and maxWidth into a single `extend` block.
-      // Previously there were TWO `extend` keys inside `theme` — one at the top
-      // (with animation & keyframes) and one at the bottom (with maxWidth).
-      // In a JS object, duplicate keys cause the SECOND one to silently overwrite
-      // the first, so the animations/keyframes were being lost entirely.
-      // All extended values now live in one place.
+ 
       animation: {
         fadeIn: "fadeIn 0.2s ease-in-out",
         slideDown: "slideDown 0.3s ease-out",

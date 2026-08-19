@@ -7,11 +7,6 @@ import { setCourse, setEditCourse } from "../../../../slices/courseSlice"
 import { IoMdArrowBack } from "react-icons/io"
 import toast from "react-hot-toast"
 
-// ✅ FIX: The full, styled EditCourse implementation was entirely commented out
-// and replaced with a bare, unstyled version that had no error handling, no
-// back navigation, no loading skeleton, and no Course Upload Tips panel.
-// The commented code also had debug console.log statements throughout.
-// This version restores the full UI while removing all debug logs.
 
 export default function EditCourse() {
     const dispatch = useDispatch()

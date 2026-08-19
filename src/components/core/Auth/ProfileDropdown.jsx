@@ -12,10 +12,6 @@ export default function ProfileDropdown() {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
-  // ✅ Click-outside detection — closes the dropdown when the user clicks
-  // anywhere on the page that isn't inside the dropdown panel.
-  // The listeners are only attached while the dropdown is open, which
-  // avoids unnecessary event handling when it's closed.
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (ref.current && !ref.current.contains(event.target)) {

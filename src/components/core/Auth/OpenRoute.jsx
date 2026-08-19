@@ -10,11 +10,6 @@ const OpenRoute = ({ children }) => {
         return children;
     }
 
-    // ✅ FIX: Comment was wrong — it said "Changed redirect target from
-    // '/dashboard/my-profile' to '/'" but the code still redirected to
-    // '/dashboard/my-profile'. Fixed comment to match the actual behavior.
-    // Redirecting logged-in users to their profile dashboard is correct: they
-    // shouldn't see the login / signup pages once already authenticated.
     return <Navigate to="/dashboard/my-profile" />;
 };
 

@@ -1,16 +1,9 @@
-/* ✅ FIX: Removed duplicate @tailwind directives that were here.
-   Tailwind directives are already processed in index.css (the real entry point).
-   Having them here too caused double-processing and potential style conflicts. */
 
 html,
 body {
   overflow-x: hidden;
 }
 
-/* ✅ FIX: Corrected the image path.
-   This CSS file lives at src/App.css. The old path '../src/assets/Images/bghome.svg'
-   tried to go UP out of src/ then back INTO src/, which resolves incorrectly at build time.
-   The correct relative path from src/App.css to src/assets/ is simply './assets/'. */
 .homepage_bg {
   background-image: url("./assets/Images/bghome.svg");
 }

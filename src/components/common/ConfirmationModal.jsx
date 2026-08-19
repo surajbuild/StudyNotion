@@ -1,10 +1,6 @@
 import React from "react";
 import IconBtn from "./IconBtn";
 
-// ✅ REMOVED: the useEffect that console.log'd modalData on every render.
-// Debug logs must not ship to production — they expose internal modal state
-// and fire on every open/close cycle.
-
 const ConfirmationModal = ({ modalData }) => {
     return (
         <div className="fixed inset-0 z-[1000] grid place-items-center bg-richblack-900/40 backdrop-blur-sm">

@@ -39,7 +39,7 @@ const SignupForm = () => {
   const handleOnSubmit = (e) => {
     e.preventDefault();
 
-    // ✅ Client-side validation before hitting the network
+    // Client-side validation before hitting the network
     if (!password.trim() || !confirmPassword.trim()) {
       toast.error("Passwords cannot be empty");
       return;
@@ -161,10 +161,7 @@ const SignupForm = () => {
               onClick={() => setShowPassword((prev) => !prev)}
               className="absolute right-3 top-[38px] z-[10] cursor-pointer"
             >
-              {/* ✅ FIX: Swapped Eye / EyeInvisible icons.
-                  Previously the icons were backwards — Eye showed when password
-                  was hidden and EyeInvisible showed when it was visible.
-                  Now: Eye = password IS visible; EyeInvisible = password is hidden. */}
+             
               {showPassword ? (
                 <AiOutlineEye fontSize={24} fill="#AFB2BF" />
               ) : (
@@ -194,7 +191,7 @@ const SignupForm = () => {
               onClick={() => setShowConfirmPassword((prev) => !prev)}
               className="absolute right-3 top-[38px] z-[10] cursor-pointer"
             >
-              {/* ✅ Same icon-swap fix applied here */}
+              {/* Same icon-swap fix applied here */}
               {showConfirmPassword ? (
                 <AiOutlineEye fontSize={24} fill="#AFB2BF" />
               ) : (

@@ -29,9 +29,6 @@ const NestedView = ({ handelChangeEditSectionName }) => {
     const handleDeleteSubSection = async (subSectionId, sectionId) => {
         const result = await deleteSubSection({ subSectionId, sectionId }, token)
         if (result) {
-            // ✅ The backend now returns the full updated course after deletion.
-            // Update the specific section in the local course state so the
-            // NestedView re-renders without the deleted lecture.
             const updatedCourseContent = course.courseContent.map((section) =>
                 section._id === sectionId ? result : section
             )
@@ -90,17 +87,6 @@ const NestedView = ({ handelChangeEditSectionName }) => {
                             {section.subSection.map((data) => (
                                 <div
                                     key={data?._id}
-                                    // ✅ FIX: The previous version had a critical layout bug.
-                                    // The subsection row was one big <div onClick={setViewSubSection}>.
-                                    // Inside it, the edit/delete buttons were nested inside a
-                                    // child <div onClick={e.stopPropagation()}> — BUT that child
-                                    // <div> was a SIBLING to the title <div>, not a wrapper around
-                                    // the buttons, so stopPropagation had no effect on the buttons.
-                                    // Clicking Edit or Delete also fired setViewSubSection.
-                                    //
-                                    // Fix: only the title area is clickable (opens View modal).
-                                    // The action buttons live in their own container that is NOT
-                                    // inside any parent click handler — no stopPropagation needed.
                                     className="flex items-center justify-between rounded-md px-4 py-2 hover:bg-richblack-600 transition-colors"
                                 >
                                     {/* Clickable title area → View modal */}

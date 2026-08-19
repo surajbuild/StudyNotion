@@ -12,9 +12,6 @@ export const endpoints = {
   SIGNUP_API: BASE_URL + "/auth/signup",
   LOGIN_API: BASE_URL + "/auth/login",
   RESETPASSTOKEN_API: BASE_URL + "/auth/reset-password-token",
-  // ✅ FIX: Corrected the reset-password route.
-  // The old value was '/auth-reset-password' (missing the slash between
-  // 'auth' and 'reset').  The backend route is '/auth/reset-password'.
   RESETPASSWORD_API: BASE_URL + "/auth/reset-password",
 };
 

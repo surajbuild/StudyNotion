@@ -86,9 +86,6 @@ export async function getInstructorData(token) {
     }
     catch(error){
         console.log("GET_INSTRUCTOR_API ERROR", error);
-        // ✅ FIX: Removed toast.loading + toast.error here.
-        // This is a background data-fetch; Instructor.jsx shows its own spinner.
-        // Showing a toast here caused 4-6 simultaneous toasts on dashboard refresh.
     }
     return result;
 }
