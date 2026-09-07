@@ -1,20 +1,25 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { Link, matchPath, useLocation } from "react-router-dom";
+import { Link, matchPath, useLocation, useNavigate } from "react-router-dom";
 import Logo from "../../assets/Logo/Logo-Full-Light.png";
 import { NavbarLinks } from "../../data/navbar-links";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import { AiOutlineShoppingCart } from "react-icons/ai";
 import { HiMenu, HiX } from "react-icons/hi";
+import { VscDashboard, VscSignOut, VscSettingsGear } from "react-icons/vsc";
 import ProfileDropdown from "../core/Auth/ProfileDropdown";
 import { apiConnector } from "../../services/apiconnector";
 import { categories } from "../../services/apis";
 import { FaArrowDown } from "react-icons/fa";
+import { logout } from "../../services/operations/authAPI";
+import { ACCOUNT_TYPE } from "../../utils/constants";
 
 const Navbar = () => {
   const { token } = useSelector((state) => state.auth);
   const { user } = useSelector((state) => state.profile);
   const { totalItems } = useSelector((state) => state.cart);
   const location = useLocation();
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
 
   const [subLinks, setSubLinks] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -189,16 +194,111 @@ const Navbar = () => {
           {/* Login / Signup for mobile (only when logged out) */}
           {token === null && (
             <div className="mt-3 flex flex-col gap-y-2 border-t border-richblack-700 pt-3">
-              <Link to="/login">
+              <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
                 <button className="w-full rounded-lg border border-richblack-700 bg-richblack-900 py-2 text-sm text-richblack-100 hover:bg-richblack-700 transition-all">
                   Log in
                 </button>
               </Link>
-              <Link to="/signup">
+              <Link to="/signup" onClick={() => setMobileMenuOpen(false)}>
                 <button className="w-full rounded-lg bg-yellow-50 py-2 text-sm font-semibold text-richblack-900 hover:bg-yellow-100 transition-all">
                   Sign up
                 </button>
               </Link>
+            </div>
+          )}
+
+          {/* Authenticated user menu in mobile drawer */}
+          {token !== null && (
+            <div className="mt-3 flex flex-col gap-y-2 border-t border-richblack-700 pt-3">
+              <div className="flex items-center gap-x-3 px-1 py-2">
+                <img
+                  src={user?.image}
+                  alt={`profile-${user?.firstName}`}
+                  className="aspect-square w-[34px] rounded-full object-cover ring-1 ring-yellow-50"
+                />
+                <div className="flex flex-col">
+                  <p className="text-sm font-semibold text-richblack-5">
+                    {user?.firstName} {user?.lastName}
+                  </p>
+                  <p className="text-xs text-richblack-400 capitalize">
+                    {user?.accountType}
+                  </p>
+                </div>
+              </div>
+
+              <Link
+                to="/dashboard/my-profile"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-x-2 py-2 text-sm text-richblack-200 hover:text-yellow-25"
+              >
+                <VscDashboard className="text-lg" />
+                <span>Dashboard</span>
+              </Link>
+
+              {user?.accountType === ACCOUNT_TYPE.STUDENT && (
+                <>
+                  <Link
+                    to="/dashboard/enrolled-courses"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-x-2 py-2 text-sm text-richblack-200 hover:text-yellow-25"
+                  >
+                    <span>Enrolled Courses</span>
+                  </Link>
+                  <Link
+                    to="/dashboard/cart"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-x-2 py-2 text-sm text-richblack-200 hover:text-yellow-25"
+                  >
+                    <span>Wishlist ({totalItems})</span>
+                  </Link>
+                </>
+              )}
+
+              {user?.accountType === ACCOUNT_TYPE.INSTRUCTOR && (
+                <>
+                  <Link
+                    to="/dashboard/instructor"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-x-2 py-2 text-sm text-richblack-200 hover:text-yellow-25"
+                  >
+                    <span>Instructor Dashboard</span>
+                  </Link>
+                  <Link
+                    to="/dashboard/my-courses"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-x-2 py-2 text-sm text-richblack-200 hover:text-yellow-25"
+                  >
+                    <span>My Courses</span>
+                  </Link>
+                  <Link
+                    to="/dashboard/add-course"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-x-2 py-2 text-sm text-richblack-200 hover:text-yellow-25"
+                  >
+                    <span>Add Course</span>
+                  </Link>
+                </>
+              )}
+
+              <Link
+                to="/dashboard/settings"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-x-2 py-2 text-sm text-richblack-200 hover:text-yellow-25"
+              >
+                <VscSettingsGear className="text-lg" />
+                <span>Settings</span>
+              </Link>
+
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  dispatch(logout(navigate));
+                }}
+                className="flex items-center gap-x-2 py-2 text-sm text-pink-200 hover:text-pink-100 transition-colors"
+              >
+                <VscSignOut className="text-lg" />
+                <span>Logout</span>
+              </button>
             </div>
           )}
         </div>
