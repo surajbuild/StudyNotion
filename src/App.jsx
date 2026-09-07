@@ -32,7 +32,7 @@ import VideoDetails from "./components/core/ViewCourse/VideoDetails";
 function App() {
   const {user}  = useSelector((state) => state.profile);
   return (
-    <div className="flex min-h-screen w-screen flex-col bg-richblack-900 font-inter">
+    <div className="flex min-h-screen w-full overflow-x-hidden flex-col bg-richblack-900 font-inter">
       <Navbar />
       <Routes>
         {/* ── Public routes ──────────────────────────────────────────────── */}
