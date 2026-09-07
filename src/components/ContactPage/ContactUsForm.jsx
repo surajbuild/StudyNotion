@@ -47,7 +47,7 @@ const ContactUsForm = () => {
             className="flex flex-col gap-5 "
         >
             {/* Name Fields Row */}
-            <div className='flex gap-5'>
+            <div className='flex flex-col sm:flex-row gap-4 sm:gap-5'>
                 {/* First Name */}
                 <div className='flex flex-col gap-2 flex-1'>
                     <label 
@@ -115,7 +115,7 @@ const ContactUsForm = () => {
                     style={{
                         boxShadow: "inset 0px -1px 5px rgba(255, 255, 255, 0.18)",
                     }}
-                    {...register('email', {required: true})}
+                    {...register('email', {required: true})} 
                 />
                 {
                     errors.email && (
@@ -134,13 +134,13 @@ const ContactUsForm = () => {
                 >
                     Phone Number
                 </label>
-                <div className='flex gap-5'>
+                <div className='flex gap-3 sm:gap-5'>
                     {/* Country Code Dropdown */}
-                    <div className='flex w-[81px] flex-col gap-2'>
+                    <div className='flex w-[75px] sm:w-[85px] flex-col gap-2 flex-shrink-0'>
                         <select 
                             name="countrycode" 
                             id="countrycode"
-                            className='bg-richblack-800 rounded-[0.5rem] text-richblack-5 w-full p-[12px] text-[16px]'
+                            className='bg-richblack-800 rounded-[0.5rem] text-richblack-5 w-full p-[12px] text-sm sm:text-[16px]'
                             style={{
                                 boxShadow: "inset 0px -1px 5px rgba(255, 255, 255, 0.18)",
                             }}
@@ -162,7 +162,7 @@ const ContactUsForm = () => {
                     </div>
 
                     {/* Phone Number Input */}
-                    <div className='flex flex-col gap-2 w-[calc(100%-96px)]'>
+                    <div className='flex flex-col gap-2 flex-1'>
                         <input
                             type="tel"
                             name='phonenumber'
