@@ -1,6 +1,5 @@
-import { useDispatch, useSelector } from "react-redux"
+import { useSelector } from "react-redux"
 import { Table, Tbody, Td, Th, Thead, Tr } from "react-super-responsive-table"
-import { setCourse, setEditCourse } from "../../../../slices/courseSlice"
 import "react-super-responsive-table/dist/SuperResponsiveTableStyle.css"
 import { useState } from "react"
 import { FaCheck } from "react-icons/fa"
@@ -20,7 +19,6 @@ import ConfirmationModal from "../../../common/ConfirmationModal"
 import toast from "react-hot-toast"
 
 export default function CoursesTable({ courses, setCourses }) {
-  const dispatch = useDispatch()
   const navigate = useNavigate()
   const { token } = useSelector((state) => state.auth)
   const [loading, setLoading] = useState(false)
@@ -148,19 +146,19 @@ export default function CoursesTable({ courses, setCourses }) {
 
   return (
     <>
-      <Table className="w-full rounded-xl border border-richblack-700 bg-richblack-800">
+      <Table className="w-full rounded-xl border border-richblack-700 bg-richblack-800 overflow-hidden">
         <Thead>
-          <Tr className="flex gap-x-10 border-b border-richblack-700 px-6 py-3 bg-richblack-800">
+          <Tr className="hidden md:flex gap-x-6 lg:gap-x-10 border-b border-richblack-700 px-6 py-3 bg-richblack-800">
             <Th className="flex-1 text-left text-xs font-medium uppercase tracking-wider text-richblack-100">
               Courses
             </Th>
-            <Th className="w-32 text-left text-xs font-medium uppercase tracking-wider text-richblack-100">
+            <Th className="w-28 lg:w-32 text-left text-xs font-medium uppercase tracking-wider text-richblack-100">
               Duration
             </Th>
-            <Th className="w-32 text-left text-xs font-medium uppercase tracking-wider text-richblack-100">
+            <Th className="w-24 lg:w-32 text-left text-xs font-medium uppercase tracking-wider text-richblack-100">
               Price
             </Th>
-            <Th className="w-32 text-left text-xs font-medium uppercase tracking-wider text-richblack-100">
+            <Th className="w-28 lg:w-32 text-left text-xs font-medium uppercase tracking-wider text-richblack-100">
               Status
             </Th>
             <Th className="w-24 text-left text-xs font-medium uppercase tracking-wider text-richblack-100">
@@ -171,9 +169,9 @@ export default function CoursesTable({ courses, setCourses }) {
         <Tbody>
           {courses?.length === 0 ? (
             <Tr>
-              <Td className="py-20 text-center text-xl font-medium text-richblack-100" colSpan="5">
+              <Td className="py-16 sm:py-20 text-center text-xl font-medium text-richblack-100" colSpan="5">
                 <div className="flex flex-col items-center justify-center gap-3">
-                  <p className="text-2xl font-semibold text-richblack-5">No courses found</p>
+                  <p className="text-xl sm:text-2xl font-semibold text-richblack-5">No courses found</p>
                   <p className="text-sm text-richblack-300">Create your first course to get started</p>
                 </div>
               </Td>
@@ -182,21 +180,21 @@ export default function CoursesTable({ courses, setCourses }) {
             courses?.map((course) => (
               <Tr
                 key={course._id}
-                className="flex gap-x-10 border-b border-richblack-700 px-6 py-6 transition-all hover:bg-richblack-700/30"
+                className="flex flex-col md:flex-row gap-4 md:gap-x-6 lg:gap-x-10 border-b border-richblack-700 p-4 sm:p-6 transition-all hover:bg-richblack-700/30"
               >
                 {/* Course Image and Details */}
-                <Td className="flex flex-1 gap-x-4">
+                <Td className="flex flex-col sm:flex-row flex-1 gap-4">
                   <img
                     src={course?.thumbnail}
                     alt={course?.courseName}
-                    className="h-36 w-56 rounded-lg object-cover"
+                    className="h-44 sm:h-36 w-full sm:w-56 rounded-lg object-cover"
                   />
                   <div className="flex flex-col justify-between py-1">
                     <div>
-                      <p className="text-lg font-semibold text-richblack-5 line-clamp-1">
+                      <p className="text-base sm:text-lg font-semibold text-richblack-5 line-clamp-2 sm:line-clamp-1">
                         {course.courseName}
                       </p>
-                      <p className="mt-2 text-sm text-richblack-300 line-clamp-2">
+                      <p className="mt-2 text-xs sm:text-sm text-richblack-300 line-clamp-2">
                         {course.courseDescription.split(" ").length > TRUNCATE_LENGTH
                           ? course.courseDescription
                               .split(" ")
@@ -206,7 +204,7 @@ export default function CoursesTable({ courses, setCourses }) {
                       </p>
                     </div>
                     <div className="mt-2">
-                      <p className="text-xs text-richblack-300">
+                      <p className="text-xs text-richblack-400">
                         Created: {formatDate(course.createdAt)}
                       </p>
                     </div>
@@ -214,17 +212,20 @@ export default function CoursesTable({ courses, setCourses }) {
                 </Td>
 
                 {/* Duration */}
-                <Td className="w-32 text-sm font-medium text-richblack-100 py-1 flex items-center">
-                  {calculateCourseDuration(course)}
+                <Td className="flex items-center justify-between md:justify-start md:w-28 lg:w-32 text-sm font-medium text-richblack-100 py-1 border-t border-richblack-700 md:border-t-0 pt-3 md:pt-1">
+                  <span className="text-xs uppercase tracking-wider text-richblack-400 font-semibold md:hidden">Duration:</span>
+                  <span>{calculateCourseDuration(course)}</span>
                 </Td>
 
                 {/* Price */}
-                <Td className="w-32 text-sm font-medium text-richblack-100 py-1 flex items-center">
-                  ₹{course.price}
+                <Td className="flex items-center justify-between md:justify-start md:w-24 lg:w-32 text-sm font-medium text-richblack-100 py-1">
+                  <span className="text-xs uppercase tracking-wider text-richblack-400 font-semibold md:hidden">Price:</span>
+                  <span className="text-yellow-50 font-semibold md:font-normal">₹{course.price}</span>
                 </Td>
 
-                {/* Status - Now clickable */}
-                <Td className="w-32 py-1 flex items-center">
+                {/* Status - Clickable */}
+                <Td className="flex items-center justify-between md:justify-start md:w-28 lg:w-32 py-1">
+                  <span className="text-xs uppercase tracking-wider text-richblack-400 font-semibold md:hidden">Status:</span>
                   <button
                     onClick={() => handleToggleStatus(course)}
                     disabled={loading}
@@ -252,8 +253,9 @@ export default function CoursesTable({ courses, setCourses }) {
                 </Td>
 
                 {/* Actions */}
-                <Td className="w-24 text-sm font-medium text-richblack-100 py-1">
-                  <div className="flex items-center gap-3">
+                <Td className="flex items-center justify-between md:justify-start md:w-24 text-sm font-medium text-richblack-100 py-1">
+                  <span className="text-xs uppercase tracking-wider text-richblack-400 font-semibold md:hidden">Actions:</span>
+                  <div className="flex items-center gap-4">
                     <button
                       disabled={loading}
                       onClick={() => {
@@ -262,7 +264,7 @@ export default function CoursesTable({ courses, setCourses }) {
                       title="Edit"
                       className="transition-all duration-200 hover:scale-110 hover:text-caribbeangreen-300 disabled:opacity-50"
                     >
-                      <FiEdit2 size={20} />
+                      <FiEdit2 size={18} />
                     </button>
                     <button
                       disabled={loading}
@@ -279,7 +281,7 @@ export default function CoursesTable({ courses, setCourses }) {
                       title="Delete"
                       className="transition-all duration-200 hover:scale-110 hover:text-pink-300 disabled:opacity-50"
                     >
-                      <RiDeleteBin6Line size={20} />
+                      <RiDeleteBin6Line size={18} />
                     </button>
                   </div>
                 </Td>

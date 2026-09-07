@@ -16,18 +16,18 @@ const MyProfile = () => {
          </h1>
 
          {/* Section 1 - Profile Picture & Basic Info */}
-         <div className='flex items-center justify-between rounded-xl border border-richblack-700 bg-richblack-800/90 p-8 px-12 shadow-[0_0_40px_-15px_rgba(0,0,0,0.6)]'>
-            <div className='flex items-center gap-x-5'>
+         <div className='flex flex-col sm:flex-row items-start sm:items-center justify-between rounded-xl border border-richblack-700 bg-richblack-800/90 p-5 sm:p-8 px-5 sm:px-12 shadow-[0_0_40px_-15px_rgba(0,0,0,0.6)] gap-5'>
+            <div className='flex items-center gap-x-4 sm:gap-x-5'>
                <img 
                   src={user?.image}
                   alt={`profile-${user?.firstName}`}
-                  className='aspect-square w-[78px] rounded-full object-cover ring-2 ring-yellow-100/40'
+                  className='aspect-square w-[64px] sm:w-[78px] rounded-full object-cover ring-2 ring-yellow-100/40'
                />
                <div className='space-y-1'>
-                  <p className='text-lg font-semibold text-richblack-5'>
+                  <p className='text-base sm:text-lg font-semibold text-richblack-5'>
                      {user?.firstName + ' ' + user?.lastName}
                   </p>
-                  <p className='text-sm text-richblack-300'>
+                  <p className='text-xs sm:text-sm text-richblack-300 break-all'>
                      {user?.email}
                   </p>
                </div>
@@ -44,10 +44,10 @@ const MyProfile = () => {
          </div>
 
          {/* Section 2 - Personal Details */}
-         <div className='my-10 flex flex-col gap-y-10 rounded-xl border border-richblack-700 bg-richblack-800/90 p-8 px-12 shadow-[0_0_40px_-15px_rgba(0,0,0,0.6)]'>
+         <div className='my-8 sm:my-10 flex flex-col gap-y-6 sm:gap-y-10 rounded-xl border border-richblack-700 bg-richblack-800/90 p-5 sm:p-8 px-5 sm:px-12 shadow-[0_0_40px_-15px_rgba(0,0,0,0.6)]'>
             
             <div className='flex w-full items-center justify-between'>
-               <p className='text-lg font-semibold text-richblack-5'>
+               <p className='text-base sm:text-lg font-semibold text-richblack-5'>
                   Personal Details
                </p>
 
@@ -61,7 +61,7 @@ const MyProfile = () => {
                </button>
             </div>
 
-            <div className='flex max-w-[520px] justify-between gap-x-12'>
+            <div className='grid grid-cols-1 sm:grid-cols-2 max-w-[520px] gap-6 sm:gap-x-12'>
                {/* Left Column */}
                <div className='flex flex-col gap-y-6'>
                   <div>
@@ -77,7 +77,7 @@ const MyProfile = () => {
                      <p className='mb-1 text-xs uppercase tracking-wide text-richblack-500'>
                         Email
                      </p>
-                     <p className='text-sm font-medium text-richblack-5'>
+                     <p className='text-sm font-medium text-richblack-5 break-all'>
                         {user?.email}
                      </p>
                   </div>

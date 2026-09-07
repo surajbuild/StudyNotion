@@ -42,7 +42,7 @@ export default function UpdatePassword() {
 
     return (
         <form onSubmit={handleSubmit(submitPasswordForm)}>
-            <div className="my-10 flex flex-col gap-y-6 rounded-md border border-richblack-700 bg-richblack-800 p-8 px-12">
+            <div className="my-10 flex flex-col gap-y-6 rounded-md border border-richblack-700 bg-richblack-800 p-5 sm:p-8 px-5 sm:px-12">
                 <h2 className="text-lg font-semibold text-richblack-5">Password</h2>
 
                 {/* Current + New passwords */}

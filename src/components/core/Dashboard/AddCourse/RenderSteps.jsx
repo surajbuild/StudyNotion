@@ -30,9 +30,9 @@ const RenderSteps = () => {
                 {steps.map((item, index) => (
                     <React.Fragment key={item.id}>
                         {/* Step Circle and Label */}
-                        <div className='flex flex-col items-center relative z-10'>
+                        <div className='flex flex-col items-center relative z-10 max-w-[85px] sm:max-w-none'>
                             <div
-                                className={`grid aspect-square w-10 h-10 place-items-center rounded-full border-2 font-semibold text-sm transition-all ${
+                                className={`grid aspect-square w-9 sm:w-10 h-9 sm:h-10 place-items-center rounded-full border-2 font-semibold text-xs sm:text-sm transition-all ${
                                     step === item.id
                                         ? "border-yellow-50 bg-yellow-50 text-richblack-900"
                                         : step > item.id
@@ -41,13 +41,13 @@ const RenderSteps = () => {
                                 }`}
                             >
                                 {step > item.id ? (
-                                    <FaCheck className="font-bold text-sm" />
+                                    <FaCheck className="font-bold text-xs sm:text-sm" />
                                 ) : (
                                     item.id
                                 )}
                             </div>
                             <p
-                                className={`mt-2 text-sm whitespace-nowrap ${
+                                className={`mt-2 text-center text-xs sm:text-sm leading-tight ${
                                     step >= item.id ? "text-richblack-5" : "text-richblack-500"
                                 }`}
                             >
@@ -58,7 +58,7 @@ const RenderSteps = () => {
                         {/* Dashed Line */}
                         {item.id !== steps.length && (
                             <div
-                                className={`h-[1px] w-[33%] border-dashed border-b-2 mb-8 mx-2 ${
+                                className={`h-[1px] w-[15%] sm:w-[25%] md:w-[33%] border-dashed border-b-2 mb-8 mx-1 sm:mx-2 ${
                                     step > item.id ? "border-yellow-50" : "border-richblack-500"
                                 }`}
                             ></div>
