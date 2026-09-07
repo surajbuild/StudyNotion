@@ -31,18 +31,18 @@ const ExploreMore = () => {
                 Learn to build anything you can imagine
             </p>
 
-            <div className='flex flex-row rounded-full bg-richblack-800 mt-5 px-1 py-1 border-richblack-100  w-fit items-center mx-auto justify-center'>
+            <div className='flex flex-wrap rounded-full bg-richblack-800 mt-5 p-1.5 border border-richblack-700 w-fit max-w-full items-center mx-auto justify-center gap-1 sm:gap-0'>
                 {
                     tabsName.map((element, index) => {
                         return(
                             <div 
                                 key={index}
                                 onClick={() => setMyCard(element)}
-                                className={`text-[16px] flex flex-row items-center gap-2 
+                                className={`text-xs sm:text-sm md:text-[16px] flex flex-row items-center gap-2 
                                 ${currentTab === element 
-                                ? " text-richblack-5 font-medium" 
+                                ? "bg-richblack-900 text-richblack-5 font-medium shadow-sm" 
                                 : "text-richblack-200"} rounded-full transition-all duration-200 cursor-pointer
-                                hover:bg-richblack-900 hover:text-richblack-5 px-7 py-2`}>
+                                hover:bg-richblack-900 hover:text-richblack-5 px-3.5 sm:px-6 py-1.5 sm:py-2`}>
                                     {element}
                             </div>
                         )
@@ -51,7 +51,7 @@ const ExploreMore = () => {
             </div>
 
             {/* Course card group */}
-            <div className='flex flex-row justify-center gap-10 flex-wrap py-16 px-4 -mb-36'>
+            <div className='flex flex-row justify-center gap-6 sm:gap-10 flex-wrap py-10 lg:py-16 px-2 sm:px-4 -mb-16 md:-mb-36'>
                 {
                     courses.map((element, index) => {
                         return(

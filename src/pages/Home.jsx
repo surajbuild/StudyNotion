@@ -95,7 +95,7 @@ const Home = () => {
                                 active: false,
                             }
                         }
-                        codeblock={`<!DOCTYPE>\n<html>\n<head><title>Example</title>\n    <link rel="stylesheet" href="styles.css">\n</head>\n<body>\n  <h1><a href="/">Header</a></h1>\n        <a href="one/">One</a>\   \n        <a href="three/">Three</a>  \n</body>\n</html>`}
+                        codeblock={`<!DOCTYPE>\n<html>\n<head><title>Example</title>\n    <link rel="stylesheet" href="styles.css">\n</head>\n<body>\n  <h1><a href="/">Header</a></h1>\n        <a href="one/">One</a>   \n        <a href="three/">Three</a>  \n</body>\n</html>`}
                         codeColor={"text-yellow-500"}
                     />
                 </div>
@@ -127,7 +127,7 @@ const Home = () => {
                                 active: false,
                             }
                         }
-                        codeblock={`<!DOCTYPE>\n<html>\n<head><title>Example</title>\n    <link rel="stylesheet" href="styles.css">\n</head>\n<body>\n    <h1><a href="/">Header</a></h1>\n        <a href="one/">One</a>\   \n        <a href="three/">Three</a>  \n</body>\n</html>`}
+                        codeblock={`<!DOCTYPE>\n<html>\n<head><title>Example</title>\n    <link rel="stylesheet" href="styles.css">\n</head>\n<body>\n    <h1><a href="/">Header</a></h1>\n        <a href="one/">One</a>   \n        <a href="three/">Three</a>  \n</body>\n</html>`}
                         codeColor={"text-pink-500"}
                     />
                 </div>
@@ -142,7 +142,7 @@ const Home = () => {
                     <div className="w-11/12 max-w-maxContent flex items-center 
                                     flex-col gap-5 mx-auto justify-between">
                         <div className="h-[150px]"></div>
-                        <div className="flex flex-row gap-7 text-white">
+                        <div className="flex flex-col sm:flex-row gap-4 sm:gap-7 text-white items-center">
                             <CTAButton active={true} linkto={'/signup'}>
                                 <div className="flex items-center gap-3">
                                     Explore Full Catalog

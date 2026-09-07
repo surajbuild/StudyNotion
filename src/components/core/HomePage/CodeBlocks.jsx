@@ -1,20 +1,19 @@
 import React from 'react'
 import CTAButton from "./Button"
-import HighlightText from './HighlightText'
 import { FaArrowRight } from "react-icons/fa6";
 import { TypeAnimation } from 'react-type-animation';
 const CodeBlocks = ({
     position, heading, subheading, ctabtn1, ctabtn2, codeblock, backgroundGradient, codeColor
 }) => {
   return (
-    <div className={`flex ${position} my-20 justify-between`}>
+    <div className={`flex flex-col ${position} gap-8 lg:gap-10 my-10 lg:my-20 justify-between items-center`}>
       {/* Section 1 */}
-      <div className='w-full lg:w-[50%] flex flex-col gap-8'>
+      <div className='w-full lg:w-[50%] flex flex-col gap-6 lg:gap-8'>
         {heading}
-        <div className='text-richblack-300 font-bold '>
+        <div className='text-richblack-300 font-bold text-sm sm:text-base'>
             {subheading}
         </div>
-        <div className='flex gap-7 mt-7'>
+        <div className='flex flex-wrap gap-4 sm:gap-7 mt-4 sm:mt-7'>
             <CTAButton active={ctabtn1.active} linkto={ctabtn1.linkto}>
                 <div className='flex gap-2 items-center'>
                     {ctabtn1.btnText}
@@ -30,8 +29,8 @@ const CodeBlocks = ({
 
       {/* Section 2 */}
       {/* Code section 2 */}
-        <div className={`relative h-fit flex flex-row text-sm w-full lg:w-[40%] py-4 rounded-xl shadow-lg overflow-hidden ${backgroundGradient}`}>
-          {/*HW: bg gradient */}
+        <div className={`relative h-fit flex flex-row text-xs sm:text-sm w-full lg:w-[48%] py-4 rounded-xl shadow-lg border border-richblack-700/60 bg-richblack-800/30 overflow-hidden ${backgroundGradient || ""}`}>
+          {/* HW: bg gradient */}
           <div 
             className='absolute inset-0 z-0 pointer-events-none'
             style={
@@ -42,8 +41,8 @@ const CodeBlocks = ({
                 }
             }
           />
-        <div className='flex w-full'>
-          <div className="text-right flex flex-col w-[5%] pr-2 pl-2 text-richblack-400 font-inter font-bold z-10">
+        <div className='flex w-full overflow-x-auto'>
+          <div className="text-right flex flex-col w-8 sm:w-10 pr-2 pl-2 text-richblack-400 font-inter font-bold z-10 select-none text-xs sm:text-sm flex-shrink-0">
             <p>1</p>
             <p>2</p>
             <p>3</p>
@@ -57,7 +56,7 @@ const CodeBlocks = ({
             <p>11</p>
           </div>
           {/* Code block */}
-          <div className={`w-[95%] flex flex-col min-h-[264px] font-bold font-mono ${codeColor} pr-2 z-10 text-md`}>
+          <div className={`flex-1 flex flex-col min-h-[220px] sm:min-h-[264px] font-bold font-mono ${codeColor} pr-3 z-10 text-xs sm:text-sm overflow-x-auto`}>
             <TypeAnimation
               sequence={[codeblock, 2000, ""]}
               repeat={Infinity}
@@ -65,7 +64,6 @@ const CodeBlocks = ({
                 {
                     whiteSpace:"pre-line",
                     display:"block",
-                    // lineHeight: 
                 }
               }
               omitDeletionAnimation={true}
