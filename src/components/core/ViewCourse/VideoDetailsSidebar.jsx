@@ -10,7 +10,7 @@ import IconBtn from '../../common/IconBtn'
 const VideoDetailsSidebar = ({ setReviewModal }) => {
   const [activeStatus, setActiveStatus]   = useState('')
   const [videoBarActive, setVideoBarActive] = useState('')
-  const [sidebarOpen, setSidebarOpen]     = useState(true)
+  const [sidebarOpen, setSidebarOpen]     = useState(window.innerWidth >= 1024)
 
   const navigate = useNavigate()
   const { sectionId, subSectionId } = useParams()

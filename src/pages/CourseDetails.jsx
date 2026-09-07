@@ -10,6 +10,7 @@ import { fetchCourseDetails } from "../services/operations/courseDetailsAPI"
 import GetAvgRating from "../utils/avgRating"
 import { formatDate } from "../services/formatDate"
 import { ACCOUNT_TYPE } from "../utils/constants"
+import { addToCart } from "../slices/cartSlice"
 
 import ConfirmationModal from "../components/common/ConfirmationModal"
 import CourseAccordionBar from "../components/core/Course/CourseAccordionBar"
@@ -109,7 +110,6 @@ const CourseDetails = () => {
   // ✅ FIX: courseData is already the inner data object ({ courseDetails, totalDuration })
   //         NOT courseData.data.courseDetails
   const {
-    _id: course_id,
     courseName,
     courseDescription,
     thumbnail,
@@ -170,21 +170,48 @@ const CourseDetails = () => {
 
             {/* Mobile buy strip */}
             <div className="flex w-full flex-col gap-4 border-y border-y-richblack-500 py-4 lg:hidden">
-              <p className="space-x-3 pb-4 text-3xl font-semibold text-richblack-5">
+              <p className="space-x-3 pb-2 text-3xl font-semibold text-richblack-5">
                 Rs. {price}
               </p>
-              <button
-                className="yellowButton"
-                onClick={
-                  user && studentEnrolled?.includes(user?._id)
-                    ? () => navigate("/dashboard/enrolled-courses")
-                    : handleBuyCourse
-                }
-              >
-                {user && studentEnrolled?.includes(user?._id)
-                  ? "Go To Course"
-                  : "Buy Now"}
-              </button>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  className="yellowButton flex-1 text-center justify-center"
+                  onClick={
+                    user && studentEnrolled?.includes(user?._id)
+                      ? () => navigate("/dashboard/enrolled-courses")
+                      : handleBuyCourse
+                  }
+                >
+                  {user && studentEnrolled?.includes(user?._id)
+                    ? "Go To Course"
+                    : "Buy Now"}
+                </button>
+                {(!user || !studentEnrolled?.includes(user?._id)) && (
+                  <button
+                    onClick={() => {
+                      if (user && user?.accountType === ACCOUNT_TYPE.INSTRUCTOR) {
+                        toast.error("You are an Instructor. You can't buy a course.")
+                        return
+                      }
+                      if (token) {
+                        dispatch(addToCart(courseData?.courseDetails))
+                        return
+                      }
+                      setConfirmationModal({
+                        text1: "You are not logged in!",
+                        text2: "Please login to add To Cart",
+                        btn1Text: "Login",
+                        btn2Text: "Cancel",
+                        btn1Handler: () => navigate("/login"),
+                        btn2Handler: () => setConfirmationModal(null),
+                      })
+                    }}
+                    className="blackButton flex-1 text-center justify-center"
+                  >
+                    Add to Cart
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
