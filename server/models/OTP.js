@@ -1,11 +1,10 @@
 const mongoose = require("mongoose");
-const mailSender = require("../utils/mailSender");
-const otpTemplate = require("../mail/templates/emailVerificationTemplate");
 
 const OTPSchema = new mongoose.Schema({
     email: {
         type: String,
         required: true,
+        index: true,
     },
     createdAt: {
         type: Date,
@@ -15,19 +14,12 @@ const OTPSchema = new mongoose.Schema({
     otp: {
         type: String,
         required: true,
+        index: true,
     },
 });
 
-OTPSchema.pre("save", async function (next) {
-    // Only send email on NEW documents (not on updates to existing OTP records)
-    if (this.isNew) {
-        await mailSender(
-            this.email,
-            "StudyNotion – Your OTP Verification Code",
-            otpTemplate(this.otp)
-        );
-    }
-    next();
-});
+// NOTE: The email used to be sent synchronously from a pre("save") hook,
+// which blocked every sendOTP request on the full SMTP round-trip. Sending
+// is now fire-and-forget in the sendOTP controller (server/controllers/Auth.js).
 
 module.exports = mongoose.model("OTP", OTPSchema);

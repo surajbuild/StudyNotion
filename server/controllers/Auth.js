@@ -4,6 +4,7 @@ const otpGenerator = require("otp-generator");
 const bcrypt = require("bcrypt");
 const { passwordUpdated } = require("../mail/templates/passwordUpdate");
 const mailSender = require("../utils/mailSender");
+const otpTemplate = require("../mail/templates/emailVerificationTemplate");
 const Profile = require("../models/Profile");
 const jwt = require("jsonwebtoken");
 
@@ -227,11 +228,28 @@ exports.sendOTP = async (req, res) => {
         }
 
         await OTP.create({ email, otp });
-        
+
+        // Send the OTP email using Resend
+        let emailDelivered = false;
+        try {
+            await mailSender(
+                email,
+                "StudyNotion – Your OTP Verification Code",
+                otpTemplate(otp)
+            );
+            emailDelivered = true;
+        } catch (mailErr) {
+            console.error(`⚠️ Could not deliver OTP email to ${email}: ${mailErr.message}`);
+            console.log(`\n========================================\n🔐 DEV OTP for ${email}: [ ${otp} ]\n========================================\n`);
+        }
+
         return res.status(200).json({
             success: true,
-            data:otp,
-            message: "OTP sent successfully",
+            data: otp,
+            emailDelivered,
+            message: emailDelivered 
+                ? "OTP sent successfully to your email" 
+                : "OTP generated (check server console if testing domain blocked email)",
         });
     } catch (error) {
         console.error("sendOTP error:", error);

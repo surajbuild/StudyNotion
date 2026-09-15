@@ -1,30 +1,37 @@
-const nodemailer = require("nodemailer");
+﻿const { Resend } = require("resend");
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Strips HTML tags to a plain-text fallback.
+// Gmail sometimes blocks HTML from shared test domains (onboarding@resend.dev),
+// so the text field ensures the content is always visible.
+const htmlToText = (html) =>
+    html
+        .replace(/<style[\s\S]*?<\/style>/gi, "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/\s{2,}/g, " ")
+        .trim();
 
 const mailSender = async (email, title, body) => {
-    try{
-        let transporter = nodemailer.createTransport({
-            host: process.env.MAIL_HOST,    
-            auth: {
-                user: process.env.MAIL_USER,
-                pass: process.env.MAIL_PASS,
-            }
-        })
+    const { data, error } = await resend.emails.send({
+        from: process.env.MAIL_FROM || "StudyNotion <onboarding@resend.dev>",
+        to: [email],
+        subject: title,
+        html: body,
+        text: htmlToText(body),
+    });
 
-        let info = await transporter.sendMail({
-            from: process.env.MAIL_USER,
-            to: `${email}`,
-            subject: `${title}`,
-            html: `${body}`,
-        })
-        // Log only essential info, not full object
-        console.log(`✓ Email sent to ${email} (MessageId: ${info.messageId})`);
-        return info; 
+    if (error) {
+        console.error(`✗ Email failed to ${email}:`, error);
+        throw new Error(error.message || "Failed to send email");
     }
 
-    catch(error){
-        console.log(`✗ Email failed to ${email}: ${error.message}`);
-        throw error;
-    }
-}
+    console.log(`✓ Email sent to ${email} (ID: ${data?.id})`);
+    return data;
+};
 
-module.exports = mailSender;    
+module.exports = mailSender;
