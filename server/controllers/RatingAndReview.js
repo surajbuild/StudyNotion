@@ -1,6 +1,7 @@
 const RatingAndReview = require("../models/RatingAndReview");
 const Course = require('../models/Course');
 const { default: mongoose } = require("mongoose");
+const cache = require('../utils/cache');
 
 //create rating
 exports.createRating = async (req, res) => {
@@ -48,7 +49,11 @@ exports.createRating = async (req, res) => {
                                     },
                                     {new: true},
                                 )
-        console.log(updatedCourseDetails);
+
+        // Ratings affect the course-details and course-list pages
+        cache.del("getAllCourses");
+        cache.del("getCourseDetails:" + courseId);
+
         //return respponse
         return res.status(200).json({
             success: true,
@@ -80,12 +85,8 @@ exports.getAverageRating = async  (req, res) =>  {
             {
                 $group:{
                     _id: null,
-                }
-            },
-            {
-                $group:{
-                    _id:null,
-                    averageRating: {$avg: "$rating"}
+                    averageRating: {$avg: "$rating"},
+                    totalRatings: { $sum: 1 },
                 }
             }
         ]);
@@ -106,7 +107,6 @@ exports.getAverageRating = async  (req, res) =>  {
         })
     }
     catch(error){
-        console.log(error);
         return res.status(500).json({
             success: false,
             message: error.message,
@@ -119,6 +119,7 @@ exports.getAllRating = async (req, res) => {
     try{
         const allReviews = await RatingAndReview.find({})
                            .sort({rating: "desc"})
+                           .limit(20)
                            .populate({
                             path: "user",
                             select: "firstName lastName email image",
@@ -135,7 +136,6 @@ exports.getAllRating = async (req, res) => {
         });
     }
     catch(error){
-        console.log(error)
         return res.status(500).json({
             success: false,
             error: error.message,

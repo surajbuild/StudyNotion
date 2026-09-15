@@ -5,6 +5,10 @@ const Section = require("../models/Section");
 const SubSection = require("../models/SubSection");
 const CourseProgress = require("../models/CourseProgress");
 const { imageUploadToCloudinary } = require("../utils/imageUploader");
+const cache = require("../utils/cache");
+
+const ALL_COURSES_CACHE_KEY = "getAllCourses";
+const COURSE_DETAILS_PREFIX = "getCourseDetails:";
 
 // Helper: convert total seconds → human-readable string (e.g. "2h 30m")
 const convertSecondsToDuration = (totalSeconds) => {
@@ -111,6 +115,10 @@ exports.createCourse = async (req, res) => {
       );
     }
 
+    // Invalidate caches so the new course shows up immediately
+    cache.del(ALL_COURSES_CACHE_KEY);
+    cache.del(COURSE_DETAILS_PREFIX + newCourse._id);
+
     return res.status(200).json({
       success: true,
       data: newCourse,
@@ -131,6 +139,15 @@ exports.createCourse = async (req, res) => {
 // ============================================================
 exports.getAllCourses = async (req, res) => {
   try {
+    const cached = cache.get(ALL_COURSES_CACHE_KEY);
+    if (cached) {
+      return res.status(200).json({
+        success: true,
+        message: "All courses fetched successfully",
+        data: cached,
+      });
+    }
+
     const allCourses = await Course.find(
       {status: "Published"},
       {
@@ -142,8 +159,13 @@ exports.getAllCourses = async (req, res) => {
         studentEnrolled: true,
       },
     )
-      .populate("instructor")
+      .populate({
+        path: "instructor",
+        select: "firstName lastName email image",
+      })
       .exec();
+
+    cache.set(ALL_COURSES_CACHE_KEY, allCourses, 5 * 60 * 1000);
 
     return res.status(200).json({
       success: true,
@@ -171,6 +193,16 @@ exports.getCourseDetails = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Course ID is required",
+      });
+    }
+
+    const cacheKey = COURSE_DETAILS_PREFIX + courseId;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json({
+        success: true,
+        message: "Course details fetched successfully",
+        data: cached,
       });
     }
 
@@ -208,17 +240,16 @@ exports.getCourseDetails = async (req, res) => {
       });
     }
 
+    const responseData = {
+      courseDetails,
+      totalDuration: convertSecondsToDuration(totalDurationInSeconds),
+    };
+    cache.set(cacheKey, responseData, 2 * 60 * 1000);
+
     return res.status(200).json({
       success: true,
       message: "Course details fetched successfully",
-      // ✅ FIX: was `data: courseDetails` (flat object).
-      // Frontend CourseDetails.jsx expects { courseDetails, totalDuration }
-      // (same shape as getFullCourseDetails). Wrapping it here fixes the
-      // Error page that showed immediately on /courses/:courseId.
-      data: {
-        courseDetails,
-        totalDuration: convertSecondsToDuration(totalDurationInSeconds),
-      },
+      data: responseData,
     });
   } catch (error) {
     console.error("getCourseDetails error:", error);
@@ -332,6 +363,9 @@ exports.editCourse = async (req, res) => {
       })
       .exec();
 
+    cache.del(ALL_COURSES_CACHE_KEY);
+    cache.del(COURSE_DETAILS_PREFIX + courseId);
+
     return res.status(200).json({
       success: true,
       message: "Course updated successfully",
@@ -377,14 +411,19 @@ exports.deleteCourse = async (req, res) => {
       });
     }
 
-    // Cascade-delete all sections and their subsections
+    // Cascade-delete all sections and their subsections in two queries
     const sections = await Section.find({ _id: { $in: course.courseContent } });
-    for (const section of sections) {
-      await SubSection.deleteMany({ _id: { $in: section.subSection } });
+    const allSubSectionIds = sections.flatMap((section) => section.subSection);
+
+    if (allSubSectionIds.length > 0) {
+        await SubSection.deleteMany({ _id: { $in: allSubSectionIds } });
     }
     await Section.deleteMany({ _id: { $in: course.courseContent } });
 
     await Course.findByIdAndDelete(courseId);
+
+    cache.del(ALL_COURSES_CACHE_KEY);
+    cache.del(COURSE_DETAILS_PREFIX + courseId);
 
     return res.status(200).json({
       success: true,
@@ -451,8 +490,7 @@ exports.getFullCourseDetails = async (req, res) => {
         }
     } else if (accountType === "Student") {
         const isEnrolled = courseDetails.studentEnrolled
-            ?.map((id) => id.toString())
-            .includes(userId);
+            ?.some((id) => id.toString() === userId);
         if (!isEnrolled) {
             return res.status(403).json({
                 success: false,
