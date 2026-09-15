@@ -12,6 +12,8 @@ const sectionSchema = new mongoose.Schema({
             ref: "SubSection",
         }
     ],
-})
+});
+
+sectionSchema.index({ subSection: 1 });
 
 module.exports = mongoose.model("Section", sectionSchema);

@@ -56,11 +56,14 @@ const courseSchema = new mongoose.Schema({
     status: {
         type: String,
         enum: ["Draft", "Published"],
+        index: true,
     },
     createdAt: {
         type:Date,
         default:Date.now
     },
 });
+
+courseSchema.index({ instructor: 1, status: 1 });
 
 module.exports = mongoose.model("Course", courseSchema);
