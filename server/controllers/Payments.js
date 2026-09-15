@@ -21,23 +21,19 @@ exports.capturePayment = async (req, res) => {
 
     let totalAmount = 0;
 
+    // Batch-fetch all courses in one query instead of N separate find() calls
+    const coursesDocs = await Course.find({ _id: { $in: courses } });
+    const courseMap = new Map(coursesDocs.map((c) => [c._id.toString(), c]));
+
     for (const course_id of courses) {
-        try {
-            const course = await Course.findById(course_id);
-            if (!course) {
-                return res.status(404).json({ success: false, message: `Course not found: ${course_id}` });
-            }
-
-            const uid = new mongoose.Types.ObjectId(userId);
-            if (course.studentEnrolled.includes(uid)) {
-                return res.status(400).json({ success: false, message: "You are already enrolled in one of these courses" });
-            }
-
-            totalAmount += course.price;
-        } catch (error) {
-            console.error("capturePayment error:", error);
-            return res.status(500).json({ success: false, message: error.message });
+        const course = courseMap.get(course_id.toString());
+        if (!course) {
+            return res.status(404).json({ success: false, message: `Course not found: ${course_id}` });
         }
+        if (course.studentEnrolled?.some((id) => id.toString() === userId)) {
+            return res.status(400).json({ success: false, message: "You are already enrolled in one of these courses" });
+        }
+        totalAmount += course.price;
     }
 
     const options = {
@@ -93,47 +89,43 @@ const enrollStudents = async (courses, userId) => {
         throw new Error("Courses and userId are required for enrollment");
     }
 
-    for (const courseId of courses) {
-        // Add student to the course's enrolled list
-        const enrolledCourse = await Course.findByIdAndUpdate(
-            courseId,
-            { $push: { studentEnrolled: userId } },
-            { new: true }
-        );
+    // Batch-update all courses in parallel and create all progress docs in parallel
+    await Promise.all([
+        Course.updateMany(
+            { _id: { $in: courses } },
+            { $addToSet: { studentEnrolled: userId } },
+        ),
+        ...courses.map((courseId) =>
+            CourseProgress.create({ courseID: courseId, userId, completedVideos: [] }),
+        ),
+    ]);
 
-        if (!enrolledCourse) {
-            throw new Error(`Course not found during enrollment: ${courseId}`);
-        }
+    // Update the student's profile with all courses and their progress docs
+    const progressDocs = await CourseProgress.find({ courseID: { $in: courses }, userId });
 
-        // Create a fresh progress tracker for this course
-        const courseProgress = await CourseProgress.create({
-            courseID: courseId,
-            userId,
-            completedVideos: [],
-        });
+    await User.findByIdAndUpdate(
+        userId,
+        {
+            $addToSet: {
+                courses: { $each: courses },
+                courseProgress: { $each: progressDocs.map((d) => d._id) },
+            },
+        },
+    );
 
-        // Add the course and its progress doc to the student's profile
-        const enrolledStudent = await User.findByIdAndUpdate(
-            userId,
-            { $push: { courses: courseId, courseProgress: courseProgress._id } },
-            { new: true }
-        );
+    // Send confirmation emails in parallel (best-effort — log but don't fail enrollment)
+    const student = await User.findById(userId);
+    const courseDocs = await Course.find({ _id: { $in: courses } }, { courseName: 1 });
 
-        if (!enrolledStudent) {
-            throw new Error(`User not found during enrollment: ${userId}`);
-        }
-
-        // Send confirmation email (best-effort — log but don't fail enrollment)
-        try {
-            await mailSender(
-                enrolledStudent.email,
-                `Successfully Enrolled into ${enrolledCourse.courseName}`,
-                courseEnrollmentEmail(enrolledCourse.courseName, enrolledStudent.firstName)
-            );
-        } catch (mailError) {
-            console.error("Enrollment email failed (non-critical):", mailError.message);
-        }
-    }
+    await Promise.allSettled(
+        courseDocs.map((courseDoc) =>
+            mailSender(
+                student.email,
+                `Successfully Enrolled into ${courseDoc.courseName}`,
+                courseEnrollmentEmail(courseDoc.courseName, student.firstName),
+            ),
+        ),
+    );
 };
 
 // ============================================================

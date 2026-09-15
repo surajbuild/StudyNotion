@@ -154,12 +154,11 @@ exports.deleteAccount = async (req, res) => {
             await Profile.findByIdAndDelete(userDetails.additionalDetails);
         }
 
-        // Remove this user from every course they were enrolled in
-        for (const courseId of userDetails.courses) {
-            await Course.findByIdAndUpdate(
-                courseId,
+        // Remove this user from every course they were enrolled in — one query instead of N
+        if (userDetails.courses.length > 0) {
+            await Course.updateMany(
+                { _id: { $in: userDetails.courses } },
                 { $pull: { studentEnrolled: id } },
-                { new: true }
             );
         }
 
@@ -243,6 +242,10 @@ exports.getEnrolledCourses = async (req, res) => {
         
         userDetails = userDetails.toObject();
 
+        // Batch-fetch ALL progress docs for this user in ONE query (was N+1)
+        const allProgressDocs = await CourseProgress.find({ userId: userId });
+        const progressMap = new Map(allProgressDocs.map((doc) => [doc.courseID.toString(), doc]));
+
         for (let i = 0; i < userDetails.courses.length; i++) {
             let totalDurationInSeconds = 0;
             let totalSubSections = 0;
@@ -260,10 +263,7 @@ exports.getEnrolledCourses = async (req, res) => {
             userDetails.courses[i].totalDuration = convertSecondsToDuration(totalDurationInSeconds);
 
             // Look up how many videos this user has completed in this course
-            const courseProgressDoc = await CourseProgress.findOne({
-                courseID: userDetails.courses[i]._id,
-                userId: userId,
-            });
+            const courseProgressDoc = progressMap.get(userDetails.courses[i]._id.toString());
 
             const completedCount = courseProgressDoc?.completedVideos?.length || 0;
 
