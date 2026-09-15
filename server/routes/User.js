@@ -16,6 +16,7 @@ const {
 } = require("../controllers/ResetPassword")
 
 const { auth } = require("../middlewares/auth")
+const { sendOtpLimiter, resetPasswordTokenLimiter } = require("../middlewares/rateLimiters")
 
 // Routes for Login, Signup, and Authentication
 
@@ -30,7 +31,7 @@ router.post("/login", login)
 router.post("/signup", signUp)
 
 // Route for sending OTP to the user's email
-router.post("/sendotp", sendOTP)
+router.post("/sendotp", sendOtpLimiter, sendOTP)
 
 // Route for Changing the password
 router.post("/changepassword", auth, changePassword)
@@ -40,7 +41,7 @@ router.post("/changepassword", auth, changePassword)
 // ********************************************************************************************************
 
 // Route for generating a reset password token
-router.post("/reset-password-token", resetPasswordToken)
+router.post("/reset-password-token", resetPasswordTokenLimiter, resetPasswordToken)
 
 // Route for resetting user's password after verification
 router.post("/reset-password", resetPassword)

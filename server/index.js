@@ -3,10 +3,14 @@ const dotenv = require("dotenv");
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const fileUpload = require("express-fileupload");
+const compression = require("compression");
+const rateLimit = require("express-rate-limit");
 const os = require("os");
 
 const database = require("./config/database");
 const { cloudinaryConnect } = require("./config/cloudinary");
+const { startSweeper } = require("./utils/cache");
+const { authLimiter, emailLimiter } = require("./middlewares/rateLimiters");
 
 const userRoutes = require("./routes/User");
 const profileRoutes = require("./routes/Profile");
@@ -23,7 +27,8 @@ const app = express();
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
-app.use(express.json());
+app.use(compression());
+app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 
 const allowedOrigins = [
@@ -50,6 +55,11 @@ app.use(
         useTempFiles: true,
         // os.tmpdir() is cross-platform (works on Windows, Mac, Linux)
         tempFileDir: os.tmpdir(),
+        limits: {
+            fileSize: 500 * 1024 * 1024, // 500 MB per file (supports video lectures)
+            files: 3, // max 3 files per request
+        },
+        abortOnLimit: true,
     })
 );
 
@@ -62,11 +72,11 @@ try {
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
-app.use("/api/v1/auth", userRoutes);
+app.use("/api/v1/auth", authLimiter, userRoutes);
 app.use("/api/v1/profile", profileRoutes);
 app.use("/api/v1/course", courseRoutes);
 app.use("/api/v1/payment", paymentRoutes);
-app.use("/api/v1/reach", contactRoutes);
+app.use("/api/v1/reach", emailLimiter, contactRoutes);
 
 // Health-check route
 app.get("/", (req, res) => {
@@ -88,6 +98,7 @@ app.use((err, req, res, next) => {
 const start = async () => {
     try {
         await database.connect();
+        startSweeper();
         app.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);
         });
