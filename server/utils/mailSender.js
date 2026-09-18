@@ -18,7 +18,7 @@ const htmlToText = (html) =>
 
 const mailSender = async (email, title, body) => {
     const { data, error } = await resend.emails.send({
-        from: process.env.MAIL_FROM || "StudyNotion <onboarding@resend.dev>",
+        from: process.env.MAIL_FROM,
         to: [email],
         subject: title,
         html: body,
