@@ -18,8 +18,6 @@ const OTPSchema = new mongoose.Schema({
     },
 });
 
-// NOTE: The email used to be sent synchronously from a pre("save") hook,
-// which blocked every sendOTP request on the full SMTP round-trip. Sending
-// is now fire-and-forget in the sendOTP controller (server/controllers/Auth.js).
+// OTP email delivery is handled by the sendOTP controller after the code is saved.
 
 module.exports = mongoose.model("OTP", OTPSchema);

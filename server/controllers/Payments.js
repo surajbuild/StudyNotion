@@ -1,15 +1,14 @@
-const { instance } = require('../config/razorpay');
+const { instance } = require("../config/razorpay");
 const Course = require("../models/Course");
 const User = require("../models/User");
-const mailSender = require('../utils/mailSender');
-const { courseEnrollmentEmail } = require('../mail/templates/courseEnrollmentEmail');
-const mongoose = require('mongoose');
-const crypto = require('crypto');
-const { paymentSuccessEmail } = require('../mail/templates/paymentSuccessEmail');
-const CourseProgress = require('../models/CourseProgress');
+const mailSender = require("../utils/mailSender");
+const { courseEnrollmentEmail } = require("../mail/templates/courseEnrollmentEmail");
+const crypto = require("crypto");
+const { paymentSuccessEmail } = require("../mail/templates/paymentSuccessEmail");
+const CourseProgress = require("../models/CourseProgress");
 
 // ============================================================
-// CAPTURE PAYMENT — validates courses and creates a Razorpay order
+// CAPTURE PAYMENT - validates courses and creates a Razorpay order
 // ============================================================
 exports.capturePayment = async (req, res) => {
     const { courses } = req.body;
@@ -21,14 +20,13 @@ exports.capturePayment = async (req, res) => {
 
     let totalAmount = 0;
 
-    // Batch-fetch all courses in one query instead of N separate find() calls
     const coursesDocs = await Course.find({ _id: { $in: courses } });
-    const courseMap = new Map(coursesDocs.map((c) => [c._id.toString(), c]));
+    const courseMap = new Map(coursesDocs.map((course) => [course._id.toString(), course]));
 
-    for (const course_id of courses) {
-        const course = courseMap.get(course_id.toString());
+    for (const courseId of courses) {
+        const course = courseMap.get(courseId.toString());
         if (!course) {
-            return res.status(404).json({ success: false, message: `Course not found: ${course_id}` });
+            return res.status(404).json({ success: false, message: `Course not found: ${courseId}` });
         }
         if (course.studentEnrolled?.some((id) => id.toString() === userId)) {
             return res.status(400).json({ success: false, message: "You are already enrolled in one of these courses" });
@@ -37,7 +35,7 @@ exports.capturePayment = async (req, res) => {
     }
 
     const options = {
-        amount: totalAmount * 100, // Razorpay expects amount in paise
+        amount: totalAmount * 100,
         currency: "INR",
         receipt: Date.now().toString(),
     };
@@ -52,7 +50,7 @@ exports.capturePayment = async (req, res) => {
 };
 
 // ============================================================
-// VERIFY PAYMENT — validates Razorpay signature then enrolls students
+// VERIFY PAYMENT - validates Razorpay signature then enrolls students
 // ============================================================
 exports.verifyPayment = async (req, res) => {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, courses } = req.body;
@@ -62,7 +60,6 @@ exports.verifyPayment = async (req, res) => {
         return res.status(400).json({ success: false, message: "Payment verification failed: missing fields" });
     }
 
-    // Razorpay signature = HMAC-SHA256 of "orderId|paymentId" using the webhook secret
     const expectedSignature = crypto
         .createHmac("sha256", process.env.RAZORPAY_SECRET)
         .update(`${razorpay_order_id}|${razorpay_payment_id}`)
@@ -76,20 +73,16 @@ exports.verifyPayment = async (req, res) => {
         await enrollStudents(courses, userId);
         return res.status(200).json({ success: true, message: "Payment verified" });
     } catch (error) {
-        console.error("verifyPayment — enrollment failed:", error);
+        console.error("verifyPayment enrollment failed:", error);
         return res.status(500).json({ success: false, message: error.message });
     }
 };
 
-// ============================================================
-// enrollStudents — internal helper; throws on failure (does NOT touch res)
-// ============================================================
 const enrollStudents = async (courses, userId) => {
     if (!courses || !userId) {
         throw new Error("Courses and userId are required for enrollment");
     }
 
-    // Batch-update all courses in parallel and create all progress docs in parallel
     await Promise.all([
         Course.updateMany(
             { _id: { $in: courses } },
@@ -100,7 +93,6 @@ const enrollStudents = async (courses, userId) => {
         ),
     ]);
 
-    // Update the student's profile with all courses and their progress docs
     const progressDocs = await CourseProgress.find({ courseID: { $in: courses }, userId });
 
     await User.findByIdAndUpdate(
@@ -108,12 +100,11 @@ const enrollStudents = async (courses, userId) => {
         {
             $addToSet: {
                 courses: { $each: courses },
-                courseProgress: { $each: progressDocs.map((d) => d._id) },
+                courseProgress: { $each: progressDocs.map((doc) => doc._id) },
             },
         },
     );
 
-    // Send confirmation emails in parallel (best-effort — log but don't fail enrollment)
     const student = await User.findById(userId);
     const courseDocs = await Course.find({ _id: { $in: courses } }, { courseName: 1 });
 
@@ -147,8 +138,8 @@ exports.sendPaymentSuccessEmail = async (req, res) => {
 
         await mailSender(
             student.email,
-            "Payment Received – StudyNotion",
-            paymentSuccessEmail(`${student.firstName} ${student.lastName}`, amount / 100, orderId, paymentId)
+            "Payment Received - StudyNotion",
+            paymentSuccessEmail(`${student.firstName} ${student.lastName}`, amount / 100, orderId, paymentId),
         );
 
         return res.status(200).json({ success: true, message: "Payment success email sent" });

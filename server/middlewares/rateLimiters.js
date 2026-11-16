@@ -16,7 +16,7 @@ exports.authLimiter = rateLimit({
 // Limiter for email-triggering endpoints (sendotp, reset-password-token, contact).
 exports.emailLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    max: 10, // max 10 emails per IP per hour
+    max: 20, // max 10 emails per IP per hour
     standardHeaders: true,
     legacyHeaders: false,
     message: {
@@ -28,7 +28,7 @@ exports.emailLimiter = rateLimit({
 // Tighter limiter for sendOTP only (each call writes a DB doc AND emails).
 exports.sendOtpLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    max: 5, // max 5 OTP emails per IP per hour
+    max: 10, // max 5 OTP emails per IP per hour
     standardHeaders: true,
     legacyHeaders: false,
     message: {
@@ -40,7 +40,7 @@ exports.sendOtpLimiter = rateLimit({
 // Tighter limiter for password-reset emails.
 exports.resetPasswordTokenLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    max: 5, // max 5 reset emails per IP per hour
+    max: 10, // max 5 reset emails per IP per hour
     standardHeaders: true,
     legacyHeaders: false,
     message: {

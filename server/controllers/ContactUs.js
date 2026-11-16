@@ -1,5 +1,5 @@
 const { contactUsEmail } = require('../mail/templates/contactFormRes');
-const mailSender = require('../utils/mailSender'); // match actual filename and casing
+const mailSender = require('../utils/mailSender');
 
 // Simple contact form handler with basic validation and clear status codes
 exports.contactUsController = async (req, res) => {
@@ -10,9 +10,9 @@ exports.contactUsController = async (req, res) => {
     }
 
     try {
-        const emailRes = await mailSender(
+        await mailSender(
             email,
-            'Your Data sent successfully',
+            'StudyNotion - We received your message',
             contactUsEmail(email, firstname, lastname, message, phoneNo, countrycode)
         );
 
