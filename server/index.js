@@ -1,5 +1,10 @@
 const express = require("express");
 const dotenv = require("dotenv");
+const path = require("path");
+
+// Load .env variables before anything else references process.env
+dotenv.config({ path: path.join(__dirname, ".env") });
+
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const fileUpload = require("express-fileupload");
@@ -17,9 +22,6 @@ const profileRoutes = require("./routes/Profile");
 const paymentRoutes = require("./routes/Payment");
 const courseRoutes = require("./routes/Course");
 const contactRoutes = require("./routes/Contact");
-
-// Load .env variables before anything else references process.env
-dotenv.config();
 
 const PORT = process.env.PORT || 4000;
 
