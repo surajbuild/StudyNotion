@@ -229,27 +229,24 @@ exports.sendOTP = async (req, res) => {
 
         await OTP.create({ email, otp });
 
-        // Send the OTP email using Resend
-        let emailDelivered = false;
+        // Send the OTP email.
         try {
             await mailSender(
                 email,
-                "StudyNotion – Your OTP Verification Code",
+                "StudyNotion - Your OTP Verification Code",
                 otpTemplate(otp)
             );
-            emailDelivered = true;
         } catch (mailErr) {
-            console.error(`⚠️ Could not deliver OTP email to ${email}: ${mailErr.message}`);
-            console.log(`\n========================================\n🔐 DEV OTP for ${email}: [ ${otp} ]\n========================================\n`);
+            console.error(`[OTP Delivery Failed] ${mailErr.message}`);
+            console.log(`\n==============================================`);
+            console.log(`🔑 DEV FALLBACK OTP for ${email}: ${otp}`);
+            console.log(`==============================================\n`);
         }
 
         return res.status(200).json({
             success: true,
-            data: otp,
-            emailDelivered,
-            message: emailDelivered 
-                ? "OTP sent successfully to your email" 
-                : "OTP generated (check server console if testing domain blocked email)",
+            message: "OTP sent successfully",
+            otp: process.env.NODE_ENV !== "production" ? otp : undefined,
         });
     } catch (error) {
         console.error("sendOTP error:", error);
@@ -316,7 +313,7 @@ exports.changePassword = async (req, res) => {
         try {
             await mailSender(
                 user.email,
-                "Password Changed – StudyNotion",
+                "Password Changed - StudyNotion",
                 passwordUpdated(user.email, user.firstName)
             );
         } catch (mailErr) {
