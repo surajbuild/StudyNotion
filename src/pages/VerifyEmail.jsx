@@ -23,12 +23,6 @@ const VerifyEmail = () => {
 
   const handleOnSubmit = (e) => {
     e.preventDefault();
-
-    // ✅ FIX: Destructure fields from Redux signupData, but use the local
-    // `otp` state for the verification code and the `navigate` from
-    // useNavigate for post-signup routing.
-    // Previously this code tried to read otp and navigate from signupData,
-    // which never contained them — signupData only holds the form fields.
     const {
       accountType,
       firstName,
