@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "node --watch index.js"
   },
   "keywords": [],
   "author": "",
@@ -29,7 +29,6 @@
     "nodemailer": "^7.0.6",
     "nodemon": "^3.1.10",
     "otp-generator": "^4.0.1",
-    "razorpay": "^2.9.6",
-    "resend": "^6.28.0"
+    "razorpay": "^2.9.6"
   }
 }
