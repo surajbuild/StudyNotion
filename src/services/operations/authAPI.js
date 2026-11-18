@@ -10,6 +10,7 @@ const {
   SENDOTP_API,
   SIGNUP_API,
   LOGIN_API,
+  LOGOUT_API,
   RESETPASSTOKEN_API,
   RESETPASSWORD_API,
 } = endpoints;
@@ -144,9 +145,16 @@ export const login = (email, password, navigate) => async (dispatch) => {
 };
 
 // ============================================================
-// LOGOUT  —  clears all client-side session data
+// LOGOUT  —  clears server cookie and all client-side session data
 // ============================================================
 export const logout = (navigate) => async (dispatch) => {
+  // Best-effort call to clear the server's httpOnly token cookie
+  try {
+    await apiConnector("POST", LOGOUT_API);
+  } catch {
+    // Always proceed with client-side cleanup even if server is unreachable
+  }
+
   // Wipe Redux state
   dispatch(setToken(null));
   dispatch(setUser(null));
@@ -157,7 +165,9 @@ export const logout = (navigate) => async (dispatch) => {
   localStorage.removeItem("user");
 
   toast.success("Logged Out");
-  navigate("/");
+  if (navigate) {
+    navigate("/");
+  }
 };
 
 // ============================================================

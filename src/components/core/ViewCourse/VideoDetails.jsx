@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { updateCompletedLectures } from '../../../slices/viewCourseSlice'
 import { markLectureAsComplete } from '../../../services/operations/courseDetailsAPI'
+import { getLectureNavigation } from '../../../utils/videoNavigation'
 import { BigPlayButton, Player } from 'video-react'
 import { AiFillPlayCircle } from 'react-icons/ai'
 import { MdOutlineReplay } from 'react-icons/md'
@@ -23,7 +24,7 @@ const VideoDetails = () => {
   const [videoData,     setVideoData]     = useState(null)
   const [videoEnded,    setVideoEnded]    = useState(false)
   const [loading,       setLoading]       = useState(false)
-  const [previewSource, setPreviewSource] = useState('')
+  const previewSource = courseEntireData?.thumbnail || ''
 
   /* ── Set video data from URL params ──────────────────────────────── */
   useEffect(() => {
@@ -34,61 +35,37 @@ const VideoDetails = () => {
         return
       }
       const filteredSection = courseSectionData.find((c) => c._id === sectionId)
-      const filteredSubSection = filteredSection?.subSection.find(
+      const filteredSubSection = filteredSection?.subSection?.find(
         (s) => s._id === subSectionId
       )
       setVideoData(filteredSubSection || null)
       setVideoEnded(false)
     }
     setVideoSpecificDetails()
-  }, [courseSectionData, courseEntireData, location.pathname])
+  }, [courseSectionData, courseEntireData, location.pathname, courseId, sectionId, subSectionId, navigate])
 
-  /* ── Navigation helpers ──────────────────────────────────────────── */
-  const getCurrentIndexes = () => {
-    const sIdx = courseSectionData.findIndex((d) => d._id === sectionId)
-    const ssIdx = courseSectionData[sIdx]?.subSection.findIndex(
-      (d) => d._id === subSectionId
-    )
-    return { sIdx, ssIdx }
-  }
+  /* ── Navigation helpers (safely skips empty sections) ────────────── */
+  const lectureNav = useMemo(
+    () => getLectureNavigation(courseSectionData, sectionId, subSectionId),
+    [courseSectionData, sectionId, subSectionId]
+  )
 
-  const isFirstVideo = () => {
-    const { sIdx, ssIdx } = getCurrentIndexes()
-    return sIdx === 0 && ssIdx === 0
-  }
+  const isFirstVideo = () => lectureNav.isFirst
 
-  const isLastVideo = () => {
-    const { sIdx, ssIdx } = getCurrentIndexes()
-    const total = courseSectionData[sIdx]?.subSection.length
-    return sIdx === courseSectionData.length - 1 && ssIdx === total - 1
-  }
+  const isLastVideo = () => lectureNav.isLast
 
   const goToNextVideo = () => {
-    const { sIdx, ssIdx } = getCurrentIndexes()
-    const noOfSubs = courseSectionData[sIdx].subSection.length
-    if (ssIdx !== noOfSubs - 1) {
-      const nextId = courseSectionData[sIdx].subSection[ssIdx + 1]._id
-      navigate(`/view-course/${courseId}/section/${sectionId}/sub-section/${nextId}`)
-    } else {
-      const nextSection   = courseSectionData[sIdx + 1]
-      const nextSectionId = nextSection._id
-      const nextSubId     = nextSection.subSection[0]._id
-      navigate(`/view-course/${courseId}/section/${nextSectionId}/sub-section/${nextSubId}`)
-    }
+    if (!lectureNav.next) return
+    navigate(
+      `/view-course/${courseId}/section/${lectureNav.next.sectionId}/sub-section/${lectureNav.next.subSectionId}`
+    )
   }
 
   const goToPrevVideo = () => {
-    const { sIdx, ssIdx } = getCurrentIndexes()
-    if (ssIdx !== 0) {
-      const prevId = courseSectionData[sIdx].subSection[ssIdx - 1]._id
-      navigate(`/view-course/${courseId}/section/${sectionId}/sub-section/${prevId}`)
-    } else {
-      const prevSection    = courseSectionData[sIdx - 1]
-      const prevSectionId  = prevSection._id
-      const prevSubsLength = prevSection.subSection.length
-      const prevSubId      = prevSection.subSection[prevSubsLength - 1]._id
-      navigate(`/view-course/${courseId}/section/${prevSectionId}/sub-section/${prevSubId}`)
-    }
+    if (!lectureNav.prev) return
+    navigate(
+      `/view-course/${courseId}/section/${lectureNav.prev.sectionId}/sub-section/${lectureNav.prev.subSectionId}`
+    )
   }
 
   /* ── Mark as complete ────────────────────────────────────────────── */

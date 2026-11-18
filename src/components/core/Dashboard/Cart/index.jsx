@@ -3,7 +3,7 @@ import RenderCartCourses from "./renderCartCourses"
 import RenderTotalAmount from "./renderTotalAmount"
 
 export default function Cart() {
-    const { total, totalItems } = useSelector((state) => state.cart)
+    const { totalItems } = useSelector((state) => state.cart)
 
     return (
         <div className="flex min-h-[calc(100vh-3.5rem)] w-full">

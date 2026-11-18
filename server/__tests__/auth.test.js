@@ -357,4 +357,48 @@ describe("Auth Endpoints (server/controllers/Auth.js & ResetPassword.js)", () =>
       expect(res.body.message).toMatch(/expired/i);
     });
   });
+
+  describe("POST /api/v1/auth/logout & Post-Logout Access Control (GAP-006 / BUG-025)", () => {
+    it("should clear the httpOnly token cookie and return 200", async () => {
+      const res = await request(app).post("/api/v1/auth/logout");
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      const setCookie = res.headers["set-cookie"] || [];
+      expect(setCookie.some((c) => c.startsWith("token=;") && c.includes("Expires="))).toBe(true);
+    });
+
+    it("should reject access to student and instructor protected routes once cookie/token is cleared", async () => {
+      const agent = request.agent(app);
+
+      // Simulate login setting httpOnly cookie for a Student
+      const hashedPassword = await bcrypt.hash("pass1234", 10);
+      User.findOne.mockReturnValue({
+        populate: jest.fn().mockResolvedValue({
+          _id: "student_logout_test",
+          email: "student_logout@test.com",
+          password: hashedPassword,
+          accountType: "Student",
+          firstName: "Stu",
+          lastName: "Dent",
+        }),
+      });
+
+      const loginRes = await agent
+        .post("/api/v1/auth/login")
+        .send({ email: "student_logout@test.com", password: "pass1234" });
+      expect(loginRes.status).toBe(200);
+
+      // Logout clears the cookie in the agent jar
+      const logoutRes = await agent.post("/api/v1/auth/logout");
+      expect(logoutRes.status).toBe(200);
+
+      // Protected student & instructor routes must now return 401
+      const profileRes = await agent.get("/api/v1/profile/getUserDetails");
+      expect(profileRes.status).toBe(401);
+
+      const instructorRes = await agent.get("/api/v1/profile/instructorDashboard");
+      expect(instructorRes.status).toBe(401);
+    });
+  });
 });

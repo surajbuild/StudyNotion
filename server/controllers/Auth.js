@@ -332,3 +332,24 @@ exports.changePassword = async (req, res) => {
         });
     }
 };
+
+// ============================================================
+// LOGOUT — clears the httpOnly authentication cookie
+// ============================================================
+exports.logout = async (req, res) => {
+    try {
+        res.clearCookie("token", {
+            httpOnly: true,
+        });
+        return res.status(200).json({
+            success: true,
+            message: "Logged out successfully",
+        });
+    } catch (error) {
+        console.error("logout error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Logout failed. Please try again.",
+        });
+    }
+};

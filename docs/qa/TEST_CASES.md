@@ -1,18 +1,18 @@
 # StudyNotion — Master Test Cases Registry
 
-> **Last Updated:** 2026-11-18  
+> **Last Updated:** 2026-11-18 (Cycle #3)  
 > **Statuses:** `PASS` | `FAIL` | `BLOCKED` | `NOT RUN`  
-> **Totals:** **155 Test Cases** (86 Backend Automated + 45 Frontend Automated + 18 Live Playwright E2E + 6 Blocked Authenticated E2E)
+> **Totals:** **180 Test Cases** (88 Backend Automated + 61 Frontend Automated + 25 Live Playwright E2E + 6 Blocked Authenticated E2E)
 
 ---
 
-## 1. Backend Automated Test Suites (86 Test Cases — 86 PASS, 0 FAIL)
+## 1. Backend Automated Test Suites (88 Test Cases — 88 PASS, 0 FAIL)
 
 | Suite File | Case IDs | Module / Feature | Scenarios Covered | Status | Related Bugs |
 |------------|----------|------------------|-------------------|--------|--------------|
 | [`server/__tests__/authMiddleware.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/authMiddleware.test.js) | `BE-MW-01` – `BE-MW-10` | Auth & Role Middleware | Missing token (401), invalid/expired token (401), valid Bearer header, valid cookie token, `isStudent` allow/403, `isInstructor` allow/403, `isAdmin` allow/403 | `PASS` (10/10) | — |
 | [`server/__tests__/cache.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/cache.test.js) | `BE-CH-01` – `BE-CH-05` | In-Memory TTL Cache | Cache miss, set/get before TTL, `del`, `clear`, TTL expiration eviction | `PASS` (5/5) | — |
-| [`server/__tests__/auth.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/auth.test.js) | `BE-AU-01` – `BE-AU-20` | Auth & Reset Password | `sendOTP` (duplicate 401, create 200); `signup` (missing fields 403, mismatch 400, duplicate 400, missing/expired/wrong OTP 400, success 200); `login` (missing 400, unknown 401, wrong pass 401, success 200 + JWT + cookie); `changePassword` (unauth 401, mismatch 400, same pass 400); `resetPasswordToken` (unknown 401, HashRouter `/#/update-password/` origin URL 200); `resetPassword` (mismatch 401, expired 401) | `PASS` (20/20) | `BUG-002`, `BUG-028` |
+| [`server/__tests__/auth.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/auth.test.js) | `BE-AU-01` – `BE-AU-22` | Auth, Logout & Reset Password | `sendOTP` (duplicate 401, create 200); `signup` (missing fields 403, mismatch 400, duplicate 400, missing/expired/wrong OTP 400, success 200); `login` (missing 400, unknown 401, wrong pass 401, success 200 + JWT + cookie); `logout` (**Cycle #3:** clears `httpOnly` cookie & blocks subsequent protected Student `/profile/getUserDetails` and Instructor `/profile/instructorDashboard` with 401); `changePassword` (unauth 401, mismatch 400, same pass 400); `resetPasswordToken` (unknown 401, HashRouter `/#/update-password/` origin URL 200); `resetPassword` (mismatch 401, expired 401) | `PASS` (22/22) | `BUG-002`, `BUG-028`, `GAP-006` |
 | [`server/__tests__/course.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/course.test.js) | `BE-CR-01` – `BE-CR-13` | Course CRUD & Access Control | `getAllCourses` (200); `getCourseDetails` (missing ID 400, not found 400, duration calc 200); `createCourse` (student 403, missing fields 400, JSON.parse `tag`/`instructions` 200); `editCourse` (non-owner IDOR 403, owner 200); `deleteCourse` (non-owner 403, cascade cleanup sections/subsections/user/category 200); `getFullCourseDetails` (unenrolled student 403, enrolled student 200) | `PASS` (13/13) | `BUG-003`, `BUG-004`, `BUG-010` |
 | [`server/__tests__/section.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/section.test.js) | `BE-SC-01` – `BE-SC-06` | Sections & SubSections | `addSection`, `updateSection`, `deleteSection` (cascade subsections + pull from course), `addSubSection` (missing 400), `updateSubSection` (returns updated section), `deleteSubSection` (deletes & returns updated section) | `PASS` (6/6) | `BUG-008` |
 | [`server/__tests__/category.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/category.test.js) | `BE-CT-01` – `BE-CT-06` | Categories & Catalog API | `createCategory` (non-admin 403, missing name 400, admin 200); `showAllCategories` (200); `categoryPageDetails` (not found 404, 0-course category returns 200 cleanly) | `PASS` (6/6) | `BUG-005` |
@@ -24,24 +24,43 @@
 
 ---
 
-## 2. Frontend Automated Test Suites (45 Test Cases — 45 PASS, 0 FAIL)
+## 2. Frontend Automated Test Suites (61 Test Cases — 61 PASS, 0 FAIL)
 
-| Suite File | Case IDs | Module / Feature | Scenarios Covered | Status |
-|------------|----------|------------------|-------------------|--------|
-| [`src/utils/__tests__/avgRating.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/utils/__tests__/avgRating.test.js) | `FE-UT-01` – `FE-UT-05` | `GetAvgRating` | Empty/null/non-array, whole avg, 1-decimal rounding, ignores invalid/0/negative values, all-invalid returns 0 | `PASS` (5/5) |
-| [`src/utils/__tests__/courseDuration.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/utils/__tests__/courseDuration.test.js) | `FE-UT-06` – `FE-UT-12` | `courseDuration` | Null/empty course (`0min`), sub-hour mins, hours+mins, exact hours, invalid duration skipping, `getTotalLectures` empty & multi-section sum | `PASS` (7/7) |
-| [`src/utils/__tests__/dateFormatter.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/utils/__tests__/dateFormatter.test.js) | `FE-UT-13` – `FE-UT-14` | `formattedDate` | Falsy inputs (`""`), valid ISO formatting | `PASS` (2/2) |
-| [`src/services/__tests__/formatDate.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/services/__tests__/formatDate.test.js) | `FE-UT-15` – `FE-UT-17` | `formatDate` | Falsy (`N/A`), malformed (`Invalid Date`), valid date+time formatting | `PASS` (3/3) |
-| [`src/slices/__tests__/authSlice.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/slices/__tests__/authSlice.test.js) | `FE-RD-01` – `FE-RD-04` | `authSlice` | Initial state, `setToken`, `setLoading`, `setSignupData` | `PASS` (4/4) |
-| [`src/slices/__tests__/cartSlice.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/slices/__tests__/cartSlice.test.js) | `FE-RD-05` – `FE-RD-09` | `cartSlice` | Add course + totals, duplicate prevention, remove course + totals, remove non-existent ID, `resetCart` | `PASS` (5/5) |
-| [`src/slices/__tests__/courseSlice.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/slices/__tests__/courseSlice.test.js) | `FE-RD-10` – `FE-RD-15` | `courseSlice` | Initial state, `setStep`, `setCourse`, `setEditCourse`, `setPaymentLoading`, `resetCourseState` | `PASS` (6/6) |
-| [`src/slices/__tests__/profileSlice.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/slices/__tests__/profileSlice.test.js) | `FE-RD-16` – `FE-RD-18` | `profileSlice` | Corrupted `localStorage` JSON resilience, `setUser`, `setLoading` | `PASS` (3/3) |
-| [`src/slices/__tests__/viewCourseSlice.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/slices/__tests__/viewCourseSlice.test.js) | `FE-RD-19` – `FE-RD-24` | `viewCourseSlice` | Initial state, `setCourseSectionData`, `setEntireCourseData`, `setTotalNoOfLectures`, `setCompletedLectures`, `updateCompletedLectures` | `PASS` (6/6) |
-| [`src/components/core/Auth/__tests__/RouteGuards.test.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/components/core/Auth/__tests__/RouteGuards.test.jsx) | `FE-RG-01` – `FE-RG-04` | `PrivateRoute` & `OpenRoute` | Auth renders protected child, unauth redirects `/login`, unauth renders open route, auth redirects `/dashboard/my-profile` | `PASS` (4/4) |
+| Suite File | Case IDs | Module / Feature | Scenarios Covered | Status | Related Bugs |
+|------------|----------|------------------|-------------------|--------|--------------|
+| [`src/utils/__tests__/avgRating.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/utils/__tests__/avgRating.test.js) | `FE-UT-01` – `FE-UT-05` | `GetAvgRating` | Empty/null/non-array, whole avg, 1-decimal rounding, ignores invalid/0/negative values, all-invalid returns 0 | `PASS` (5/5) | — |
+| [`src/utils/__tests__/courseDuration.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/utils/__tests__/courseDuration.test.js) | `FE-UT-06` – `FE-UT-12` | `courseDuration` | Null/empty course (`0min`), sub-hour mins, hours+mins, exact hours, invalid duration skipping, `getTotalLectures` empty & multi-section sum | `PASS` (7/7) | — |
+| [`src/utils/__tests__/dateFormatter.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/utils/__tests__/dateFormatter.test.js) | `FE-UT-13` – `FE-UT-14` | `formattedDate` | Falsy inputs (`""`), valid ISO formatting | `PASS` (2/2) | — |
+| [`src/utils/__tests__/videoNavigation.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/utils/__tests__/videoNavigation.test.js) | `FE-UT-18` – `FE-UT-22` | `videoNavigation` (**Cycle #3**) | Skips empty middle sections, skips empty leading/trailing sections, handles all-empty sections safely, handles unknown/missing IDs, normal contiguous traversal | `PASS` (5/5) | `BUG-024` |
+| [`src/services/__tests__/formatDate.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/services/__tests__/formatDate.test.js) | `FE-UT-15` – `FE-UT-17` | `formatDate` | Falsy (`N/A`), malformed (`Invalid Date`), valid date+time formatting | `PASS` (3/3) | — |
+| [`src/services/__tests__/apiconnector.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/services/__tests__/apiconnector.test.js) | `FE-SV-01` – `FE-SV-06` | `apiconnector` 401 Interceptor (**Cycle #3**) | Triggers expiry on protected 401 when token exists; excludes `/auth/login`, `/auth/changepassword`, `/auth/signup`, `/auth/sendotp`, `/auth/logout`, `/auth/reset-password`; ignores unauthenticated 401; ignores 403/500; clears storage & invokes handler once per debounce window | `PASS` (6/6) | `BUG-025` |
+| [`src/services/__tests__/authAPI.logout.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/services/__tests__/authAPI.logout.test.js) | `FE-SV-07` – `FE-SV-08` | `authAPI.logout` (**Cycle #3**) | Calls `POST /auth/logout` then clears Redux/`localStorage` & navigates `/`; still clears client session cleanly if server logout fails | `PASS` (2/2) | `GAP-006` |
+| [`src/slices/__tests__/authSlice.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/slices/__tests__/authSlice.test.js) | `FE-RD-01` – `FE-RD-04` | `authSlice` | Initial state, `setToken`, `setLoading`, `setSignupData` | `PASS` (4/4) | — |
+| [`src/slices/__tests__/cartSlice.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/slices/__tests__/cartSlice.test.js) | `FE-RD-05` – `FE-RD-09` | `cartSlice` | Add course + totals, duplicate prevention, remove course + totals, remove non-existent ID, `resetCart` | `PASS` (5/5) | — |
+| [`src/slices/__tests__/courseSlice.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/slices/__tests__/courseSlice.test.js) | `FE-RD-10` – `FE-RD-15` | `courseSlice` | Initial state, `setStep`, `setCourse`, `setEditCourse`, `setPaymentLoading`, `resetCourseState` | `PASS` (6/6) | — |
+| [`src/slices/__tests__/profileSlice.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/slices/__tests__/profileSlice.test.js) | `FE-RD-16` – `FE-RD-18` | `profileSlice` | Corrupted `localStorage` JSON resilience, `setUser`, `setLoading` | `PASS` (3/3) | — |
+| [`src/slices/__tests__/viewCourseSlice.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/slices/__tests__/viewCourseSlice.test.js) | `FE-RD-19` – `FE-RD-24` | `viewCourseSlice` | Initial state, `setCourseSectionData`, `setEntireCourseData`, `setTotalNoOfLectures`, `setCompletedLectures`, `updateCompletedLectures` | `PASS` (6/6) | — |
+| [`src/components/core/Auth/__tests__/RouteGuards.test.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/components/core/Auth/__tests__/RouteGuards.test.jsx) | `FE-RG-01` – `FE-RG-04` | `PrivateRoute` & `OpenRoute` | Auth renders protected child, unauth redirects `/login`, unauth renders open route, auth redirects `/dashboard/my-profile` | `PASS` (4/4) | — |
+| [`src/components/common/__tests__/Footer.test.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/components/common/__tests__/Footer.test.jsx) | `FE-UI-01` – `FE-UI-02` | `Footer` (**Cycle #3**) | Renders dynamic API categories into `/catalog/<slug>` with zero dead routes and safe external social links; gracefully hides catalog links when category API fails | `PASS` (2/2) | `BUG-023` |
+| [`src/pages/__tests__/Error.test.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/pages/__tests__/Error.test.jsx) | `FE-UI-03` | `Error` Page (**Cycle #3**) | Direct 404 landing CTA navigates to `/`, does not inject global `html, body, #root { overflow: hidden !important }` | `PASS` (1/1) | `BUG-026` |
 
 ---
 
-## 3. Live Playwright Browser E2E Tests (18 Executed — 18 PASS; 6 Blocked)
+## 3. Live Playwright Browser E2E Tests (25 Executed — 25 PASS; 6 Blocked)
+
+### Cycle #3 Live Verification & Regression Cases (7 Executed — 7 PASS, 0 FAIL)
+
+| Case ID | Module | Test Description | Expected Result | Actual Result (Live `http://localhost:3000`) | Status | Related Bugs |
+|---------|--------|------------------|-----------------|----------------------------------------------|--------|--------------|
+| `C3-E2E-01` | Footer | Audit every unique internal link in `<footer>` | 0 dead links / 404 pages | Tested all 8 unique internal footer routes (`#/`, `#/about`, `#/contact`, `#/signup`, `#/catalog/data-science`, `#/catalog/devops`, `#/catalog/web-dev`, `#/login`); `broken=[]` | `PASS` | `BUG-023` |
+| `C3-E2E-02` | Error Page | Direct 404 landing in fresh tab (`/#/does-not-exist-cycle3`) | No global body overflow lock, Navbar visible, CTA navigates to Homepage | `bodyOverflow=hidden auto`, `navbarVisible=true`, `ctaNavigatedHome=true` | `PASS` | `BUG-026` |
+| `C3-E2E-03` | Auth (Student) | Seed expired JWT + Student user, visit `#/dashboard/enrolled-courses` | 401 interceptor clears `localStorage.token`, shows `"Session expired"` toast, redirects to `#/login` | `tokenCleared=true`, `redirectedToLogin=true`, `expiryToast=true` | `PASS` | `BUG-025` |
+| `C3-E2E-04` | Auth (Instructor) | Seed expired JWT + Instructor user, visit `#/dashboard/instructor` | 401 interceptor clears `localStorage.token` and redirects to `#/login` | `tokenCleared=true`, `redirectedToLogin=true` | `PASS` | `BUG-025` |
+| `C3-E2E-05` | Auth (Negative) | Submit invalid credentials on `#/login` in fresh tab | Returns HTTP 401 + login error toast, does NOT show `"Session expired"` | `httpStatus=401`, `loginErrorShown=true`, `noFalseSessionExpiry=true` | `PASS` | `BUG-025` |
+| `C3-E2E-06` | Course Details | Navigate from `/#/catalog/web-dev` to Course Details | Clean instructions (no raw JSON brackets) | `rawJsonBrackets=false`, loaded `#/courses/69949e2a8b9a1d9a26265cee` | `PASS` | `BUG-010` |
+| `C3-E2E-07` | Responsive | Mobile `375x812` homepage regression | No horizontal overflow, 0 page errors, 0 Swiper warnings | `horizontalOverflow=false`, `PAGE ERRORS: 0`, `SWIPER WARNINGS: 0` | `PASS` | `BUG-021` |
+
+### Cycle #2 Live Verification Cases (18 Executed — 18 PASS; 6 Blocked)
 
 | Case ID | Module | Test Description | Expected Result | Actual Result (Live `http://localhost:3000`) | Status | Related Bugs |
 |---------|--------|------------------|-----------------|----------------------------------------------|--------|--------------|
@@ -61,7 +80,7 @@
 | `E2E-11` | Auth | Signup with Instructor tab + mismatched passwords | Mismatch toast shown & form inputs preserved | `mismatchToast=true`, `firstName` preserved as `"QA"` | `PASS` | `BUG-019` |
 | `E2E-12` | Auth | Direct visit to `/#/verify-email` without `signupData` | Redirects to `/#/signup` | Redirected to `http://localhost:3000/#/signup` | `PASS` | — |
 | `E2E-13` | Auth | Direct visit to `/#/dashboard/my-profile` logged out | Redirects to `/#/login` | Redirected to `http://localhost:3000/#/login` | `PASS` | — |
-| `E2E-14` | Footer/404 | Visit `/#/careers` from Footer | Verifies 404 page renders & confirms dead-link gap | Rendered 404 page; logged under `BUG-023` | `PASS` | `BUG-023` |
+| `E2E-14` | Footer/404 | Visit `/#/careers` (pre-fix Cycle #2 audit) | Confirmed 404 rendering & logged `BUG-023` | Rendered 404 page; superseded by `C3-E2E-01` after `BUG-023` fix | `PASS` | `BUG-023` |
 | `E2E-15` | Responsive | Mobile viewport `375x812` + hamburger menu | No horizontal overflow; drawer shows Catalog, Log in, Sign up | `overflow=false`, `drawerOk=true` | `PASS` | — |
 | `E2E-16` | Student Auth | Live Signup → OTP → Login → Profile Edit → Refresh | Full student onboarding & session persistence | Requires dedicated non-prod test DB/inbox (production Atlas DB protected) | `BLOCKED` | `GAP-009` |
 | `E2E-17` | Student Auth | Live Cart → Razorpay Checkout Modal → Enrollment | End-to-end sandbox payment | Requires Razorpay sandbox UI interaction + non-prod test DB | `BLOCKED` | `BUG-009`, `GAP-009` |

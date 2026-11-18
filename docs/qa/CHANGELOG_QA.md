@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-11-18 — QA Cycle #3 (Close All Remaining Bugs & Full Regression Verification)
+
+| Task / Bug ID | Files Modified / Added | Changes Made | Tests Executed | Verification Status |
+|---------------|------------------------|--------------|----------------|---------------------|
+| `BUG-024` | `src/utils/videoNavigation.js` (new), `src/components/core/ViewCourse/VideoDetails.jsx`, `src/utils/__tests__/videoNavigation.test.js` (new) | Extracted `flattenCourseLectures` / `getLectureNavigation` to skip empty leading/middle/trailing sections and guard invalid IDs without crashing | `npm test` (`videoNavigation.test.js`: 5/5 PASS) | `VERIFIED` |
+| `BUG-026` | `src/pages/Error.jsx`, `src/pages/__tests__/Error.test.jsx` (new) | Removed `e.preventDefault(); navigate(-1)` override so `<Link to="/">` works on direct entry; scoped CSS to `.error-page-container` and preserved Navbar layout | `npm test` (`Error.test.jsx`: 1/1 PASS) + Playwright `C3-E2E-02` | `VERIFIED` |
+| `BUG-023` | `src/components/common/Footer.jsx`, `src/data/footer-links.js`, `src/components/common/__tests__/Footer.test.jsx` (new) | Removed dead template placeholders & unconfirmed legal links, kept 4 external social links (`rel="noopener noreferrer"`), mapped Support -> `/contact`, dynamically fetched live categories into `/catalog/<slug>` | `npm test` (`Footer.test.jsx`: 2/2 PASS) + Playwright `C3-E2E-01` (8/8 routes valid, 0 broken) | `VERIFIED` |
+| `BUG-027` | 13 frontend files (`VideoDetails.jsx`, `CourseAccordionBar.jsx`, `CourseDetailsCard.jsx`, `CourseBuilderForm.jsx`, `Upload.jsx`, `Cart/index.jsx`, `SidebarLink.jsx`, `EnrolledCourses.jsx`, `Instructor.jsx`, `CourseReviewModal.jsx`, `VideoDetailsSidebar.jsx`, `UpdatePassword.jsx`, `ViewCourse.jsx`) | Resolved all 15 ESLint warnings at root cause (removed unused bindings, stabilized `useEffect`/`useCallback` deps, removed existing `eslint-disable` in `Upload.jsx`; 0 new `eslint-disable` comments) | `npx eslint src --max-warnings=0` (0 errors, 0 warnings) + `npm run build` | `VERIFIED` |
+| `BUG-025` | `src/services/apiconnector.js`, `src/index.js`, `src/services/__tests__/apiconnector.test.js` (new) | Added `shouldTriggerSessionExpiry`, `registerUnauthorizedHandler`, and debounced Axios 401 response interceptor (excluding credential/public 401 endpoints); wired Redux clear + toast + `#/login` redirect in `src/index.js` | `npm test` (`apiconnector.test.js`: 6/6 PASS) + Playwright `C3-E2E-03` (Student), `C3-E2E-04` (Instructor), `C3-E2E-05` (Login 401 negative) | `VERIFIED` |
+| `GAP-006` *(Tracked Separately)* | `server/controllers/Auth.js`, `server/routes/User.js`, `server/__tests__/auth.test.js`, `src/services/apis.js`, `src/services/operations/authAPI.js`, `src/services/__tests__/authAPI.logout.test.js` (new) | Added `POST /api/v1/auth/logout` (`res.clearCookie("token", { httpOnly: true })`) and updated client `logout()` to call `LOGOUT_API` before wiping Redux/`localStorage` | `npm run test:server` (+2 logout & post-logout 401 tests in `auth.test.js`, 88/88 PASS) + `npm test` (`authAPI.logout.test.js`: 2/2 PASS) | `VERIFIED` |
+| `QA-SYS` | `docs/qa/*` (7 tracking files) | Updated all QA tracking docs for Cycle #3 (0 open bugs, 174/174 executed tests passing) while preserving Cycle #1 & #2 history | `npm run test:all` (149/149) + Playwright (7/7) + ESLint + Build | `VERIFIED` |
+
+---
+
 ## 2026-11-18 — QA Cycle #2 (Full Codebase Audit, Live Playwright E2E & High-Impact Fixes)
 
 | Task / Bug ID | Files Modified | Changes Made | Tests Executed | Verification Status |

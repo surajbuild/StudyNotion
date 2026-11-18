@@ -1,16 +1,13 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { CiFacebook } from "react-icons/ci";
 import { RiGoogleLine } from "react-icons/ri";
 import { FaTwitter, FaYoutube } from "react-icons/fa";
 import logo from "../../assets/Logo/Logo-Small-Light.png";
 import { FooterLink2 } from "../../data/footer-links";
+import { apiConnector } from "../../services/apiconnector";
+import { categories as categoryEndpoints } from "../../services/apis";
 
-// ✅ FIX: Converted social-media buttons from <button onClick={window.open(...)}>
-// to proper <a> tags with target="_blank" and rel="noopener noreferrer".
-// 1. <a> is semantically correct for navigation; screen readers announce it properly.
-// 2. rel="noopener noreferrer" prevents the new tab from accessing `window.opener`,
-//    which is a known security vector (reverse tabnapping).
 const socialLinks = [
   {
     icon: <CiFacebook />,
@@ -34,62 +31,61 @@ const socialLinks = [
   },
 ];
 
-// Left-section column data (Company, Resources, Plans, Community, Support)
 const leftSectionData = [
   {
     title: "Company",
     links: [
       { title: "About", link: "/about" },
-      { title: "Careers", link: "/careers" },
-      { title: "Affiliates", link: "/affiliates" },
+      { title: "Contact Us", link: "/contact" },
     ],
   },
   {
-    title: "Resources",
+    title: "Learning",
     links: [
-      { title: "Articles", link: "/articles" },
-      { title: "Blog", link: "/blog" },
-      { title: "Chart Sheet", link: "/chart-sheet" },
-      { title: "Code Challenges", link: "/code-challenges" },
-      { title: "Docs", link: "/docs" },
-      { title: "Projects", link: "/projects" },
-      { title: "Videos", link: "/videos" },
-      { title: "Workspaces", link: "/workspaces" },
-    ],
-  },
-  {
-    title: "Plans",
-    links: [
-      { title: "Paid membership", link: "/paid-membership" },
-      { title: "For Students", link: "/for-students" },
-      { title: "Business solutions", link: "/business-solutions" },
-    ],
-  },
-  {
-    title: "Community",
-    links: [
-      { title: "Forums", link: "/forums" },
-      { title: "Chapters", link: "/chapters" },
-      { title: "Events", link: "/events" },
+      { title: "Home", link: "/" },
+      { title: "For Students", link: "/signup" },
+      { title: "For Instructors", link: "/signup" },
     ],
   },
   {
     title: "Support",
-    links: [{ title: "Help Center", link: "/help-center" }],
+    links: [{ title: "Help Center", link: "/contact" }],
   },
 ];
 
+const slugifyCategory = (name) =>
+  name?.toString().trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "";
+
 const Footer = () => {
+  const [catalogCategories, setCatalogCategories] = useState([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadCategories = async () => {
+      try {
+        const res = await apiConnector("GET", categoryEndpoints.CATEGORIES_API);
+        if (isMounted && Array.isArray(res?.data?.data)) {
+          setCatalogCategories(res.data.data.filter((cat) => cat?.name?.trim()));
+        }
+      } catch {
+        // Silently degrade when API is unreachable — static valid links remain available
+      }
+    };
+    loadCategories();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   return (
     <footer className="bg-richblack-800 text-richblack-400">
       <div className="w-11/12 max-w-maxContent mx-auto px-4 py-12 md:px-6 md:py-14">
         {/* ─── TOP SECTION ─── */}
         <div className="flex flex-col lg:flex-row gap-10 lg:gap-12">
-          {/* LEFT SECTION — logo, company links, social */}
+          {/* LEFT SECTION — logo, verified internal links, external social links */}
           <div className="lg:w-1/2">
             <div className="mb-8">
-              {/* Logo + brand name */}
-              <div className="flex items-center gap-2 text-richblack-50 mb-6 group">
+              <Link to="/" className="inline-flex items-center gap-2 text-richblack-50 mb-6 group">
                 <img
                   src={logo}
                   alt="StudyNotion Logo"
@@ -98,9 +94,8 @@ const Footer = () => {
                 <h3 className="text-xl font-semibold group-hover:text-yellow-50 transition-colors duration-200">
                   StudyNotion
                 </h3>
-              </div>
+              </Link>
 
-              {/* Company / Resources / Plans / Community / Support columns */}
               <div className="mb-6">
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
                   {leftSectionData.map((section, index) => (
@@ -111,10 +106,6 @@ const Footer = () => {
                       <ul className="space-y-1">
                         {section.links.map((link, linkIndex) => (
                           <li key={linkIndex}>
-                            {/* ✅ FIX: Changed <a href="..."> to React Router <Link to="...">
-                                for internal routes.  Plain <a> tags cause a full page reload
-                                on click — <Link> does a client-side navigation, which is
-                                faster and preserves app state (Redux, scroll position, etc.). */}
                             <Link
                               to={link.link}
                               className="text-richblack-400 hover:text-richblack-50 transition-colors duration-200 text-xs md:text-sm"
@@ -129,7 +120,7 @@ const Footer = () => {
                 </div>
               </div>
 
-              {/* Social media icons */}
+              {/* Social media icons (external destinations) */}
               <div>
                 <p className="text-richblack-100 font-semibold mb-3">
                   Connect with us
@@ -155,30 +146,45 @@ const Footer = () => {
           {/* Vertical divider — visible only on large screens */}
           <div className="hidden lg:block w-px bg-richblack-700"></div>
 
-          {/* RIGHT SECTION — Subjects / Languages / Career building (from FooterLink2 data) */}
+          {/* RIGHT SECTION — Live Catalog Categories + Verified Navigation */}
           <div className="lg:w-1/2">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {catalogCategories.length > 0 && (
+                <div className="space-y-3">
+                  <p className="text-richblack-100 font-semibold text-sm md:text-base">
+                    Catalog
+                  </p>
+                  <ul className="space-y-1">
+                    {catalogCategories.map((cat) => (
+                      <li key={cat._id || cat.name}>
+                        <Link
+                          to={`/catalog/${slugifyCategory(cat.name)}`}
+                          className="text-richblack-400 hover:text-richblack-50 transition-colors duration-200 text-xs md:text-sm"
+                        >
+                          {cat.name}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {FooterLink2.map((section, index) => (
                 <div key={index} className="space-y-3">
                   <p className="text-richblack-100 font-semibold text-sm md:text-base">
                     {section.title}
                   </p>
                   <ul className="space-y-1">
-                    {section.links
-                      // ✅ FIX: Filter out the placeholder separator entry { title: "-" }
-                      // that existed in the Career building section of footer-links.js
-                      .filter((link) => link.title !== "-")
-                      .map((link, linkIndex) => (
-                        <li key={linkIndex}>
-                          {/* ✅ Same <Link> fix as left section above */}
-                          <Link
-                            to={link.link}
-                            className="text-richblack-400 hover:text-richblack-50 transition-colors duration-200 text-xs md:text-sm"
-                          >
-                            {link.title}
-                          </Link>
-                        </li>
-                      ))}
+                    {section.links.map((link, linkIndex) => (
+                      <li key={linkIndex}>
+                        <Link
+                          to={link.link}
+                          className="text-richblack-400 hover:text-richblack-50 transition-colors duration-200 text-xs md:text-sm"
+                        >
+                          {link.title}
+                        </Link>
+                      </li>
+                    ))}
                   </ul>
                 </div>
               ))}
@@ -186,32 +192,25 @@ const Footer = () => {
           </div>
         </div>
 
-        {/* ─── BOTTOM SECTION — copyright + legal links ─── */}
+        {/* ─── BOTTOM SECTION — copyright + verified support link ─── */}
         <div className="border-t border-richblack-700 mt-10 pt-6">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            {/* Dynamic copyright year so it never goes stale */}
             <p className="text-richblack-300 text-sm text-center md:text-left">
               © {new Date().getFullYear()} StudyNotion. All rights reserved.
             </p>
 
             <div className="flex flex-wrap justify-center gap-4 md:gap-6 text-sm">
               <Link
-                to="/privacy"
+                to="/about"
                 className="text-richblack-400 hover:text-richblack-50 transition-colors duration-200"
               >
-                Privacy Policy
+                About StudyNotion
               </Link>
               <Link
-                to="/terms"
+                to="/contact"
                 className="text-richblack-400 hover:text-richblack-50 transition-colors duration-200"
               >
-                Terms of Service
-              </Link>
-              <Link
-                to="/cookies"
-                className="text-richblack-400 hover:text-richblack-50 transition-colors duration-200"
-              >
-                Cookie Policy
+                Contact Support
               </Link>
             </div>
           </div>

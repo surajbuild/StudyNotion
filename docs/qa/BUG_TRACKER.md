@@ -1,63 +1,78 @@
 # StudyNotion — Bug Tracker & Root Cause Analysis
 
 > **Last Updated:** 2026-11-18  
+> **Audit Cycle:** Cycle #3  
 > **Severity Levels:** `CRITICAL` | `HIGH` | `MEDIUM` | `LOW`  
-> **Total Logged:** 25 | **Fixed & Verified:** 20 | **Open:** 5
+> **Total Logged:** 25 (+ `BUG-028` from Cycle #1) | **Fixed & Verified:** 25 (+ `BUG-028`) | **Open:** 0
 
 ---
 
-## Open Bugs (Require Future Action)
+## Open Bugs
+
+*None — all tracked bugs across Cycles #1, #2, and #3 have been fixed and verified.*
+
+---
+
+## Cycle #3 — Fixed & Verified Bugs (5 Bugs + 1 Separately Tracked Integration Change)
 
 ### `BUG-023` — 60+ Broken Internal Links in Footer Lead to 404 Page
 - **Module:** Common UI (`Footer`)
-- **Severity:** `HIGH` | **Priority:** P2
-- **Status:** `OPEN`
-- **Location:** [`src/components/common/Footer.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/components/common/Footer.jsx#L38-L80), [`src/data/footer-links.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/data/footer-links.js)
-- **Steps to Reproduce:** Scroll to the footer on any page and click `Careers`, `Blog`, `Docs`, `Privacy Policy`, `Terms of Service`, `Cookie Policy`, or any Subject/Language link.
-- **Expected:** Valid destination page or relevant Catalog category.
-- **Actual:** All links except `About` (`/about`) navigate to unmatched routes and display the 404 Error page (verified live in `E2E-14` for `/#/careers`).
-- **Root Cause:** `Footer.jsx` and `footer-links.js` were copied from a static template referencing ~60 routes that were never registered in `src/App.jsx`.
-- **Suggested Solution:** Map subject/language links to real `/catalog/<slug>` routes (or `/`), create lightweight legal/info pages for Privacy/Terms/Help, and remove unbuilt placeholder links.
+- **Severity:** `HIGH` | **Priority:** P2 | **Status:** `FIXED & VERIFIED`
+- **Location:** [`src/components/common/Footer.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/components/common/Footer.jsx), [`src/data/footer-links.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/data/footer-links.js)
+- **Root Cause:** `Footer.jsx` and `footer-links.js` were copied from a static template referencing ~60 routes (`/careers`, `/blog`, `/al`, `/hi`, `/privacy-policy`, `/terms`, `/cookies`, static language/subject slugs) that were never registered in `src/App.jsx`.
+- **Classification & Resolution:**
+  - **External destinations (kept):** 4 social links (Facebook, Google, Twitter, YouTube) preserved with `target="_blank" rel="noopener noreferrer"` and accessible `aria-label`s.
+  - **Valid internal routes (mapped):** Platform links mapped to `/`, `/about`, `/contact`, `/signup`, `/login`; Help Center / Support mapped to `/contact`.
+  - **Catalog links (dynamic):** Replaced hardcoded unrouted subject/language lists with live categories fetched from `GET /api/v1/course/showAllCategories` mapped to `/catalog/<slug>` using the same `slugifyCategory` helper as `Navbar.jsx`.
+  - **Unbuilt placeholders & unconfirmed legal links (removed):** Removed template placeholders (`/careers`, `/blog`, `/docs`, `/forum`, etc.) and dead legal links (`/privacy`, `/terms`, `/cookies`) without inventing unapproved legal copy.
+- **Regression Tests:** [`src/components/common/__tests__/Footer.test.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/components/common/__tests__/Footer.test.jsx) (2/2 PASS) + Live Playwright `C3-E2E-01` (verified all 8 unique internal footer routes — 0 broken links).
 
 ### `BUG-024` — `VideoDetails` Next/Prev Navigation Crashes on Empty Sections
 - **Module:** Student Module (`ViewCourse`)
-- **Severity:** `MEDIUM` | **Priority:** P2
-- **Status:** `OPEN`
-- **Location:** [`src/components/core/ViewCourse/VideoDetails.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/components/core/ViewCourse/VideoDetails.jsx#L66-L92)
-- **Expected:** Clicking `Next →` or `← Prev` skips empty sections or disables cleanly.
-- **Actual:** `nextSection.subSection[0]._id` / `prevSection.subSection[prevSubsLength - 1]._id` throws `TypeError: Cannot read properties of undefined (reading '_id')` if an adjacent section has 0 subsections.
-- **Root Cause:** Code assumes every section in `courseSectionData` has `subSection.length >= 1`.
-- **Suggested Solution:** Flatten all `(sectionId, subSectionId)` pairs into an ordered list of playable lectures and navigate by flat index.
+- **Severity:** `MEDIUM` | **Priority:** P2 | **Status:** `FIXED & VERIFIED`
+- **Location:** [`src/utils/videoNavigation.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/utils/videoNavigation.js), [`src/components/core/ViewCourse/VideoDetails.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/components/core/ViewCourse/VideoDetails.jsx)
+- **Root Cause:** `goToNextVideo`, `goToPrevVideo`, `isFirstVideo`, and `isLastVideo` directly indexed `courseSectionData[idx + 1].subSection[0]._id` and `courseSectionData[idx - 1].subSection[len - 1]._id`, assuming every section contained at least one subsection. Empty leading, middle, or trailing sections threw `TypeError: Cannot read properties of undefined (reading '_id')`.
+- **Resolution:** Extracted pure utility [`flattenCourseLectures` / `getLectureNavigation`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/utils/videoNavigation.js#L6-L51) that flattens only playable `(sectionId, subSectionId)` entries across non-empty sections, computes `isFirst`/`isLast`/`prev`/`next` safely by flat index, and handles invalid/missing IDs without throwing. Updated `VideoDetails.jsx` to consume `getLectureNavigation` via `useMemo`.
+- **Regression Tests:** [`src/utils/__tests__/videoNavigation.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/utils/__tests__/videoNavigation.test.js) (5/5 PASS covering empty leading, middle, trailing, all-empty, and unknown IDs).
 
 ### `BUG-025` — No Global Axios 401 Interceptor for Expired JWT Tokens
 - **Module:** Authentication (`API Connector`)
-- **Severity:** `MEDIUM` | **Priority:** P2
-- **Status:** `OPEN`
-- **Location:** [`src/services/apiconnector.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/services/apiconnector.js#L13-L27)
-- **Expected:** When a user's 24h JWT expires and any protected API returns `401`, the app automatically clears `token`/`user` and redirects to `/login` with a "Session expired" toast.
-- **Actual:** Only `getUserDetails` logs out on failure; all other endpoints leave the user appearing logged in while every button fails with 401 error toasts.
-- **Root Cause:** `axiosInstance` defines a request interceptor but no response error interceptor for HTTP 401.
-- **Suggested Solution:** Add a response interceptor checking `error.response?.status === 401` (excluding `/auth/login` and `/auth/changepassword`) to clear localStorage and redirect.
+- **Severity:** `MEDIUM` | **Priority:** P2 | **Status:** `FIXED & VERIFIED`
+- **Location:** [`src/services/apiconnector.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/services/apiconnector.js#L13-L92), [`src/index.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/index.js)
+- **Root Cause:** `axiosInstance` attached `Authorization: Bearer <token>` on outgoing requests but defined no response error interceptor. When a user's 24h JWT expired, protected requests returned HTTP 401 while Redux and `localStorage` kept stale `token`/`user` state, leaving the user appearing logged in across broken dashboard pages.
+- **Resolution:**
+  - Added `shouldTriggerSessionExpiry`, `registerUnauthorizedHandler`, and a debounced (1000ms) Axios response 401 interceptor in `src/services/apiconnector.js`.
+  - Explicitly excluded expected credential/validation 401 endpoints (`/auth/login`, `/auth/signup`, `/auth/sendotp`, `/auth/logout`, `/auth/changepassword`, `/auth/reset-password-token`, `/auth/reset-password`) and unauthenticated visitors (when `localStorage.getItem("token")` is absent), as well as 403/500 errors.
+  - Registered the unauthorized handler in `src/index.js` to dispatch `setToken(null)`, `setUser(null)`, `resetCart()`, show `"Session expired. Please log in again."` toast, and redirect to `#/login`.
+- **Regression Tests:** [`src/services/__tests__/apiconnector.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/services/__tests__/apiconnector.test.js) (6/6 PASS) + Live Playwright `C3-E2E-03` (Student expired JWT), `C3-E2E-04` (Instructor expired JWT), and `C3-E2E-05` (negative check: `/auth/login` 401 does NOT trigger session expiry).
+
+### `GAP-006` *(Tracked Separately from `BUG-025`)* — Server-Side Logout Endpoint & Cookie Clearing
+- **Module:** Authentication (`Logout`)
+- **Severity:** `MEDIUM` (Security Hygiene / Integration Gap) | **Status:** `FIXED & VERIFIED`
+- **Location:** [`server/controllers/Auth.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/controllers/Auth.js), [`server/routes/User.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/routes/User.js), [`src/services/apis.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/services/apis.js), [`src/services/operations/authAPI.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/services/operations/authAPI.js)
+- **Root Cause:** `server/middlewares/auth.js` checks `req.cookies?.token` before `Authorization: Bearer`. Client-only `logout()` cleared `localStorage` and Redux, leaving the 3-day `httpOnly` `token` cookie intact so subsequent browser requests with `withCredentials: true` remained authenticated server-side.
+- **Resolution:** Added `POST /api/v1/auth/logout` (`exports.logout`) calling `res.clearCookie("token", { httpOnly: true })` and updated frontend `logout()` in `authAPI.js` to invoke `LOGOUT_API` (best-effort `try/catch`) before wiping Redux + `localStorage`.
+- **Regression Tests:** [`server/__tests__/auth.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/auth.test.js) (+2 Supertest tests proving cookie clearing and that subsequent protected Student `/profile/getUserDetails` and Instructor `/profile/instructorDashboard` calls return `401`) + [`src/services/__tests__/authAPI.logout.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/services/__tests__/authAPI.logout.test.js) (2/2 PASS).
 
 ### `BUG-026` — 404 Error Page `navigate(-1)` Fails on Direct Landing & Mutates Global Body Overflow
 - **Module:** Common UI (`Error Page`)
-- **Severity:** `LOW` | **Priority:** P3
-- **Status:** `OPEN`
-- **Location:** [`src/pages/Error.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/pages/Error.jsx#L12-L19), [`src/pages/Error.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/pages/Error.jsx#L400-L409)
-- **Root Cause:** `<Link to="/">` overrides `onClick` with `e.preventDefault(); navigate(-1);` — if a user opens a bad URL in a new tab, browser history is empty so clicking "Go to right side up" does nothing. Also injects global `!important` rules on `html, body, #root`.
-- **Suggested Solution:** Navigate directly to `/` (`<Link to="/">` without `e.preventDefault()`), and scope styles to the container class.
+- **Severity:** `LOW` | **Priority:** P3 | **Status:** `FIXED & VERIFIED`
+- **Location:** [`src/pages/Error.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/pages/Error.jsx)
+- **Root Cause:** `<Link to="/">` intercepted clicks with `e.preventDefault(); navigate(-1);`, which did nothing when landing directly on a bad URL in a new tab with empty history. The component also used `fixed inset-0` (hiding the Navbar) and injected global `html, body, #root { overflow: hidden !important; background: #000000 !important; }` CSS rules.
+- **Resolution:** Removed the `useNavigate` / `e.preventDefault()` override so `<Link to="/">` always navigates reliably to Homepage; scoped styling to `.error-page-container`; replaced `fixed inset-0` with `min-h-[calc(100vh-3.5rem)] w-full` so the Navbar remains accessible.
+- **Regression Tests:** [`src/pages/__tests__/Error.test.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/pages/__tests__/Error.test.jsx) (1/1 PASS) + Live Playwright `C3-E2E-02` (fresh tab direct 404 landing: `bodyOverflow !== "hidden"`, Navbar visible, CTA navigates to Homepage).
 
 ### `BUG-027` — 15 ESLint Warnings Across Frontend Components
 - **Module:** Frontend Code Quality
-- **Severity:** `LOW` | **Priority:** P3
-- **Status:** `OPEN`
-- **Location:** `CourseAccordionBar.jsx`, `CourseDetailsCard.jsx`, `CourseBuilderForm.jsx`, `Upload.jsx`, `Cart/index.jsx`, `EnrolledCourses.jsx`, `Instructor.jsx`, `SidebarLink.jsx`, `CourseReviewModal.jsx`, `VideoDetails.jsx`, `VideoDetailsSidebar.jsx`, `UpdatePassword.jsx`, `ViewCourse.jsx`
-- **Root Cause:** Unused variables (`courseId`, `getValues`, `course`, `total`, `dispatch`, `setPreviewSource`, `navigate`) and incomplete `useEffect` dependency arrays.
-- **Suggested Solution:** Clean up unused variables and stabilize `useEffect` callbacks.
+- **Severity:** `LOW` | **Priority:** P3 | **Status:** `FIXED & VERIFIED`
+- **Location:** 13 files — `CourseAccordionBar.jsx`, `CourseDetailsCard.jsx`, `CourseBuilderForm.jsx`, `Upload.jsx`, `Cart/index.jsx`, `SidebarLink.jsx`, `EnrolledCourses.jsx`, `Instructor.jsx`, `CourseReviewModal.jsx`, `VideoDetails.jsx`, `VideoDetailsSidebar.jsx`, `UpdatePassword.jsx`, `ViewCourse.jsx`
+- **Root Cause:** Unused variables/imports (`courseId`, `getValues`, `course`, `total`, `dispatch`, `setPreviewSource`, `navigate`, `totalItems`) and incomplete `react-hooks/exhaustive-deps` dependency arrays.
+- **Resolution:** Fixed every warning at its root cause (removed unused bindings, stabilized `useEffect` / `useCallback` dependencies, and removed a pre-existing `eslint-disable-next-line` in `Upload.jsx` by adding `name` to deps). Zero `eslint-disable` comments added.
+- **Verification:** `npx eslint src --max-warnings=0` exits with code **0** (0 errors, 0 warnings); `npm run build` compiles with **0 ESLint warnings**.
 
 ---
 
-## Fixed & Verified Bugs (20 Total)
+## Cycles #1 & #2 — Historical Fixed & Verified Bugs (21 Total)
 
 | Bug ID | Severity | Title | Root Cause & File | Fix Status | Regression Test |
 |--------|----------|-------|-------------------|------------|-----------------|
@@ -70,7 +85,7 @@
 | `BUG-007` | `MEDIUM` | Unhandled CastError when `courseId`/`subsectionId` omitted | `server/controllers/courseProgress.js` lacked required parameter validation | `FIXED & VERIFIED` | `server/__tests__/courseProgress.test.js` |
 | `BUG-008` | `HIGH` | Subsection edit video upload silently ignored + wrong return shape | `SubSectionModal.jsx` sent field `"video"`, controller only checked `req.files?.videoFile` | `FIXED & VERIFIED` | `server/__tests__/section.test.js` |
 | `BUG-009` | `CRITICAL` | Razorpay checkout received `currency: undefined`, `amount: "undefined"` | `src/services/operations/studentFeatureAPI.js` lines 53-54 read `orderResponse.data.currency/amount` instead of `orderResponse.data.message.currency/amount` | `FIXED & VERIFIED` | Verified in code + build |
-| `BUG-010` | `HIGH` | Raw JSON brackets `["WEB DEV"]` rendered in "This Course Includes" | `server/controllers/Course.js` `createCourse` did not `JSON.parse` `tag`/`instructions`; `CourseDetailsCard.jsx` rendered raw JSON strings | `FIXED & VERIFIED` | `server/__tests__/course.test.js` + live `E2E-06` |
+| `BUG-010` | `HIGH` | Raw JSON brackets `["WEB DEV"]` rendered in "This Course Includes" | `server/controllers/Course.js` `createCourse` did not `JSON.parse` `tag`/`instructions`; `CourseDetailsCard.jsx` rendered raw JSON strings | `FIXED & VERIFIED` | `server/__tests__/course.test.js` + live `E2E-06` / `C3-E2E-06` |
 | `BUG-011` | `HIGH` | Infinite loading spinner on invalid `/courses/:courseId` | `src/pages/CourseDetails.jsx` checked `!courseData` before `if (!courseData?.courseDetails) return <Error />` | `FIXED & VERIFIED` | Live Playwright `E2E-07` |
 | `BUG-012` | `HIGH` | `getUserDetails` crashed and forced logout on every call | `src/services/operations/profileAPI.js` read `response.data.data` instead of `response.data.userDetails` | `FIXED & VERIFIED` | Verified against `Profile.js` contract |
 | `BUG-013` | `HIGH` | Profile updates lost on refresh + failed password change still navigated away | `SettingsAPI.js` never synced `localStorage.setItem("user")` & swallowed errors in `changePassword` | `FIXED & VERIFIED` | Verified in `SettingsAPI.js` & `Settings/UpdatePassword.jsx` |
@@ -84,5 +99,3 @@
 | `BUG-021` | `MEDIUM` | Swiper loop console warnings + empty box when 0 reviews | `ReviewSlider.jsx` set `loop={true}` unconditionally | `FIXED & VERIFIED` | Live Playwright `E2E-04` (0 warnings) |
 | `BUG-022` | `MEDIUM` | `EnrolledCourses` navigated to `undefined` lecture + `MyProfile` hid saved About/DOB/Gender | Missing null guards in `EnrolledCourses.jsx` & missing fields in `MyProfile.jsx` | `FIXED & VERIFIED` | Verified in code + build |
 | `BUG-028`* | `HIGH` | Password reset email pointed to dead Vercel URL & lacked `/#/` for `HashRouter`, plus `UpdatePassword` showed false success on error | `server/.env` had dead Vercel URL; `ResetPassword.js` omitted `/#/`; `UpdatePassword.jsx` didn't await thunk result | `FIXED & VERIFIED` | `server/__tests__/auth.test.js` |
-
-*\*Note: `BUG-028` was fixed during the live password-reset debugging session (`b4a57b2` + `HashRouter` fix). Total fixed bugs across Cycle #1 + Cycle #2 = 21 distinct defects (20 counted in the Cycle #2 table + `BUG-028` merged into `BUG-001`–`BUG-028`).*

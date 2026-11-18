@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 import { BiArrowBack } from "react-icons/bi";
 import { Link } from "react-router-dom";
@@ -8,7 +8,6 @@ import { resetPassword } from "../services/operations/authAPI";
 import { BsCheckCircle } from "react-icons/bs";
 
 const UpdatePassword = () => {
-  const navigate = useNavigate();
   const dispatch = useDispatch();
   const location = useLocation();
   const { loading } = useSelector((state) => state.auth);

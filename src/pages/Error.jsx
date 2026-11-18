@@ -1,21 +1,15 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 const StrangerThings = ({ className }) => {
-  const navigate = useNavigate();
   return (
     <div
-      className={`fixed inset-0 min-h-screen flex flex-col items-center justify-center p-6 overflow-hidden bg-black ${className || ""}`}
+      className={`error-page-container min-h-[calc(100vh-3.5rem)] w-full flex flex-col items-center justify-center p-6 overflow-hidden bg-black ${className || ""}`}
       style={{ perspective: "1200px" }}
     >
       <style>
         {`
-        html, body, #root {
-          background: #000000 !important;
-          width: 100% !important;
-          height: 100% !important;
-          overflow: hidden !important;
-          margin: 0 !important;
-          padding: 0 !important;
+        .error-page-container {
+          background: #000000;
         }
         
         @keyframes slideDown {
@@ -397,17 +391,13 @@ const StrangerThings = ({ className }) => {
         </div>
 
         <div className="flex justify-center">
-          <Link to="/" 
-            className="cta jitter-link" 
+          <Link
+            to="/"
+            className="cta jitter-link"
             aria-label="Go to right side up"
-            onClick={(e) => {
-              e.preventDefault()
-              navigate(-1);
-            }}
-            >
+          >
             Go to right side up
           </Link>
-          
         </div>
       </main>
     </div>

@@ -29,7 +29,7 @@ const Instructor = () => {
             setLoading(false);
         }
         getCourseDataWithStats();
-    }, [])
+    }, [token])
 
     const totalAmount = instructorData?.reduce((acc, curr) => acc + curr.totalAmountGenerated, 0) ?? 0;
     // ✅ FIX: was (acc, curr) => curr.totalStudentsEnrolled — missing acc + so only last value returned

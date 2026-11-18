@@ -27,14 +27,11 @@
   - *Database:* Minor schema addition on `User` if kept.
 - **Priority:** Medium | **Complexity:** `LOW`
 
-### `GAP-003` — Footer Destination Pages (Legal, Support, Career/Resource Links)
-- **Classification:** Confirmed Broken Expectation (`Footer.jsx` displays 60+ internal links that all 404)
-- **What is missing:** Routes for `/privacy`, `/terms`, `/cookies`, `/help-center`, `/careers`, `/blog`, etc.
-- **What happens if not implemented:** Users clicking any footer link hit the 404 Upside Down screen, hurting credibility.
-- **Required Changes:**
-  - *Frontend:* Map subject/language links in `src/data/footer-links.js` to active `/catalog/:slug` pages, add simple pages for Privacy/Terms/Cookies/Help, and remove unbuilt placeholder links.
-  - *Backend / Database:* None.
-- **Priority:** High | **Complexity:** `LOW`
+### `GAP-003` — Legal & Policy Pages (Pending User-Approved Copy) *(Partially Resolved in Cycle #3)*
+- **Classification:** Confirmed Requirement Pending Content Confirmation
+- **Status Update (Cycle #3):** All 60+ broken template links in `Footer.jsx` (`BUG-023`) were resolved by mapping active routes (`/`, `/about`, `/contact`, `/signup`, `/login`), dynamically linking real `/catalog/:slug` categories, and preserving the 4 external social links. Dead `/privacy`, `/terms`, and `/cookies` links were removed instead of inventing unapproved legal text.
+- **What remains:** Create Privacy Policy, Terms of Service, and Cookie Policy routes once the product owner confirms the exact legal text/requirements.
+- **Priority:** Low | **Complexity:** `LOW`
 
 ---
 
@@ -62,16 +59,12 @@
   - *Database:* None.
 - **Priority:** Medium | **Complexity:** `LOW`
 
-### `GAP-006` — Server-Side Logout & Global Expired-Token Handling
+### `GAP-006` — Server-Side Logout & Global Expired-Token Handling — `RESOLVED (Cycle #3)`
 - **Classification:** Missing Integration / Security Hygiene
-- **What is missing:**
-  1. `authAPI.js` (`logout`) clears `localStorage` & Redux, but never calls a backend endpoint to clear the `httpOnly` `token` cookie set during login (`Auth.js` line 181).
-  2. `apiconnector.js` has no Axios response interceptor to auto-logout and redirect to `/login` when a 24h JWT expires (`BUG-025`).
-- **Required Changes:**
-  - *Backend:* Add `POST /api/v1/auth/logout` that calls `res.clearCookie("token")`.
-  - *Frontend:* Call `/auth/logout` in `authAPI.js` and add a 401 response interceptor in `apiconnector.js`.
-  - *Database:* None.
-- **Priority:** Medium | **Complexity:** `LOW`
+- **Resolution (Cycle #3):**
+  1. Added `POST /api/v1/auth/logout` in `server/controllers/Auth.js` + `server/routes/User.js` calling `res.clearCookie("token", { httpOnly: true })` and updated frontend `logout()` in `src/services/operations/authAPI.js` to invoke it before clearing Redux/`localStorage`.
+  2. Added debounced global 401 Axios response interceptor in `src/services/apiconnector.js` wired in `src/index.js` (`BUG-025`), excluding expected credential/public 401s.
+- **Remaining Security Note:** JWT tokens remain stateless until their 24h `exp` claim if a token is manually copied outside the cookie jar; token denylisting/refresh-token rotation can be considered later if stricter revocation is required.
 
 ---
 

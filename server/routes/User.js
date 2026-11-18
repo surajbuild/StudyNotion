@@ -8,6 +8,7 @@ const {
     signUp,
     sendOTP,
     changePassword,
+    logout,
 } = require('../controllers/Auth');
 
 const {
@@ -26,6 +27,9 @@ const { sendOtpLimiter, resetPasswordTokenLimiter } = require("../middlewares/ra
 
 // Route for user login
 router.post("/login", login)
+
+// Route for user logout (clears httpOnly token cookie)
+router.post("/logout", logout)
 
 // Route for user signup
 router.post("/signup", signUp)

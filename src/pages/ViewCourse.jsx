@@ -35,7 +35,7 @@ const ViewCourse = () => {
       dispatch(setTotalNoOfLectures(lectures))
     }
     setCourseSpecificDetails()
-  }, [])
+  }, [courseId, token, dispatch])
 
   return (
     <>
