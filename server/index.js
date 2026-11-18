@@ -35,6 +35,7 @@ const { authLimiter, emailLimiter } = require("./middlewares/rateLimiters");
 const userRoutes = require("./routes/User");
 const profileRoutes = require("./routes/Profile");
 const paymentRoutes = require("./routes/Payment");
+const cartRoutes = require("./routes/Cart");
 const courseRoutes = require("./routes/Course");
 const contactRoutes = require("./routes/Contact");
 
@@ -101,6 +102,7 @@ app.use("/api/v1/auth", authLimiter, userRoutes);
 app.use("/api/v1/profile", profileRoutes);
 app.use("/api/v1/course", courseRoutes);
 app.use("/api/v1/payment", paymentRoutes);
+app.use("/api/v1/cart", cartRoutes);
 app.use("/api/v1/reach", emailLimiter, contactRoutes);
 
 // Test-only harness endpoints — strictly mounted ONLY in explicit isolated mock test mode

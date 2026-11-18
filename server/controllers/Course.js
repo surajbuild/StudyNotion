@@ -487,8 +487,11 @@ exports.deleteCourse = async (req, res) => {
       await Category.findByIdAndUpdate(course.category, { $pull: { courses: courseId } });
     }
 
-    // Remove course from enrolled students
-    await User.updateMany({ courses: courseId }, { $pull: { courses: courseId } });
+    // Remove course from enrolled students and any persistent student carts
+    await User.updateMany(
+      { $or: [{ courses: courseId }, { cart: courseId }] },
+      { $pull: { courses: courseId, cart: courseId } }
+    );
 
     await Course.findByIdAndDelete(courseId);
 

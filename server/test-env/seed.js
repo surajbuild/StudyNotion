@@ -10,6 +10,7 @@ const SubSection = require("../models/SubSection");
 const CourseProgress = require("../models/CourseProgress");
 const RatingAndReview = require("../models/RatingAndReview");
 const OTP = require("../models/OTP");
+const Order = require("../models/Order");
 const cache = require("../utils/cache");
 
 // Synthetic, non-production test fixture identifiers (never real user accounts).
@@ -58,6 +59,7 @@ const ALL_MODELS = [
     CourseProgress,
     RatingAndReview,
     OTP,
+    Order,
 ];
 
 /**
