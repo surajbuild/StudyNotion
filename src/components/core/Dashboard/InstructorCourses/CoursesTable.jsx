@@ -113,7 +113,13 @@ export default function CoursesTable({ courses, setCourses }) {
       errors.push("Course thumbnail")
     }
 
-    if (!course.price || course.price <= 0) {
+    if (
+      course.price === undefined ||
+      course.price === null ||
+      course.price === "" ||
+      Number.isNaN(Number(course.price)) ||
+      Number(course.price) < 0
+    ) {
       errors.push("Course price")
     }
 
@@ -220,7 +226,9 @@ export default function CoursesTable({ courses, setCourses }) {
                 {/* Price */}
                 <Td className="flex items-center justify-between md:justify-start md:w-24 lg:w-32 text-sm font-medium text-richblack-100 py-1">
                   <span className="text-xs uppercase tracking-wider text-richblack-400 font-semibold md:hidden">Price:</span>
-                  <span className="text-yellow-50 font-semibold md:font-normal">₹{course.price}</span>
+                  <span className="text-yellow-50 font-semibold md:font-normal">
+                    {Number(course.price) === 0 ? "Free" : `₹${course.price}`}
+                  </span>
                 </Td>
 
                 {/* Status - Clickable */}

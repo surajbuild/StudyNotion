@@ -4,6 +4,17 @@
 
 ---
 
+## 2026-11-18 — QA Cycle #5 (`GAP-005`: Free Course ₹0 Direct Enrollment & Pricing Validation)
+
+| Task / Bug ID | Files Modified / Added | Changes Made | Tests Executed | Verification Status |
+|---------------|------------------------|--------------|----------------|---------------------|
+| `CHECKPOINT` | Cycle #4 commit `848e52a` (local only) | Created clean local checkpoint commit preserving Cycle #4 `GAP-009` & `BUG-029` (unpushed) | `git status` | `VERIFIED` |
+| `GAP-005` (Backend) | `server/models/Course.js`, `server/controllers/Course.js`, `server/controllers/Payments.js`, `server/routes/Payment.js`, `server/test-env/seed.js` | Added `POST /api/v1/payment/enrollFreeCourse` (`auth`, `isStudent`) strictly checking DB `price === 0` & `status === "Published"`, rejecting paid bypass/negative/invalid IDs/duplicates (`409`), reusing `enrollStudents` with duplicate `CourseProgress` guard & `getCourseDetails` cache invalidation; fixed `createCourse`/`editCourse` to permit `price = 0` and reject negative prices; hardened `capturePayment` against ₹0 orders; added seeded free course to isolated test DB | `payment.test.js` (+8), `course.test.js` (+2), `integration.realdb.test.js` (+1) | `VERIFIED` |
+| `GAP-005` (Frontend) | `src/services/apis.js`, `src/services/operations/studentFeatureAPI.js`, `src/pages/CourseDetails.jsx`, `src/components/core/Course/CourseDetailsCard.jsx`, `src/components/core/Catalog/CourseCard.jsx`, `src/components/core/Dashboard/Cart/RenderCartCourses.jsx`, `src/components/core/Dashboard/Cart/RenderTotalAmount.jsx`, `src/components/core/Dashboard/InstructorCourses/CoursesTable.jsx`, `src/components/core/Dashboard/AddCourse/CourseInformation/CourseInformationForm.jsx` | Added `enrollFreeCourse` service operation; rendered `"Free"` pricing and `"Enroll Now"` CTA (hiding `"Add to Cart"` / Razorpay for free courses) with loading/double-submit protection & Redux/`localStorage` user sync; updated `CoursesTable` & `CourseInformationForm` to allow publishing ₹0 courses while rejecting negative/invalid prices | `CourseDetailsCard.test.jsx` (4/4), `studentFeatureAPI.freeEnroll.test.js` (2/2), Playwright `E2E-22` & `E2E-23` | `VERIFIED` |
+| `GAP-005` (Tests & Docs) | `server/__tests__/payment.test.js`, `server/__tests__/course.test.js`, `server/__tests__/integration.realdb.test.js`, `src/components/core/Course/__tests__/CourseDetailsCard.test.jsx` (new), `src/services/__tests__/studentFeatureAPI.freeEnroll.test.js` (new), `e2e/authenticated.e2e.js`, `docs/qa/*` | Added 19 new tests across Backend Unit, Real Isolated MongoDB Integration, Frontend Unit, and Live Playwright E2E; updated all 7 QA docs (218/218 executed tests passing, 0 blocked, 0 open bugs) | `npm run test:all` (67 FE + 115 BE), Playwright (11/11), `npx eslint src --max-warnings=0`, `npm run build` | `VERIFIED` |
+
+---
+
 ## 2026-11-18 — QA Cycle #4 (`GAP-009`: Isolated MongoDB Testing Environment & Unblocking All 6 Authenticated E2E Tests)
 
 | Task / Bug ID | Files Modified / Added | Changes Made | Tests Executed | Verification Status |

@@ -40,12 +40,22 @@ exports.createCourse = async (req, res) => {
 
     const thumbnail = req.files?.thumbnailImage;
 
-    if (!courseName || !courseDescription || !whatYouWillLearn || !price) {
+    const isPriceMissing = price === undefined || price === null || price === "";
+    if (!courseName || !courseDescription || !whatYouWillLearn || isPriceMissing) {
       return res.status(400).json({
         success: false,
         message: "Course name, description, benefits, and price are mandatory",
       });
     }
+
+    const numericPrice = Number(price);
+    if (!Number.isFinite(numericPrice) || numericPrice < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Course price must be a non-negative number",
+      });
+    }
+    price = numericPrice;
 
     // Default to Draft when status is not explicitly provided
     if (!status) status = "Draft";
@@ -380,6 +390,16 @@ exports.editCourse = async (req, res) => {
           } else {
             course[key] = req.body[key];
           }
+        } else if (key === "price") {
+          const rawPrice = req.body[key];
+          const numericPrice = Number(rawPrice);
+          if (rawPrice === "" || rawPrice === null || !Number.isFinite(numericPrice) || numericPrice < 0) {
+            return res.status(400).json({
+              success: false,
+              message: "Course price must be a non-negative number",
+            });
+          }
+          course.price = numericPrice;
         } else {
           course[key] = req.body[key];
         }

@@ -461,4 +461,148 @@ describe("Isolated Real-MongoDB Full-Stack Integration Suite (GAP-009)", () => {
             expect(await Profile.findById(dispUserBefore.additionalDetails)).toBeNull();
         });
     });
+
+    describe("6. Free Course Enrollment, Pricing Validation, Duplicate & Security Protection (GAP-005)", () => {
+        test("enrolls student in ₹0 course without Razorpay, blocks paid bypass/duplicates/negative pricing/cross-user access", async () => {
+            // 1. Instructor can create a ₹0 course, cannot create or edit negative price
+            const negCreate = await request(app)
+                .post("/api/v1/course/createCourse")
+                .set("Authorization", `Bearer ${instructorToken}`)
+                .field("courseName", "Invalid Negative Course")
+                .field("courseDescription", "Should fail")
+                .field("whatYouWillLearn", "Validation")
+                .field("price", "-50")
+                .field("category", seeded.categories.webDevId);
+            expect(negCreate.status).toBe(400);
+
+            const freeCreate = await request(app)
+                .post("/api/v1/course/createCourse")
+                .set("Authorization", `Bearer ${instructorToken}`)
+                .field("courseName", "RealDB Free Draft Course")
+                .field("courseDescription", "Created as draft free course")
+                .field("whatYouWillLearn", "Free fundamentals")
+                .field("price", "0")
+                .field("tag", JSON.stringify(["Free"]))
+                .field("category", seeded.categories.webDevId)
+                .field("instructions", JSON.stringify(["None"]));
+            expect(freeCreate.status).toBe(200);
+            expect(freeCreate.body.data.price).toBe(0);
+            const draftFreeId = freeCreate.body.data._id;
+
+            // Negative price edit rejected
+            const negEdit = await request(app)
+                .post("/api/v1/course/editCourse")
+                .set("Authorization", `Bearer ${instructorToken}`)
+                .send({ courseId: draftFreeId, price: -10 });
+            expect(negEdit.status).toBe(400);
+
+            // Draft free course cannot be enrolled yet
+            const draftEnroll = await request(app)
+                .post("/api/v1/payment/enrollFreeCourse")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({ courseId: draftFreeId });
+            expect(draftEnroll.status).toBe(400);
+
+            // 2. Security: unauthenticated (401), instructor role (403), invalid ID (400)
+            const unauthRes = await request(app)
+                .post("/api/v1/payment/enrollFreeCourse")
+                .send({ courseId: seeded.courses.freeCourseId });
+            expect(unauthRes.status).toBe(401);
+
+            const instEnrollRes = await request(app)
+                .post("/api/v1/payment/enrollFreeCourse")
+                .set("Authorization", `Bearer ${instructorToken}`)
+                .send({ courseId: seeded.courses.freeCourseId });
+            expect(instEnrollRes.status).toBe(403);
+
+            const badIdRes = await request(app)
+                .post("/api/v1/payment/enrollFreeCourse")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({ courseId: "bad-id" });
+            expect(badIdRes.status).toBe(400);
+
+            // 3. Security: paid course bypass attempt (sending price: 0 from client) MUST be rejected
+            const paidBypassRes = await request(app)
+                .post("/api/v1/payment/enrollFreeCourse")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({ courseId: seeded.courses.dataScienceCourseId, price: 0 });
+            expect(paidBypassRes.status).toBe(400);
+            const paidCourseDoc = await Course.findById(seeded.courses.dataScienceCourseId).lean();
+            expect(paidCourseDoc.studentEnrolled.map(String)).not.toContain(seeded.users.studentId);
+
+            // 4. Valid free enrollment in published ₹0 seeded course (ignores spoofed userId)
+            const enrollRes = await request(app)
+                .post("/api/v1/payment/enrollFreeCourse")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({
+                    courseId: seeded.courses.freeCourseId,
+                    userId: seeded.users.instructorId,
+                });
+            expect(enrollRes.status).toBe(200);
+            expect(enrollRes.body.success).toBe(true);
+
+            // Verify real MongoDB persistence: Course.studentEnrolled, User.courses, CourseProgress
+            const freeCourseDoc = await Course.findById(seeded.courses.freeCourseId).lean();
+            expect(freeCourseDoc.studentEnrolled.map(String)).toEqual([seeded.users.studentId]);
+
+            const studentDoc = await User.findById(seeded.users.studentId).lean();
+            expect(studentDoc.courses.map(String)).toContain(seeded.courses.freeCourseId);
+
+            const progressDocs = await CourseProgress.find({
+                courseID: seeded.courses.freeCourseId,
+                userId: seeded.users.studentId,
+            }).lean();
+            expect(progressDocs.length).toBe(1);
+            expect(progressDocs[0].completedVideos).toEqual([]);
+
+            // Student appears in My Courses (getEnrolledCourses) and can access course content
+            const enrolledListRes = await request(app)
+                .get("/api/v1/profile/getEnrolledCourses")
+                .set("Authorization", `Bearer ${studentToken}`);
+            expect(enrolledListRes.status).toBe(200);
+            expect(enrolledListRes.body.data.map((c) => c._id.toString())).toContain(
+                seeded.courses.freeCourseId
+            );
+
+            const contentRes = await request(app)
+                .post("/api/v1/course/getFullCourseDetails")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({ courseId: seeded.courses.freeCourseId });
+            expect(contentRes.status).toBe(200);
+            expect(contentRes.body.data.courseDetails.courseContent.length).toBe(1);
+
+            // 5. Duplicate enrollment protection (409 + zero duplicate DB docs)
+            const dupRes = await request(app)
+                .post("/api/v1/payment/enrollFreeCourse")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({ courseId: seeded.courses.freeCourseId });
+            expect(dupRes.status).toBe(409);
+
+            const freeCourseAfterDup = await Course.findById(seeded.courses.freeCourseId).lean();
+            expect(freeCourseAfterDup.studentEnrolled.length).toBe(1);
+            const progressAfterDup = await CourseProgress.find({
+                courseID: seeded.courses.freeCourseId,
+                userId: seeded.users.studentId,
+            }).lean();
+            expect(progressAfterDup.length).toBe(1);
+
+            // 6. Cross-user access restriction: unenrolled second student gets 403 on free course content
+            const secondStudentProfile = await Profile.create({});
+            const secondStudent = await User.create({
+                firstName: "Unenrolled",
+                lastName: "Student",
+                email: "unenrolled.student@isolated.test",
+                password: await require("bcrypt").hash(fixturePassword, 10),
+                accountType: "Student",
+                image: "https://api.dicebear.com/5.x/initials/svg?seed=Unenrolled%20Student",
+                additionalDetails: secondStudentProfile._id,
+            });
+            const secondLogin = await loginAs(secondStudent.email);
+            const crossUserRes = await request(app)
+                .post("/api/v1/course/getFullCourseDetails")
+                .set("Authorization", `Bearer ${secondLogin.token}`)
+                .send({ courseId: seeded.courses.freeCourseId });
+            expect(crossUserRes.status).toBe(403);
+        });
+    });
 });

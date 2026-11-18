@@ -5,7 +5,7 @@ import { toast } from "react-hot-toast"
 import { BiInfoCircle } from "react-icons/bi"
 import { HiOutlineGlobeAlt } from "react-icons/hi"
 
-import {buyCourse}  from "../services/operations/studentFeatureAPI"
+import { buyCourse, enrollFreeCourse } from "../services/operations/studentFeatureAPI"
 import { fetchCourseDetails } from "../services/operations/courseDetailsAPI"
 import GetAvgRating from "../utils/avgRating"
 import { formatDate } from "../services/formatDate"
@@ -33,6 +33,7 @@ const CourseDetails = () => {
   //   { courseDetails: {...}, totalDuration: "Xh Ym" }
   const [courseData, setCourseData] = useState(null)
   const [isLoadingCourse, setIsLoadingCourse] = useState(true)
+  const [isEnrolling, setIsEnrolling] = useState(false)
   const [confirmationModal, setConfirmationModal] = useState(null)
   const [avgReviewCount, setAvgReviewCount] = useState(0)
   const [totalNoOfLectures, setTotalNoOfLectures] = useState(0)
@@ -91,10 +92,35 @@ const CourseDetails = () => {
       text1: "You are not logged in",
       text2: "Please login to purchase the course",
       btn1Text: "Login",
-      btn2Text: "Cancel",           // ✅ FIX: was "Calcle"
+      btn2Text: "Cancel",
       btn1Handler: () => navigate("/login"),
       btn2Handler: () => setConfirmationModal(null),
     })
+  }
+
+  const handleFreeEnroll = async () => {
+    if (isEnrolling || paymentLoading) return
+    if (user && user?.accountType === ACCOUNT_TYPE.INSTRUCTOR) {
+      toast.error("Instructors cannot enroll in courses.")
+      return
+    }
+    if (!token) {
+      setConfirmationModal({
+        text1: "You are not logged in",
+        text2: "Please login to enroll in this free course",
+        btn1Text: "Login",
+        btn2Text: "Cancel",
+        btn1Handler: () => navigate("/login"),
+        btn2Handler: () => setConfirmationModal(null),
+      })
+      return
+    }
+    setIsEnrolling(true)
+    try {
+      await enrollFreeCourse(token, [courseId], user, navigate, dispatch)
+    } finally {
+      setIsEnrolling(false)
+    }
   }
 
   // ─── Loading / error states ───────────────────────────────────────────────
@@ -128,6 +154,10 @@ const CourseDetails = () => {
   } = courseData.courseDetails
 
   const totalDuration = courseData?.totalDuration
+  const isFreeCourse = Number(price) === 0
+  const isAlreadyEnrolled = Boolean(
+    user && studentEnrolled?.some((id) => String(id) === String(user._id))
+  )
 
   return (
     <>
@@ -176,22 +206,33 @@ const CourseDetails = () => {
             {/* Mobile buy strip */}
             <div className="flex w-full flex-col gap-4 border-y border-y-richblack-500 py-4 lg:hidden">
               <p className="space-x-3 pb-2 text-3xl font-semibold text-richblack-5">
-                Rs. {price}
+                {isFreeCourse ? (
+                  <span className="text-caribbeangreen-100">Free</span>
+                ) : (
+                  <>Rs. {price}</>
+                )}
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
                 <button
-                  className="yellowButton flex-1 text-center justify-center"
+                  disabled={isEnrolling || paymentLoading}
+                  className="yellowButton flex-1 text-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
                   onClick={
-                    user && studentEnrolled?.includes(user?._id)
+                    isAlreadyEnrolled
                       ? () => navigate("/dashboard/enrolled-courses")
+                      : isFreeCourse
+                      ? handleFreeEnroll
                       : handleBuyCourse
                   }
                 >
-                  {user && studentEnrolled?.includes(user?._id)
+                  {isAlreadyEnrolled
                     ? "Go To Course"
+                    : isFreeCourse
+                    ? isEnrolling
+                      ? "Enrolling..."
+                      : "Enroll Now"
                     : "Buy Now"}
                 </button>
-                {(!user || !studentEnrolled?.includes(user?._id)) && (
+                {!isAlreadyEnrolled && !isFreeCourse && (
                   <button
                     onClick={() => {
                       if (user && user?.accountType === ACCOUNT_TYPE.INSTRUCTOR) {
@@ -226,6 +267,8 @@ const CourseDetails = () => {
               course={courseData?.courseDetails}
               setConfirmationModal={setConfirmationModal}
               handleBuyCourse={handleBuyCourse}
+              handleFreeEnroll={handleFreeEnroll}
+              isEnrolling={isEnrolling || paymentLoading}
             />
           </div>
         </div>

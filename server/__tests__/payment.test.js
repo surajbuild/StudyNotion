@@ -152,4 +152,153 @@ describe("Payment Endpoints (server/controllers/Payments.js)", () => {
       expect(User.findByIdAndUpdate).toHaveBeenCalled();
     });
   });
+
+  describe("POST /api/v1/payment/enrollFreeCourse (GAP-005)", () => {
+    const validCourseId = "507f1f77bcf86cd799439011";
+    const instructorToken = jwt.sign(
+      { id: "inst_1", email: "inst@test.com", accountType: "Instructor" },
+      JWT_SECRET
+    );
+
+    it("should reject unauthenticated requests with 401", async () => {
+      const res = await request(app)
+        .post("/api/v1/payment/enrollFreeCourse")
+        .send({ courseId: validCourseId });
+      expect(res.status).toBe(401);
+    });
+
+    it("should reject Instructor role with 403", async () => {
+      const res = await request(app)
+        .post("/api/v1/payment/enrollFreeCourse")
+        .set("Authorization", `Bearer ${instructorToken}`)
+        .send({ courseId: validCourseId });
+      expect(res.status).toBe(403);
+    });
+
+    it("should reject malformed course ID with 400", async () => {
+      const res = await request(app)
+        .post("/api/v1/payment/enrollFreeCourse")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({ courseId: "not-a-valid-objectid" });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/Invalid course ID/i);
+    });
+
+    it("should reject paid course even if client tampers with price=0 in request body", async () => {
+      Course.find.mockResolvedValue([
+        {
+          _id: validCourseId,
+          price: 999,
+          status: "Published",
+          studentEnrolled: [],
+        },
+      ]);
+
+      const res = await request(app)
+        .post("/api/v1/payment/enrollFreeCourse")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({ courseId: validCourseId, price: 0 });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/not free/i);
+      expect(Course.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("should reject negative-priced or unpublished courses with 400", async () => {
+      Course.find.mockResolvedValue([
+        { _id: validCourseId, price: -50, status: "Published", studentEnrolled: [] },
+      ]);
+      const negRes = await request(app)
+        .post("/api/v1/payment/enrollFreeCourse")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({ courseId: validCourseId });
+      expect(negRes.status).toBe(400);
+
+      Course.find.mockResolvedValue([
+        { _id: validCourseId, price: 0, status: "Draft", studentEnrolled: [] },
+      ]);
+      const draftRes = await request(app)
+        .post("/api/v1/payment/enrollFreeCourse")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({ courseId: validCourseId });
+      expect(draftRes.status).toBe(400);
+      expect(draftRes.body.message).toMatch(/not currently available/i);
+    });
+
+    it("should reject duplicate enrollment with 409", async () => {
+      Course.find.mockResolvedValue([
+        {
+          _id: validCourseId,
+          price: 0,
+          status: "Published",
+          studentEnrolled: ["student_1"],
+        },
+      ]);
+
+      const res = await request(app)
+        .post("/api/v1/payment/enrollFreeCourse")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({ courseId: validCourseId });
+
+      expect(res.status).toBe(409);
+      expect(res.body.message).toMatch(/already enrolled/i);
+    });
+
+    it("should enroll authenticated student in a ₹0 published course and ignore spoofed userId", async () => {
+      Course.find
+        .mockResolvedValueOnce([
+          {
+            _id: validCourseId,
+            courseName: "Free Starter",
+            price: 0,
+            status: "Published",
+            studentEnrolled: [],
+          },
+        ])
+        .mockResolvedValueOnce([{ _id: validCourseId, courseName: "Free Starter" }]);
+      CourseProgress.find
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ _id: "prog_free_1", courseID: validCourseId }]);
+      CourseProgress.create.mockResolvedValue({ _id: "prog_free_1" });
+      Course.updateMany.mockResolvedValue({});
+      User.findByIdAndUpdate.mockResolvedValue({});
+      User.findById.mockResolvedValue({
+        _id: "student_1",
+        email: "student@test.com",
+        firstName: "Student",
+      });
+
+      const res = await request(app)
+        .post("/api/v1/payment/enrollFreeCourse")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({ courseId: validCourseId, userId: "spoofed_other_user" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(Course.updateMany).toHaveBeenCalledWith(
+        { _id: { $in: [validCourseId] } },
+        { $addToSet: { studentEnrolled: "student_1" } }
+      );
+      expect(User.findByIdAndUpdate).toHaveBeenCalledWith(
+        "student_1",
+        expect.any(Object)
+      );
+      expect(instance.orders.create).not.toHaveBeenCalled();
+    });
+
+    it("capturePayment should reject ₹0 courses instead of sending 0 paise to Razorpay", async () => {
+      Course.find.mockResolvedValue([
+        { _id: validCourseId, price: 0, status: "Published", studentEnrolled: [] },
+      ]);
+
+      const res = await request(app)
+        .post("/api/v1/payment/capturePayment")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({ courses: [validCourseId] });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/free enrollment/i);
+      expect(instance.orders.create).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -30,6 +30,7 @@ const courseSchema = new mongoose.Schema({
     ],
     price: {
         type: Number,
+        min: [0, "Course price cannot be negative"],
     },
     thumbnail: {
         type: String,

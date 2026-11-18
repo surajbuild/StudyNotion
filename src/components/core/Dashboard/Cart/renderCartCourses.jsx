@@ -60,7 +60,11 @@ const RenderCartCourses = () => {
                             <span className="text-sm">Remove</span>
                         </button>
                         <p className="text-2xl font-medium text-yellow-100 sm:mb-6 sm:text-3xl">
-                            ₹ {course?.price}
+                            {Number(course?.price) === 0 ? (
+                                <span className="text-caribbeangreen-100">Free</span>
+                            ) : (
+                                <>₹ {course?.price}</>
+                            )}
                         </p>
                     </div>
                 </div>

@@ -193,9 +193,16 @@ const CourseInformationForm = () => {
                         min="0"
                         placeholder="0"
                         {...register("coursePrice", {
-                            required: true,
                             valueAsNumber: true,
-                            min: { value: 0, message: "Price cannot be negative" },
+                            validate: (value) => {
+                                if (typeof value !== "number" || Number.isNaN(value)) {
+                                    return "Course price is required"
+                                }
+                                if (value < 0) {
+                                    return "Price cannot be negative"
+                                }
+                                return true
+                            },
                         })}
                         className="form-style w-full rounded-lg border border-richblack-600 bg-richblack-700 py-3 pl-10 pr-4 text-sm text-richblack-5 placeholder-richblack-400 focus:border-yellow-50 focus:outline-none transition-all"
                     />

@@ -640,6 +640,167 @@ async function runAuthenticatedE2E() {
         }
 
         // =========================================================================
+        // E2E-22 (GAP-005): Student Free (₹0) Course Enrollment — Zero Razorpay Calls
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                let razorpayHitCount = 0;
+                page.on("request", (req) => {
+                    const url = req.url();
+                    if (url.includes("razorpay.com") || url.includes("/payment/capturePayment")) {
+                        razorpayHitCount++;
+                    }
+                });
+
+                await uiLogin(page, FIXTURES.studentEmail, TEST_PASSWORD);
+
+                // Catalog shows "Free" label on free course
+                await page.goto(`${FRONTEND_URL}/#/catalog/web-dev`, { waitUntil: "networkidle" });
+                await page.waitForSelector(`text=${seeded.courses.freeCourseName}`, { timeout: 15000 });
+                const catalogText = await page.locator("body").innerText();
+                const catalogShowsFree = catalogText.includes("Free");
+
+                // Open Free Course Details -> verify Free, Enroll Now, no Buy Now / Add to Cart
+                await page.goto(`${FRONTEND_URL}/#/courses/${seeded.courses.freeCourseId}`, {
+                    waitUntil: "networkidle",
+                });
+                const enrollBtn = page.locator('button:has-text("Enroll Now"):visible').first();
+                await enrollBtn.waitFor({ state: "visible", timeout: 15000 });
+                const detailsText = await page.locator("body").innerText();
+                const hasFreeLabel = detailsText.includes("Free") && !detailsText.includes("Buy Now");
+                const noAddToCart = (await page.locator('button:has-text("Add to Cart"):visible').count()) === 0;
+
+                // Click Enroll Now -> calls /payment/enrollFreeCourse -> redirects to Enrolled Courses
+                const [enrollResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/payment/enrollFreeCourse"), {
+                        timeout: 15000,
+                    }),
+                    enrollBtn.click(),
+                ]);
+                await waitForHash(page, "/dashboard/enrolled-courses");
+                await page.waitForSelector(`text=${seeded.courses.freeCourseName}`, { timeout: 15000 });
+
+                // Verify course access works in ViewCourse
+                await page.goto(
+                    `${FRONTEND_URL}/#/view-course/${seeded.courses.freeCourseId}/section/${seeded.courses.freeCourseSectionId}/sub-section/${seeded.courses.freeCourseSubSectionId}`,
+                    { waitUntil: "networkidle" }
+                );
+                await page.waitForSelector("text=Lesson 1: Free JS Primer", { timeout: 15000 });
+                const canAccessLesson = (await page.locator("body").innerText()).includes(
+                    "Lesson 1: Free JS Primer"
+                );
+
+                // Revisit Course Details -> now shows "Go To Course" (already enrolled)
+                await page.goto(`${FRONTEND_URL}/#/courses/${seeded.courses.freeCourseId}`, {
+                    waitUntil: "networkidle",
+                });
+                await page.waitForSelector('button:has-text("Go To Course"):visible', { timeout: 15000 });
+                const showsGoToCourse =
+                    (await page.locator('button:has-text("Go To Course"):visible').count()) > 0;
+
+                record(
+                    "E2E-22",
+                    "GAP-005 Free Course Direct Enrollment & Content Access (Zero Razorpay)",
+                    catalogShowsFree &&
+                        hasFreeLabel &&
+                        noAddToCart &&
+                        enrollResp.status() === 200 &&
+                        razorpayHitCount === 0 &&
+                        canAccessLesson &&
+                        showsGoToCourse,
+                    `enrollStatus=${enrollResp.status()}, razorpayHits=${razorpayHitCount}, catalogFree=${catalogShowsFree}, noCartBtn=${noAddToCart}, canAccessLesson=${canAccessLesson}, showsGoToCourse=${showsGoToCourse}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-23 (GAP-005): Instructor Creates & Publishes Free (₹0) Course via CoursesTable
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                await uiLogin(page, FIXTURES.instructorEmail, TEST_PASSWORD);
+
+                await page.goto(`${FRONTEND_URL}/#/dashboard/add-course`, { waitUntil: "networkidle" });
+                await page.waitForSelector('input[name="courseTitle"]', { timeout: 15000 });
+
+                const freeCourseTitle = "E2E Free Published Course";
+                await page.fill('input[name="courseTitle"]', freeCourseTitle);
+                await page.fill(
+                    'textarea[name="courseShortDesc"]',
+                    "Free course created with price 0 and published from CoursesTable."
+                );
+                await page.fill('input[name="coursePrice"]', "0");
+                await page.selectOption('select[name="courseCategory"]', seeded.categories.webDevId);
+                await page.fill("#courseTags", "Free");
+                await page.press("#courseTags", "Enter");
+                await page.locator('input[type="file"][accept="image/*"]').setInputFiles(samplePngPath);
+                await page.fill('textarea[name="courseBenefits"]', "Free learning for everyone.");
+                await page.fill("#courseRequirements", "Curiosity");
+                await page.getByRole("button", { name: /^Add$/i }).click();
+
+                const [createFreeResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/course/createCourse"), {
+                        timeout: 20000,
+                    }),
+                    page.getByRole("button", { name: /^Next$/i }).click(),
+                ]);
+
+                // Add 1 Section + 1 Lecture so publish validation passes, keep as Draft
+                await page.waitForSelector("#sectionName", { timeout: 15000 });
+                await page.fill("#sectionName", "Free Module 1");
+                await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/course/addSection"), { timeout: 15000 }),
+                    page.getByRole("button", { name: /Create Section/i }).click(),
+                ]);
+                await page.waitForSelector("text=Add Lecture", { timeout: 10000 });
+                await page.getByRole("button", { name: /Add Lecture/i }).click();
+                await page.waitForSelector("#lectureTitle", { timeout: 10000 });
+                await page.locator('input[type="file"][accept="video/*"]').setInputFiles(sampleVideoPath);
+                await page.fill("#lectureTitle", "Free Lecture 1");
+                await page.fill("#lectureDesc", "Welcome lecture");
+                await page.fill("#lectureDuration", "60");
+                await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/course/addSubSection"), {
+                        timeout: 20000,
+                    }),
+                    page.getByRole("button", { name: /^Save$/i }).click(),
+                ]);
+                await page.waitForTimeout(600);
+
+                // Navigate to My Courses and publish the ₹0 Draft course directly via CoursesTable status pill
+                await page.goto(`${FRONTEND_URL}/#/dashboard/my-courses`, { waitUntil: "networkidle" });
+                const freeRow = page.locator("tr", { hasText: freeCourseTitle }).first();
+                await freeRow.waitFor({ state: "visible", timeout: 15000 });
+                const rowTextBefore = await freeRow.innerText();
+                const displaysFreeInTable = rowTextBefore.includes("Free");
+
+                const [togglePublishResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/course/editCourse"), { timeout: 15000 }),
+                    freeRow.locator('button[title="Click to publish"]').click(),
+                ]);
+                await page.waitForTimeout(800);
+                const rowTextAfter = await page.locator("tr", { hasText: freeCourseTitle }).first().innerText();
+                const publishedNow = rowTextAfter.includes("Published");
+
+                record(
+                    "E2E-23",
+                    "GAP-005 Instructor Create & Publish ₹0 Free Course via CoursesTable",
+                    createFreeResp.status() === 200 &&
+                        displaysFreeInTable &&
+                        togglePublishResp.status() === 200 &&
+                        publishedNow,
+                    `create=${createFreeResp.status()}, displaysFree=${displaysFreeInTable}, publishToggle=${togglePublishResp.status()}, publishedNow=${publishedNow}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
         // Regression Checks against Isolated Environment (Footer, 404, 401 Interceptor, Mobile)
         // =========================================================================
         {

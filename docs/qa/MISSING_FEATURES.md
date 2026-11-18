@@ -47,17 +47,12 @@
   - *Database:* Add compound/text index on `Course`.
 - **Priority:** High | **Complexity:** `MEDIUM`
 
-### `GAP-005` — Free Course (₹0) Direct Enrollment Flow
+### `GAP-005` — Free Course (₹0) Direct Enrollment Flow — `RESOLVED (Cycle #5)`
 - **Classification:** Missing Integration / Business Logic Gap
-- **What is missing:** `CourseInformationForm.jsx` explicitly allows `min="0"` price ("Set the Course Price option or make it free"), yet:
-  1. `CoursesTable.jsx` line 116 blocks publishing if `course.price <= 0`.
-  2. `Payments.js` sends `amount: totalAmount * 100` (0 paise) to Razorpay, which Razorpay rejects (minimum order is ₹1 / 100 paise).
-- **What happens if not implemented:** Instructors cannot publish or let students enroll in free courses despite the UI advertising free courses.
-- **Required Changes:**
-  - *Backend:* In `Payments.js` (`capturePayment`), if `totalAmount === 0`, bypass Razorpay and call `enrollStudents(courses, userId)` directly, returning `{ freeEnrollment: true }`.
-  - *Frontend:* Allow `price >= 0` in `CoursesTable.jsx` validation and handle `freeEnrollment` response in `studentFeatureAPI.js`.
-  - *Database:* None.
-- **Priority:** Medium | **Complexity:** `LOW`
+- **Resolution (Cycle #5):**
+  - **Backend:** Added `POST /api/v1/payment/enrollFreeCourse` (`auth`, `isStudent`) in `server/controllers/Payments.js` & `server/routes/Payment.js`. Strictly derives `userId` from JWT, fetches authoritative `price` & `status` from MongoDB, allows enrollment ONLY when `price === 0` and `status === "Published"`, rejects paid-course bypass (`400`), negative prices (`400`), malformed IDs (`400`), missing courses (`404`), and duplicates (`409`), and reuses `enrollStudents` (with duplicate `CourseProgress` guard & `getCourseDetails` cache invalidation). Hardened `createCourse` & `editCourse` (`Course.js`) + `Course` schema (`min: 0`) to allow `0` and reject negative/NaN prices. Hardened `capturePayment` to reject ₹0 orders cleanly.
+  - **Frontend:** Added `ENROLL_FREE_COURSE_API` & `enrollFreeCourse` in `studentFeatureAPI.js`; updated `CourseDetails.jsx`, `CourseDetailsCard.jsx`, `CourseCard.jsx`, `RenderCartCourses.jsx`, `RenderTotalAmount.jsx`, `CoursesTable.jsx`, and `CourseInformationForm.jsx` to display `"Free"`, show `"Enroll Now"` (hiding `"Add to Cart"` / Razorpay for free courses), prevent double submissions, and permit publishing ₹0 courses.
+  - **Verification:** `payment.test.js` (+8), `course.test.js` (+2), `integration.realdb.test.js` (+1 full real-DB security/enrollment test), `CourseDetailsCard.test.jsx` (4/4), `studentFeatureAPI.freeEnroll.test.js` (2/2), and Playwright `E2E-22` & `E2E-23` (PASS, 0 Razorpay hits).
 
 ### `GAP-006` — Server-Side Logout & Global Expired-Token Handling — `RESOLVED (Cycle #3)`
 - **Classification:** Missing Integration / Security Hygiene

@@ -3,10 +3,16 @@ import { studentEndpoints } from "../apis";
 import { apiConnector } from "../apiconnector";
 import rzpLogo from "../../assets/Logo/rzp_logo.png"
 import { setPaymentLoading } from "../../slices/courseSlice";
-import { resetCart } from "../../slices/cartSlice";
+import { removeFromCart, resetCart } from "../../slices/cartSlice";
+import { setUser } from "../../slices/profileSlice";
 
 
-const {COURSE_PAYMENT_API, COURSE_VERIFY_API, SEND_PAYMENT_SUCCESS_EMAIL_API} = studentEndpoints;
+const {
+    COURSE_PAYMENT_API,
+    COURSE_VERIFY_API,
+    ENROLL_FREE_COURSE_API,
+    SEND_PAYMENT_SUCCESS_EMAIL_API,
+} = studentEndpoints;
 
 function loadScript(src) {
     return new Promise((resolve) => {
@@ -122,4 +128,55 @@ async function verifyPayment(bodyData, token, navigate, dispatch) {
     }
     toast.dismiss(toastId);
     dispatch(setPaymentLoading(false))
+}
+
+// Enroll directly in free (₹0) course(s) without Razorpay checkout
+export async function enrollFreeCourse(token, courses, userDetails, navigate, dispatch) {
+    const toastId = toast.loading("Enrolling in course...");
+    dispatch(setPaymentLoading(true));
+    try {
+        const courseList = Array.isArray(courses) ? courses : [courses];
+        const response = await apiConnector(
+            "POST",
+            ENROLL_FREE_COURSE_API,
+            { courses: courseList },
+            {
+                Authorization: `Bearer ${token}`,
+            }
+        );
+
+        if (!response.data?.success) {
+            throw new Error(response.data?.message || "Could not enroll in free course");
+        }
+
+        // Remove any enrolled free courses from cart
+        courseList.forEach((courseId) => dispatch(removeFromCart(courseId)));
+
+        // Sync enrolled course IDs into Redux user & localStorage
+        if (userDetails) {
+            const existingCourses = Array.isArray(userDetails.courses) ? userDetails.courses : [];
+            const mergedCourses = [...new Set([...existingCourses.map(String), ...courseList.map(String)])];
+            const updatedUser = { ...userDetails, courses: mergedCourses };
+            dispatch(setUser(updatedUser));
+            try {
+                localStorage.setItem("user", JSON.stringify(updatedUser));
+            } catch {
+                // Ignore storage quota errors
+            }
+        }
+
+        toast.success(response.data.message || "Successfully enrolled in free course");
+        navigate("/dashboard/enrolled-courses");
+        return true;
+    } catch (error) {
+        const msg =
+            error?.response?.data?.message ||
+            error?.message ||
+            "Could not enroll in free course";
+        toast.error(msg);
+        return false;
+    } finally {
+        toast.dismiss(toastId);
+        dispatch(setPaymentLoading(false));
+    }
 }

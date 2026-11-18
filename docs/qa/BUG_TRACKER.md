@@ -1,7 +1,7 @@
 # StudyNotion — Bug Tracker & Root Cause Analysis
 
 > **Last Updated:** 2026-11-18  
-> **Audit Cycle:** Cycle #4 (`GAP-009`)  
+> **Audit Cycle:** Cycle #5 (`GAP-005`)  
 > **Severity Levels:** `CRITICAL` | `HIGH` | `MEDIUM` | `LOW`  
 > **Total Logged:** 27 (`BUG-001`–`BUG-029`, excluding unused gap) | **Fixed & Verified:** 27 | **Open:** 0
 
@@ -9,7 +9,20 @@
 
 ## Open Bugs
 
-*None — all tracked bugs across Cycles #1, #2, #3, and #4 have been fixed and verified.*
+*None — all tracked bugs across Cycles #1–#5 have been fixed and verified.*
+
+---
+
+## Cycle #5 — Feature Delivery & Hardening (`GAP-005`, Tracked Separately)
+
+### `GAP-005` *(Tracked Separately)* — Free Course (₹0) Direct Enrollment & Pricing Validation
+- **Module:** Student Enrollment, Payments & Instructor Pricing
+- **Status:** `RESOLVED & VERIFIED`
+- **Defects Resolved While Implementing `GAP-005`:**
+  1. `server/controllers/Course.js` (`createCourse` line 43) used `!price`, which falsely rejected `price === 0` and did not block negative prices in `createCourse`/`editCourse`.
+  2. `src/components/core/Dashboard/InstructorCourses/CoursesTable.jsx` (line 116) used `!course.price || course.price <= 0`, blocking instructors from publishing free courses.
+  3. `server/controllers/Payments.js` (`enrollStudents`) did not invalidate the 2-minute `getCourseDetails:<courseId>` cache after enrollment, which could display stale `studentEnrolled` state immediately after enrolling.
+- **Verification:** `payment.test.js` (+8), `course.test.js` (+2), `integration.realdb.test.js` (+1), `CourseDetailsCard.test.jsx` (4/4), `studentFeatureAPI.freeEnroll.test.js` (2/2), Playwright `E2E-22` & `E2E-23` (PASS, 0 Razorpay hits).
 
 ---
 

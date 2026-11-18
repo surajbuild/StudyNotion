@@ -41,7 +41,13 @@ const CourseCard = ({ course, Height }) => {
             </span>
           </div>
 
-          <p className="text-xl text-richblack-5">₹ {course?.price}</p>
+          <p className="text-xl text-richblack-5">
+            {Number(course?.price) === 0 ? (
+              <span className="font-semibold text-caribbeangreen-100">Free</span>
+            ) : (
+              <>₹ {course?.price}</>
+            )}
+          </p>
         </div>
       </div>
     </Link>

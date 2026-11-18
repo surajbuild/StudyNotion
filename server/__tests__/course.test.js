@@ -133,6 +133,49 @@ describe("Course Endpoints (server/controllers/Course.js)", () => {
       expect(res.body.message).toMatch(/mandatory/i);
     });
 
+    it("should reject negative course price with 400", async () => {
+      const res = await request(app)
+        .post("/api/v1/course/createCourse")
+        .set("Authorization", `Bearer ${instructorToken}`)
+        .send({
+          courseName: "Negative Course",
+          courseDescription: "Desc",
+          whatYouWillLearn: "Learn",
+          price: -100,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/non-negative/i);
+    });
+
+    it("should allow creating a free course with price 0", async () => {
+      User.findById.mockResolvedValue({
+        _id: "instructor_123",
+        accountType: "Instructor",
+      });
+      Course.create.mockResolvedValue({
+        _id: "free_course_1",
+        courseName: "Free Course",
+        price: 0,
+        status: "Draft",
+      });
+      User.findByIdAndUpdate.mockResolvedValue({});
+
+      const res = await request(app)
+        .post("/api/v1/course/createCourse")
+        .set("Authorization", `Bearer ${instructorToken}`)
+        .send({
+          courseName: "Free Course",
+          courseDescription: "Zero price course",
+          whatYouWillLearn: "Basics",
+          price: 0,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.price).toBe(0);
+    });
+
     it("should successfully create a course for an instructor", async () => {
       User.findById.mockResolvedValue({
         _id: "instructor_123",

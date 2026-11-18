@@ -1,8 +1,57 @@
 # StudyNotion — Detailed QA Test Report
 
-> **Latest Cycle:** Cycle #4 — `GAP-009` Isolated MongoDB Testing Environment & Unblocking All 6 Authenticated E2E Tests  
+> **Latest Cycle:** Cycle #5 — `GAP-005` Free Course (₹0) Direct Enrollment & Pricing Validation  
 > **Date:** 2026-11-18  
 > **Environment:** Windows 11 | Node.js v22.16.0 | React 18 (CRA 5) | Express 5 | Mongoose 8 | MongoDB 8.0 (Isolated Local Ephemeral on `127.0.0.1:27018`) | Chromium 1208 (Playwright)
+
+---
+
+## Cycle #5 — Execution Summary (2026-11-18)
+
+| Test Suite / Verification Gate | Command | Suites | Tests | Passed | Failed | Blocked | Result |
+|-------------------------------|---------|--------|-------|--------|--------|---------|--------|
+| **Frontend Unit & Component Tests** | `npm test` | 17 | 67 | 67 | 0 | 0 | **PASS** (6.46s, +2 suites / +6 tests) |
+| **Backend Unit, API & Safety Guardrails** | `npm run test:server` | 12 | 108 | 108 | 0 | 0 | **PASS** (+10 tests in `payment.test.js` & `course.test.js`) |
+| **Backend Real-MongoDB Full-Stack Integration** | `npm run test:server:integration` | 1 | 7 | 7 | 0 | 0 | **PASS** (13.59s, +1 comprehensive `GAP-005` real-DB test) |
+| **Isolated Authenticated Playwright E2E (`E2E-16`–`23` + `REG-01`–`03`)** | `node e2e/authenticated.e2e.js` | 1 | 11 | 11 | 0 | 0 | **PASS** (+2 new `E2E-22` & `E2E-23`, 0 page errors, 0 Swiper warnings) |
+| **Strict Frontend ESLint** | `npx eslint src --max-warnings=0` | — | — | 0 errors, 0 warnings | — | — | **PASS** (Exit 0) |
+| **Frontend Production Build** | `npm run build` | — | — | Exit 0 (0 ESLint warnings) | — | — | **PASS** |
+
+### Cycle #5 Actual Verification Outputs
+
+#### A. Combined Automated Test Run (`npm run test:all`)
+```text
+Frontend (npm test):
+Test Suites: 17 passed, 17 total
+Tests:       67 passed, 67 total (added CourseDetailsCard.test.jsx [4], studentFeatureAPI.freeEnroll.test.js [2])
+Time:        6.463 s
+
+Backend (npm run test:server):
+Test Suites: 13 passed, 13 total
+Tests:       115 passed, 115 total (added payment.test.js [+8], course.test.js [+2], integration.realdb.test.js [+1])
+Time:        31.485 s
+```
+
+#### B. Isolated Playwright E2E Run (`e2e/authenticated.e2e.js`)
+```text
+[PASS] E2E-16 Live Signup -> OTP -> Login -> Profile Edit -> Refresh
+[PASS] E2E-17 Live Cart -> Razorpay Checkout (Sandbox Mock) -> Enrollment
+[PASS] E2E-18 Live ViewCourse Video Playback + Mark Complete + Add Review
+[PASS] E2E-19 Live Instructor Create Course (3 steps) + Upload Thumbnail & Video + Publish
+[PASS] E2E-20 Live Edit Course + Delete Course + Instructor Dashboard Chart
+[PASS] E2E-21 Live Update Password + Delete Account Confirmation Modal
+[PASS] E2E-22 GAP-005 Free Course Direct Enrollment & Content Access (Zero Razorpay): enrollStatus=200, razorpayHits=0, catalogFree=true, noCartBtn=true, canAccessLesson=true, showsGoToCourse=true
+[PASS] E2E-23 GAP-005 Instructor Create & Publish ₹0 Free Course via CoursesTable: create=200, displaysFree=true, publishToggle=200, publishedNow=true
+[PASS] REG-01..REG-03 Footer, Error Page & Mobile 375px Regressions
+
+PAGE ERRORS: 0 [] | SWIPER WARNINGS: 0 | TOTAL: 11 PASSED: 11 FAILED: 0
+```
+
+#### C. Strict ESLint & Production Build
+```text
+$ npx eslint src --max-warnings=0 -> Exit 0 (0 errors, 0 warnings)
+$ npm run build -> Exit 0 (0 [eslint] warnings; only 2 pre-existing third-party swiper PostCSS CSS-nesting notices)
+```
 
 ---
 

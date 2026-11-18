@@ -233,8 +233,36 @@ const seedTestDatabase = async ({ assetBaseUrl } = {}) => {
         status: "Published",
     });
 
+    // Course 4: Published Free (₹0) course (for GAP-005 free enrollment integration & E2E tests)
+    const subFree = await SubSection.create({
+        title: "Lesson 1: Free JS Primer",
+        timeDuration: "120",
+        description: "Core JavaScript concepts in a free introductory course.",
+        videoUrl: sampleVideoUrl,
+    });
+    const sectionFree = await Section.create({
+        sectionName: "Module 1: Free Fundamentals",
+        subSection: [subFree._id],
+    });
+    const freeCourse = await Course.create({
+        courseName: "Isolated Free JavaScript Primer",
+        courseDescription: "Published free (₹0) course for testing direct enrollment without Razorpay.",
+        instructor: instructor._id,
+        whatYouWillLearn: "Learn JavaScript fundamentals at zero cost.",
+        courseContent: [sectionFree._id],
+        price: 0,
+        thumbnail: sampleThumbUrl,
+        tag: ["JavaScript", "Free"],
+        category: webDevCat._id,
+        studentEnrolled: [],
+        instructions: ["No prior coding required"],
+        status: "Published",
+    });
+
     // Link categories to courses
-    await Category.findByIdAndUpdate(webDevCat._id, { $push: { courses: enrolledCourse._id } });
+    await Category.findByIdAndUpdate(webDevCat._id, {
+        $push: { courses: { $each: [enrolledCourse._id, freeCourse._id] } },
+    });
     await Category.findByIdAndUpdate(devopsCat._id, { $push: { courses: purchasableCourse._id } });
     await Category.findByIdAndUpdate(dataScienceCat._id, { $push: { courses: dataScienceCourse._id } });
 
@@ -247,7 +275,11 @@ const seedTestDatabase = async ({ assetBaseUrl } = {}) => {
 
     // Link courses to instructor & enrolled student
     await User.findByIdAndUpdate(instructor._id, {
-        $push: { courses: { $each: [enrolledCourse._id, purchasableCourse._id, dataScienceCourse._id] } },
+        $push: {
+            courses: {
+                $each: [enrolledCourse._id, purchasableCourse._id, dataScienceCourse._id, freeCourse._id],
+            },
+        },
     });
     await User.findByIdAndUpdate(student._id, {
         $push: { courses: enrolledCourse._id, courseProgress: progress._id },
@@ -281,6 +313,10 @@ const seedTestDatabase = async ({ assetBaseUrl } = {}) => {
             purchasableCourseId: purchasableCourse._id.toString(),
             purchasableCourseName: purchasableCourse.courseName,
             dataScienceCourseId: dataScienceCourse._id.toString(),
+            freeCourseId: freeCourse._id.toString(),
+            freeCourseName: freeCourse.courseName,
+            freeCourseSectionId: sectionFree._id.toString(),
+            freeCourseSubSectionId: subFree._id.toString(),
         },
     };
 };

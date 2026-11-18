@@ -11,7 +11,13 @@ import { ACCOUNT_TYPE } from "../../../utils/constants"
 
 
 
-function CourseDetailsCard({ course, setConfirmationModal, handleBuyCourse }) {
+function CourseDetailsCard({
+  course,
+  setConfirmationModal,
+  handleBuyCourse,
+  handleFreeEnroll,
+  isEnrolling = false,
+}) {
   const { user } = useSelector((state) => state.profile)
   const { token } = useSelector((state) => state.auth)
   const navigate = useNavigate()
@@ -21,6 +27,11 @@ function CourseDetailsCard({ course, setConfirmationModal, handleBuyCourse }) {
     thumbnail: ThumbnailImage,
     price: CurrentPrice,
   } = course
+
+  const isFreeCourse = Number(CurrentPrice) === 0
+  const isAlreadyEnrolled = Boolean(
+    user && course?.studentEnrolled?.some((id) => String(id) === String(user._id))
+  )
 
   const handleShare = () => {
     copy(window.location.href)
@@ -62,23 +73,33 @@ function CourseDetailsCard({ course, setConfirmationModal, handleBuyCourse }) {
 
         <div className="px-4">
           <div className="space-x-3 pb-4 text-3xl font-semibold">
-            Rs. {CurrentPrice}
+            {isFreeCourse ? (
+              <span className="text-caribbeangreen-100">Free</span>
+            ) : (
+              <>Rs. {CurrentPrice}</>
+            )}
           </div>
           <div className="flex flex-col gap-4">
             <button
-              className="yellowButton"
+              disabled={isEnrolling}
+              className="yellowButton disabled:opacity-60 disabled:cursor-not-allowed"
               onClick={
-                user && course?.studentEnrolled?.includes(user?._id)
+                isAlreadyEnrolled
                   ? () => navigate("/dashboard/enrolled-courses")
+                  : isFreeCourse && handleFreeEnroll
+                  ? handleFreeEnroll
                   : handleBuyCourse
               }
             >
-              {user && course?.studentEnrolled?.includes(user?._id)
+              {isAlreadyEnrolled
                 ? "Go To Course"
+                : isFreeCourse
+                ? isEnrolling
+                  ? "Enrolling..."
+                  : "Enroll Now"
                 : "Buy Now"}
             </button>
-            {/* ✅ FIX: was studentsEnrolled — schema field is studentEnrolled (no trailing s) */}
-            {(!user || !course?.studentEnrolled?.includes(user?._id)) && (
+            {!isAlreadyEnrolled && !isFreeCourse && (
               <button onClick={handleAddToCart} className="blackButton">
                 Add to Cart
               </button>
@@ -86,7 +107,7 @@ function CourseDetailsCard({ course, setConfirmationModal, handleBuyCourse }) {
           </div>
           <div>
             <p className="pb-3 pt-6 text-center text-sm text-richblack-25">
-              30-Day Money-Back Guarantee
+              {isFreeCourse ? "Free Lifetime Access" : "30-Day Money-Back Guarantee"}
             </p>
           </div>
 
