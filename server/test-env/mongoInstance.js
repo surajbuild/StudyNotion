@@ -118,7 +118,8 @@ const ensureIsolatedMongo = async ({ dbName = DEFAULT_TEST_DB_NAME, port = DEFAU
     ];
 
     const child = spawn(mongodBin, args, {
-        stdio: ["ignore", "pipe", "pipe"],
+        // Ignore stdout so MongoDB 8.0 JSON logs never fill an unread OS pipe buffer and deadlock mongod
+        stdio: ["ignore", "ignore", "pipe"],
         windowsHide: true,
     });
 
