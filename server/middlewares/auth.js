@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
 const { isTestMode } = require("../config/testSafety");
 if (!isTestMode()) {
     require("dotenv").config();
@@ -14,11 +15,22 @@ const {
 // ============================================================
 exports.auth = async (req, res, next) => {
     try {
-        const authHeader = req.header("Authorization");
-        const token =
-            req.cookies?.token ||
-            req.body?.token ||
-            (authHeader && authHeader.replace("Bearer ", ""));
+        let token = null;
+
+        // SEC-006: Accept tokens strictly from Authorization header or secure cookies.
+        // req.body.token is explicitly rejected to prevent token injection / CSRF body confusion.
+        const authHeader = req.header("Authorization") || req.header("authorization");
+        if (authHeader && typeof authHeader === "string") {
+            if (authHeader.startsWith("Bearer ")) {
+                token = authHeader.slice(7).trim();
+            } else if (!authHeader.startsWith("Bearer ")) {
+                token = authHeader.trim();
+            }
+        }
+
+        if (!token && req.cookies && req.cookies.token) {
+            token = req.cookies.token;
+        }
 
         if (!token) {
             return res.status(401).json({
@@ -28,9 +40,9 @@ exports.auth = async (req, res, next) => {
         }
 
         // Verify the token signature and expiry against our secret
+        let decoded;
         try {
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            req.user = decoded;
+            decoded = jwt.verify(token, process.env.JWT_SECRET);
         } catch (err) {
             return res.status(401).json({
                 success: false,
@@ -38,6 +50,55 @@ exports.auth = async (req, res, next) => {
             });
         }
 
+        // SEC-003: Check token revocation against authoritative database tokenVersion.
+        // Active whenever MongoDB is connected (production, staging, E2E, and integration tests)
+        // or during dedicated unit tests with req.__testRevocation set.
+        const isDbConnected = mongoose.connection && mongoose.connection.readyState === 1;
+        if (isDbConnected || req.__testRevocation) {
+            let dbUser = null;
+            try {
+                const query = User.findById(decoded.id);
+                if (query && typeof query.select === "function") {
+                    dbUser = await query.select("tokenVersion").lean();
+                } else if (query && typeof query.then === "function") {
+                    dbUser = await query;
+                } else {
+                    dbUser = query;
+                }
+            } catch (e) {
+                dbUser = null;
+            }
+
+            if (!dbUser) {
+                return res.status(401).json({
+                    success: false,
+                    message: "User account no longer exists",
+                });
+            }
+
+            const currentDbVersion = dbUser.tokenVersion ?? 0;
+            const tokenVersion = decoded.tokenVersion;
+
+            // Legacy tokens issued prior to tokenVersion migration have decoded.tokenVersion === undefined.
+            // They remain valid ONLY as long as currentDbVersion is 0. Once password is changed/reset, they are revoked.
+            if (tokenVersion === undefined) {
+                if (currentDbVersion !== 0) {
+                    return res.status(401).json({
+                        success: false,
+                        code: "TOKEN_REVOKED",
+                        message: "Token has been revoked due to a password change or reset. Please sign in again.",
+                    });
+                }
+            } else if (tokenVersion !== currentDbVersion) {
+                return res.status(401).json({
+                    success: false,
+                    code: "TOKEN_REVOKED",
+                    message: "Token has been revoked due to a password change or reset. Please sign in again.",
+                });
+            }
+        }
+
+        req.user = decoded;
         next();
     } catch (error) {
         console.error("Auth middleware error:", error);
