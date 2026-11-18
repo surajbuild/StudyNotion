@@ -5,6 +5,13 @@ exports.updateCourseProgress = async (req, res) => {
     const { courseId, subsectionId } = req.body;
     const userId = req.user.id;
 
+    if (!courseId || !subsectionId) {
+        return res.status(400).json({
+            success: false,
+            message: "courseId and subsectionId are required",
+        });
+    }
+
     try {
         // Check if the subsection is valid
         const subSection = await SubSection.findById(subsectionId);

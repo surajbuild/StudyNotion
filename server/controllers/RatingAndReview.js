@@ -11,11 +11,10 @@ exports.createRating = async (req, res) => {
         //fetch data from req.body
         const { rating, review, courseId } = req.body;
         //check if user is enrolled or not
-        const courseDetails = await Course.findOne(
-                              {_id: courseId,
-                                studentEnrolled: {$elemMatch: {$eq: userId}}
-                              }                 
-        );
+        const courseDetails = await Course.findOne({
+            _id: courseId,
+            studentEnrolled: userId,
+        });
 
         if(!courseDetails) {
             return res.status(404).json({
@@ -71,10 +70,16 @@ exports.createRating = async (req, res) => {
 }
 
 //get average rating
-exports.getAverageRating = async  (req, res) =>  {
-    try{
-        //get course Id
-        const courseId = req.body.courseId;
+exports.getAverageRating = async (req, res) => {
+    try {
+        //get course Id from query string (GET) or request body
+        const courseId = req.query?.courseId || req.body?.courseId;
+        if (!courseId) {
+            return res.status(400).json({
+                success: false,
+                message: "Course ID is required",
+            });
+        }
         //calculation avg rating
         const result = await RatingAndReview.aggregate([
             {

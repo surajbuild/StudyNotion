@@ -93,13 +93,6 @@ exports.categoryPageDetails = async (req, res) => {
           .json({ success: false, message: "Category not found" })
       }
 
-      if (selectedCategory.courses.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: "No courses found for the selected category.",
-        })
-      }
-
       // Get courses for a random other category
       const categoriesExceptSelected = await Category.find({
         _id: { $ne: categoryId },
