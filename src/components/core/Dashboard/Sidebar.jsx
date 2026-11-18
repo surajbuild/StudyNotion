@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom'
 import { VscSignOut } from 'react-icons/vsc'
 import { HiMenu, HiX } from 'react-icons/hi'
 import ConfirmationModal from '../../common/ConfirmationModal'
+import { ACCOUNT_TYPE, isInstructorApproved } from '../../../utils/constants'
 
 const Sidebar = () => {
     const { user, loading: profileLoading } = useSelector((state) => state.profile);
@@ -30,6 +31,13 @@ const Sidebar = () => {
             <div className='flex flex-col gap-y-1'>
                 {sidebarLinks.map((link) => {
                     if (link.type && user?.accountType !== link.type) return null;
+                    if (
+                        link.requiresApproval &&
+                        user?.accountType === ACCOUNT_TYPE.INSTRUCTOR &&
+                        !isInstructorApproved(user)
+                    ) {
+                        return null;
+                    }
                     return (
                         <div key={link.id} onClick={() => setMobileOpen(false)}>
                             <SidebarLink link={link} iconName={link.icon} />

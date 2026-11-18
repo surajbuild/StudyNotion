@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 jest.mock("../models/Course");
 jest.mock("../models/Section");
 jest.mock("../models/SubSection");
+jest.mock("../models/User");
 jest.mock("../utils/imageUploader", () => ({
   imageUploadToCloudinary: jest.fn().mockResolvedValue({ secure_url: "https://cloudinary.com/fake-video.mp4" }),
 }));
@@ -11,6 +12,7 @@ jest.mock("../utils/imageUploader", () => ({
 const Course = require("../models/Course");
 const Section = require("../models/Section");
 const SubSection = require("../models/SubSection");
+const User = require("../models/User");
 const app = require("../index");
 
 describe("Section & SubSection Endpoints", () => {
@@ -22,6 +24,12 @@ describe("Section & SubSection Endpoints", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    User.findById.mockResolvedValue({
+      _id: "inst_1",
+      accountType: "Instructor",
+      approvalStatus: "APPROVED",
+      approved: true,
+    });
   });
 
   describe("Section Endpoints", () => {
@@ -154,6 +162,36 @@ describe("Section & SubSection Endpoints", () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(SubSection.findByIdAndDelete).toHaveBeenCalledWith("sub_1");
+    });
+
+    it("should block pending and rejected instructors from section/subsection mutations (403)", async () => {
+      User.findById.mockResolvedValue({
+        _id: "inst_1",
+        accountType: "Instructor",
+        approvalStatus: "PENDING",
+        approved: false,
+      });
+
+      const pendingRes = await request(app)
+        .post("/api/v1/course/addSection")
+        .set("Authorization", `Bearer ${instructorToken}`)
+        .send({ sectionName: "Blocked Section", courseId: "c1" });
+      expect(pendingRes.status).toBe(403);
+      expect(pendingRes.body.code).toBe("INSTRUCTOR_PENDING_APPROVAL");
+
+      User.findById.mockResolvedValue({
+        _id: "inst_1",
+        accountType: "Instructor",
+        approvalStatus: "REJECTED",
+        approved: false,
+      });
+
+      const rejectedRes = await request(app)
+        .post("/api/v1/course/addSubSection")
+        .set("Authorization", `Bearer ${instructorToken}`)
+        .send({ sectionId: "sec_1", title: "Blocked Lecture" });
+      expect(rejectedRes.status).toBe(403);
+      expect(rejectedRes.body.code).toBe("INSTRUCTOR_REJECTED");
     });
   });
 });

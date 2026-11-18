@@ -1,14 +1,18 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useSelector } from "react-redux";
 import { Link } from "react-router-dom";
-import { VscFolderLibrary, VscAccount, VscSettingsGear } from "react-icons/vsc";
-import { fetchAdminDashboard } from "../../../../services/operations/adminAPI";
+import { VscFolderLibrary, VscAccount, VscSettingsGear, VscOrganization } from "react-icons/vsc";
+import {
+  fetchAdminDashboard,
+  fetchAdminUserStats,
+} from "../../../../services/operations/adminAPI";
 
 const AdminDashboard = () => {
   const { user } = useSelector((state) => state.profile);
   const { token } = useSelector((state) => state.auth);
 
   const [dashboardData, setDashboardData] = useState(null);
+  const [userStats, setUserStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -16,8 +20,12 @@ const AdminDashboard = () => {
     setLoading(true);
     setError("");
     try {
-      const data = await fetchAdminDashboard(token);
+      const [data, uStats] = await Promise.all([
+        fetchAdminDashboard(token),
+        fetchAdminUserStats(token).catch(() => null),
+      ]);
       setDashboardData(data);
+      setUserStats(uStats);
     } catch (err) {
       setError(err?.message || "Failed to load admin overview.");
     } finally {
@@ -97,14 +105,53 @@ const AdminDashboard = () => {
           </p>
         </div>
 
-        <Link
-          to="/dashboard/admin/categories"
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-yellow-50 px-5 py-2.5 text-sm font-semibold text-richblack-900 transition-colors hover:bg-yellow-100"
-        >
-          <VscFolderLibrary className="text-lg" />
-          <span>Manage Categories</span>
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            to="/dashboard/admin/users"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-yellow-50/40 bg-richblack-800 px-4 py-2.5 text-sm font-semibold text-yellow-50 transition-colors hover:bg-richblack-700"
+          >
+            <VscOrganization className="text-lg" />
+            <span>Manage Users</span>
+            {userStats?.pendingInstructors > 0 && (
+              <span className="rounded-full bg-yellow-50 px-2 py-0.5 text-xs font-bold text-richblack-900">
+                {userStats.pendingInstructors}
+              </span>
+            )}
+          </Link>
+          <Link
+            to="/dashboard/admin/categories"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-yellow-50 px-5 py-2.5 text-sm font-semibold text-richblack-900 transition-colors hover:bg-yellow-100"
+          >
+            <VscFolderLibrary className="text-lg" />
+            <span>Manage Categories</span>
+          </Link>
+        </div>
       </div>
+
+      {/* Pending Instructor Approval Callout */}
+      {userStats && userStats.pendingInstructors > 0 && (
+        <div
+          role="status"
+          data-testid="admin-pending-instructors-banner"
+          className="flex flex-col gap-3 rounded-xl border border-yellow-50/40 bg-yellow-900/20 p-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div>
+            <p className="text-sm font-semibold text-yellow-50">
+              {userStats.pendingInstructors} Pending Instructor{" "}
+              {userStats.pendingInstructors === 1 ? "Application" : "Applications"}
+            </p>
+            <p className="mt-0.5 text-xs text-richblack-200">
+              Review pending instructor applications to grant or deny course creation access.
+            </p>
+          </div>
+          <Link
+            to="/dashboard/admin/users?tab=PENDING"
+            className="inline-flex flex-shrink-0 items-center justify-center rounded-lg bg-yellow-50 px-4 py-2 text-xs font-semibold text-richblack-900 hover:bg-yellow-100"
+          >
+            Review Pending Applications →
+          </Link>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

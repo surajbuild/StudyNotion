@@ -12,7 +12,7 @@ import { apiConnector } from "../../services/apiconnector";
 import { categories } from "../../services/apis";
 import { FaArrowDown } from "react-icons/fa";
 import { logout } from "../../services/operations/authAPI";
-import { ACCOUNT_TYPE } from "../../utils/constants";
+import { ACCOUNT_TYPE, isInstructorApproved } from "../../utils/constants";
 
 const Navbar = () => {
   const { token } = useSelector((state) => state.auth);
@@ -333,22 +333,28 @@ const Navbar = () => {
                     onClick={() => setMobileMenuOpen(false)}
                     className="flex items-center gap-x-2 py-2 text-sm text-richblack-200 hover:text-yellow-25"
                   >
-                    <span>Instructor Dashboard</span>
+                    <span>
+                      {isInstructorApproved(user) ? "Instructor Dashboard" : "Approval Status"}
+                    </span>
                   </Link>
-                  <Link
-                    to="/dashboard/my-courses"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center gap-x-2 py-2 text-sm text-richblack-200 hover:text-yellow-25"
-                  >
-                    <span>My Courses</span>
-                  </Link>
-                  <Link
-                    to="/dashboard/add-course"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center gap-x-2 py-2 text-sm text-richblack-200 hover:text-yellow-25"
-                  >
-                    <span>Add Course</span>
-                  </Link>
+                  {isInstructorApproved(user) && (
+                    <>
+                      <Link
+                        to="/dashboard/my-courses"
+                        onClick={() => setMobileMenuOpen(false)}
+                        className="flex items-center gap-x-2 py-2 text-sm text-richblack-200 hover:text-yellow-25"
+                      >
+                        <span>My Courses</span>
+                      </Link>
+                      <Link
+                        to="/dashboard/add-course"
+                        onClick={() => setMobileMenuOpen(false)}
+                        className="flex items-center gap-x-2 py-2 text-sm text-richblack-200 hover:text-yellow-25"
+                      >
+                        <span>Add Course</span>
+                      </Link>
+                    </>
+                  )}
                 </>
               )}
 
@@ -367,6 +373,13 @@ const Navbar = () => {
                     className="flex items-center gap-x-2 py-2 text-sm text-richblack-200 hover:text-yellow-25"
                   >
                     <span>Manage Categories</span>
+                  </Link>
+                  <Link
+                    to="/dashboard/admin/users"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-x-2 py-2 text-sm text-richblack-200 hover:text-yellow-25"
+                  >
+                    <span>User Management</span>
                   </Link>
                 </>
               )}

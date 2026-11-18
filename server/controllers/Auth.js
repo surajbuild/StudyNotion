@@ -3,12 +3,19 @@ const OTP = require("../models/OTP");
 const otpGenerator = require("otp-generator");
 const bcrypt = require("bcrypt");
 const { passwordUpdated } = require("../mail/templates/passwordUpdate");
+const { instructorApplicationReceivedEmail } = require("../mail/templates/instructorApprovalEmail");
 const mailSender = require("../utils/mailSender");
 const otpTemplate = require("../mail/templates/emailVerificationTemplate");
 const Profile = require("../models/Profile");
 const jwt = require("jsonwebtoken");
 const { isTestMode } = require("../config/testSafety");
 const { validateNewPassword } = require("../utils/passwordPolicy");
+const {
+    APPROVAL_STATUS,
+    ALLOWED_SIGNUP_ROLES,
+    resolveInstructorApprovalStatus,
+    isInstructorApproved,
+} = require("../utils/instructorApproval");
 
 if (!isTestMode()) {
     require("dotenv").config();
@@ -35,6 +42,21 @@ exports.signUp = async (req, res) => {
             return res.status(403).json({
                 success: false,
                 message: "All fields are required",
+            });
+        }
+
+        // Strict public signup role validation — prevent Admin privilege escalation
+        const resolvedRole = typeof accountType === "string" ? accountType.trim() : "";
+        if (resolvedRole === "Admin") {
+            return res.status(403).json({
+                success: false,
+                message: "Administrator accounts cannot be created through public signup",
+            });
+        }
+        if (!ALLOWED_SIGNUP_ROLES.has(resolvedRole)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid account type. Allowed roles: Student, Instructor",
             });
         }
 
@@ -96,8 +118,11 @@ exports.signUp = async (req, res) => {
         // Hash the password before storing (bcrypt salt rounds = 10)
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Instructors require admin approval; students are auto-approved
-        const approved = accountType !== "Instructor";
+        // Backend unconditionally assigns initial approval state (never trust client payload).
+        // Instructors require admin approval ("PENDING"); Students are auto-approved.
+        const isInstructorSignup = resolvedRole === "Instructor";
+        const approvalStatus = isInstructorSignup ? APPROVAL_STATUS.PENDING : undefined;
+        const approved = !isInstructorSignup;
 
         // Create a blank additional-details profile for the new user
         const profileDetails = await Profile.create({
@@ -107,27 +132,50 @@ exports.signUp = async (req, res) => {
             contactNumber: null,
         });
 
-        const user = await User.create({
+        const createPayload = {
             firstName,
             lastName,
             email,
             contactNumber,
             password: hashedPassword,
-            accountType,
+            accountType: resolvedRole,
             approved,
             additionalDetails: profileDetails._id,
             // Generate an avatar from the user's initials as a default profile picture
             image: `https://api.dicebear.com/9.x/initials/svg?seed=${firstName} ${lastName}`,
-        });
+        };
+
+        if (isInstructorSignup) {
+            createPayload.approvalStatus = approvalStatus;
+        }
+
+        const user = await User.create(createPayload);
 
         // Strip password before sending response — never return hashed passwords
         // to the client, even accidentally
         user.password = undefined;
+        user.token = undefined;
+        user.resetPasswordExpires = undefined;
+
+        // Best-effort instructor application received email (must not fail signup)
+        if (isInstructorSignup) {
+            try {
+                await mailSender(
+                    email,
+                    "Instructor Application Received — StudyNotion",
+                    instructorApplicationReceivedEmail(firstName)
+                );
+            } catch (mailErr) {
+                console.error("Instructor application email failed:", mailErr.message);
+            }
+        }
 
         return res.status(200).json({
             success: true,
             user,
-            message: "User registered successfully",
+            message: isInstructorSignup
+                ? "Instructor registered successfully. Your account is pending administrator approval."
+                : "User registered successfully",
         });
     } catch (error) {
         console.error("signUp error:", error);
@@ -198,9 +246,21 @@ exports.login = async (req, res) => {
             expiresIn: "24h",
         });
 
-        // Attach token to the user object for the response, but strip the password
-        user.token = token;
-        user.password = undefined;
+        // Attach token to the user object for the response, strip sensitive fields,
+        // and include normalized approvalStatus for Instructor UI hydration
+        const responseUser =
+            typeof user.toObject === "function" ? user.toObject() : { ...user };
+        responseUser.token = token;
+        delete responseUser.password;
+        delete responseUser.resetPasswordExpires;
+
+        if (responseUser.accountType === "Instructor") {
+            responseUser.approvalStatus = resolveInstructorApprovalStatus(responseUser);
+            responseUser.approved = isInstructorApproved(responseUser);
+        } else {
+            responseUser.approvalStatus = null;
+            responseUser.approved = true;
+        }
 
         // Set an httpOnly cookie as a secondary authentication mechanism
         const cookieOptions = {
@@ -211,7 +271,7 @@ exports.login = async (req, res) => {
         res.cookie("token", token, cookieOptions).status(200).json({
             success: true,
             token,
-            user,
+            user: responseUser,
             message: "Logged in successfully",
         });
     } catch (error) {

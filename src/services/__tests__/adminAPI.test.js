@@ -3,6 +3,11 @@ import {
   createCategory,
   updateCategory,
   deleteCategory,
+  fetchAdminUserStats,
+  fetchAdminUsers,
+  fetchAdminUserDetails,
+  approveInstructor,
+  rejectInstructor,
 } from "../operations/adminAPI";
 import { apiConnector } from "../apiconnector";
 import { adminEndpoints } from "../apis";
@@ -83,5 +88,74 @@ describe("adminAPI Service Operations (GAP-001)", () => {
     expect(res.success).toBe(false);
     expect(res.associatedCourseCount).toBe(2);
     expect(res.message).toMatch(/2 course/i);
+  });
+
+  test("fetchAdminUserStats and fetchAdminUsers send Authorization header and query filters", async () => {
+    apiConnector.mockResolvedValueOnce({
+      data: { success: true, data: { totalUsers: 10, pendingInstructors: 2 } },
+    });
+    const stats = await fetchAdminUserStats("admin-tok");
+    expect(apiConnector).toHaveBeenCalledWith(
+      "GET",
+      adminEndpoints.ADMIN_USER_STATS_API,
+      null,
+      { Authorization: "Bearer admin-tok" }
+    );
+    expect(stats.pendingInstructors).toBe(2);
+
+    apiConnector.mockResolvedValueOnce({
+      data: { success: true, data: { users: [], pagination: { page: 1, totalPages: 1 } } },
+    });
+    await fetchAdminUsers(
+      { search: "jane", accountType: "Instructor", approvalStatus: "PENDING", page: 2, limit: 8 },
+      "admin-tok"
+    );
+    expect(apiConnector).toHaveBeenLastCalledWith(
+      "GET",
+      adminEndpoints.ADMIN_USERS_LIST_API,
+      null,
+      { Authorization: "Bearer admin-tok" },
+      { search: "jane", accountType: "Instructor", approvalStatus: "PENDING", page: "2", limit: "8" }
+    );
+  });
+
+  test("fetchAdminUserDetails fetches individual user details cleanly", async () => {
+    apiConnector.mockResolvedValueOnce({
+      data: { success: true, data: { _id: "u1", email: "inst@test.com" } },
+    });
+    const details = await fetchAdminUserDetails("u1", "admin-tok");
+    expect(apiConnector).toHaveBeenCalledWith(
+      "GET",
+      `${adminEndpoints.ADMIN_USER_DETAILS_API}/u1`,
+      null,
+      { Authorization: "Bearer admin-tok" }
+    );
+    expect(details.email).toBe("inst@test.com");
+  });
+
+  test("approveInstructor and rejectInstructor call PUT endpoints and handle errors gracefully", async () => {
+    apiConnector.mockResolvedValueOnce({
+      data: { success: true, data: { _id: "u1", approvalStatus: "APPROVED" } },
+    });
+    const approved = await approveInstructor("u1", "admin-tok");
+    expect(approved.success).toBe(true);
+    expect(apiConnector).toHaveBeenCalledWith(
+      "PUT",
+      `${adminEndpoints.ADMIN_INSTRUCTOR_ACTION_BASE_API}/u1/approve`,
+      {},
+      { Authorization: "Bearer admin-tok" }
+    );
+
+    apiConnector.mockResolvedValueOnce({
+      data: { success: true, data: { _id: "u2", approvalStatus: "REJECTED" } },
+    });
+    const rejected = await rejectInstructor("u2", "Incomplete bio", "admin-tok");
+    expect(rejected.success).toBe(true);
+    expect(apiConnector).toHaveBeenLastCalledWith(
+      "PUT",
+      `${adminEndpoints.ADMIN_INSTRUCTOR_ACTION_BASE_API}/u2/reject`,
+      { reason: "Incomplete bio" },
+      { Authorization: "Bearer admin-tok" }
+    );
   });
 });

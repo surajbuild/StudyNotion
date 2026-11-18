@@ -1,5 +1,14 @@
 const jwt = require("jsonwebtoken");
-const { auth, isStudent, isInstructor, isAdmin } = require("../middlewares/auth");
+
+jest.mock("../models/User");
+const User = require("../models/User");
+const {
+  auth,
+  isStudent,
+  isInstructor,
+  isApprovedInstructor,
+  isAdmin,
+} = require("../middlewares/auth");
 
 describe("Auth Middleware (server/middlewares/auth.js)", () => {
   const JWT_SECRET = process.env.JWT_SECRET || "test-jwt-secret-for-tests";
@@ -156,6 +165,122 @@ describe("Auth Middleware (server/middlewares/auth.js)", () => {
         await isAdmin(req, res, next);
         expect(res.status).toHaveBeenCalledWith(403);
         expect(next).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("isApprovedInstructor (GAP-002 DB-backed enforcement)", () => {
+      beforeEach(() => {
+        jest.clearAllMocks();
+      });
+
+      it("should return 401 when req.user is missing", async () => {
+        const req = {};
+        const res = mockResponse();
+        const next = jest.fn();
+
+        await isApprovedInstructor(req, res, next);
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(next).not.toHaveBeenCalled();
+      });
+
+      it("should return 403 when non-instructor attempts access", async () => {
+        const req = { user: { id: "stu1", accountType: "Student" } };
+        const res = mockResponse();
+        const next = jest.fn();
+
+        await isApprovedInstructor(req, res, next);
+        expect(res.status).toHaveBeenCalledWith(403);
+        expect(User.findById).not.toHaveBeenCalled();
+        expect(next).not.toHaveBeenCalled();
+      });
+
+      it("should return 401 when DB user no longer exists", async () => {
+        User.findById.mockResolvedValue(null);
+        const req = { user: { id: "ghost_inst", accountType: "Instructor" } };
+        const res = mockResponse();
+        const next = jest.fn();
+
+        await isApprovedInstructor(req, res, next);
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(next).not.toHaveBeenCalled();
+      });
+
+      it("should return 403 for PENDING instructor (ignoring any client body approval spoofing)", async () => {
+        User.findById.mockResolvedValue({
+          _id: "inst_pending",
+          accountType: "Instructor",
+          approvalStatus: "PENDING",
+          approved: false,
+        });
+        const req = {
+          user: { id: "inst_pending", accountType: "Instructor", approved: true },
+          body: { approved: true, approvalStatus: "APPROVED" },
+        };
+        const res = mockResponse();
+        const next = jest.fn();
+
+        await isApprovedInstructor(req, res, next);
+        expect(res.status).toHaveBeenCalledWith(403);
+        expect(res.json).toHaveBeenCalledWith(
+          expect.objectContaining({
+            success: false,
+            code: "INSTRUCTOR_PENDING_APPROVAL",
+            approvalStatus: "PENDING",
+          })
+        );
+        expect(next).not.toHaveBeenCalled();
+      });
+
+      it("should return 403 for REJECTED instructor", async () => {
+        User.findById.mockResolvedValue({
+          _id: "inst_rejected",
+          accountType: "Instructor",
+          approvalStatus: "REJECTED",
+          approved: false,
+        });
+        const req = { user: { id: "inst_rejected", accountType: "Instructor" } };
+        const res = mockResponse();
+        const next = jest.fn();
+
+        await isApprovedInstructor(req, res, next);
+        expect(res.status).toHaveBeenCalledWith(403);
+        expect(res.json).toHaveBeenCalledWith(
+          expect.objectContaining({
+            success: false,
+            code: "INSTRUCTOR_REJECTED",
+            approvalStatus: "REJECTED",
+          })
+        );
+        expect(next).not.toHaveBeenCalled();
+      });
+
+      it("should call next() for APPROVED instructor", async () => {
+        User.findById.mockResolvedValue({
+          _id: "inst_ok",
+          accountType: "Instructor",
+          approvalStatus: "APPROVED",
+          approved: true,
+        });
+        const req = { user: { id: "inst_ok", accountType: "Instructor" } };
+        const res = mockResponse();
+        const next = jest.fn();
+
+        await isApprovedInstructor(req, res, next);
+        expect(next).toHaveBeenCalled();
+        expect(req.instructorApprovalStatus).toBe("APPROVED");
+      });
+
+      it("should call next() for legacy pre-migration instructor missing approvalStatus", async () => {
+        User.findById.mockResolvedValue({
+          _id: "inst_legacy",
+          accountType: "Instructor",
+        });
+        const req = { user: { id: "inst_legacy", accountType: "Instructor" } };
+        const res = mockResponse();
+        const next = jest.fn();
+
+        await isApprovedInstructor(req, res, next);
+        expect(next).toHaveBeenCalled();
       });
     });
   });

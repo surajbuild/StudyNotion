@@ -1,8 +1,69 @@
 # StudyNotion — Detailed QA Test Report
 
-> **Latest Cycle:** Cycle #9 — `GAP-007` Consistent Password Policy Enforcement + `BUG-032` & `BUG-033` Fixes  
+> **Latest Cycle:** Cycle #10 — `GAP-002` Instructor Approval Enforcement & Admin User Management + `BUG-034` & `BUG-035` Fixes  
 > **Date:** 2026-11-18  
 > **Environment:** Windows 11 | Node.js v22.16.0 | React 18 (CRA 5) | Express 5 | Mongoose 8 | MongoDB 8.0 (Isolated Local Ephemeral on `127.0.0.1:27018`) | Chromium 1208 (Playwright)
+
+---
+
+## Cycle #10 — Execution Summary (2026-11-18)
+
+| Test Suite / Verification Gate | Command | Suites | Tests | Passed | Failed | Blocked | Result |
+|-------------------------------|---------|--------|-------|--------|--------|---------|--------|
+| **Frontend Unit & Component Tests** | `npm test` | 32 | 115 | 115 | 0 | 0 | **PASS** (7.89s, +3 suites / +15 tests) |
+| **Backend Unit, API & Safety Guardrails** | `npx jest --testPathIgnorePatterns=integration.realdb.test.js` | 14 | 177 | 177 | 0 | 0 | **PASS** (7.39s, +1 suite / +31 tests incl. `adminUsers.test.js`) |
+| **Backend Real-MongoDB Full-Stack Integration** | `npx jest __tests__/integration.realdb.test.js --runInBand --forceExit` | 1 | 14 | 14 | 0 | 0 | **PASS** (9.60s, +2 suites: `BE-DB-13`, `BE-DB-14`) |
+| **Isolated Authenticated & Feature Playwright E2E (`E2E-16`–`38` + `REG-01`–`03`)** | `node e2e/authenticated.e2e.js` | 1 | 26 | 26 | 0 | 0 | **PASS** (+4 new `E2E-35`–`E2E-38`, 0 page errors, 0 Swiper warnings) |
+| **Public Catalog & Console/Network Regression (`PUB-01`–`PUB-04`)** | `node scratch/public_regression.js` | 1 | 4 | 4 | 0 | 0 | **PASS** (0 console errors, 0 page errors, 0 failed network requests) |
+| **Cycle #10 Live-Executed Subtotal** | — | **49** | **336** | **336** | **0** | **0** | **PASS (`336 / 336` live + `25` historical Cycle #2–#3 = `361 / 361` cumulative)** |
+| **Strict Frontend ESLint** | `npx eslint src --max-warnings=0` | — | — | 0 errors, 0 warnings | — | — | **PASS** (Exit 0) |
+| **Frontend Production Build** | `npm run build` | — | — | Exit 0 (0 ESLint warnings) | — | — | **PASS** |
+
+### Cycle #10 Actual Verification Outputs
+
+#### A. Automated Unit & Real-MongoDB Integration Suites
+```text
+Frontend (npm test):
+Test Suites: 32 passed, 32 total
+Tests:       115 passed, 115 total (added ApprovedInstructorRoute.test.jsx [5], InstructorApprovalNotice.test.jsx [3], UserManagement.test.jsx [4], adminAPI.test.js [+3])
+Time:        7.888 s
+
+Backend Unit (server):
+Test Suites: 14 passed, 14 total
+Tests:       177 passed, 177 total (added adminUsers.test.js [14], authMiddleware.test.js [+7], auth.test.js [+5], course.test.js [+2], profile.test.js [+2], section.test.js [+1])
+Time:        7.389 s
+
+Backend Real-MongoDB Integration (server/__tests__/integration.realdb.test.js):
+Test Suites: 1 passed, 1 total
+Tests:       14 passed, 14 total (added BE-DB-13 & BE-DB-14)
+Time:        9.596 s
+```
+
+#### B. Isolated Playwright E2E Run (`e2e/authenticated.e2e.js`) & Public Regression Audit
+```text
+[PASS] E2E-16..E2E-21 Authenticated Student, Razorpay Payment, ViewCourse, Instructor CRUD & Settings
+[PASS] E2E-22..E2E-23 GAP-005 Free Course Direct Enrollment & Publishing
+[PASS] E2E-24..E2E-26 GAP-004 Global Search, Filters, Sorting, Pagination & Mobile Search
+[PASS] E2E-27..E2E-29 GAP-001 Admin Security, Dashboard, Category CRUD & Consistency
+[PASS] E2E-30..E2E-32 GAP-008 Persistent DB Cart, Order History, Mixed Checkout & Cross-User Isolation
+[PASS] E2E-33..E2E-34 GAP-007 Password Policy Consistency (Signup, Settings, Forgot/Reset)
+[PASS] E2E-35 GAP-002 Pending Instructor Signup, Route Guard, Hard-Refresh Spoof Defense & Direct API 403: appEmail=true, profileBanner=true, sidebarHidden=true, notice=true, hardRefresh=true, api={"createStatus":403,"dashStatus":403}
+[PASS] E2E-36 GAP-002 Admin User Management UI, Details Modal, Mobile 375px & Approve -> Instructor Unlock: pendingBefore=3, detailsOk=true, mobileOverflow=false, approve=200, email=true, approvedTab=true, unlocked=true
+[PASS] E2E-37 GAP-002 Admin Instructor Rejection with Reason, Rejected UX & Backend 403: reject=200, email=true, rejectedTab=true, noticeOk=true, apiStatus=403
+[PASS] E2E-38 GAP-002 Admin User Management RBAC Protection (Student & Instructor Blocked): studentUi=true, studentApi403=true, instructorUi=true, instructorApi403=true
+[PASS] REG-01..REG-03 Footer, Error Page & Mobile 375px Regressions
+
+PAGE ERRORS: 0 [] | SWIPER WARNINGS: 0 | TOTAL: 26 PASSED: 26 FAILED: 0
+
+Public Catalog & Console/Network Regression:
+[PASS] PUB-01..PUB-04 | CONSOLE_ERRORS: 0 [] | PAGE_ERRORS: 0 [] | FAILED_REQUESTS: 0 []
+```
+
+#### C. Strict ESLint & Production Build
+```text
+$ npx eslint src --max-warnings=0 -> Exit 0 (0 errors, 0 warnings)
+$ npm run build -> Exit 0 (0 [eslint] warnings; only 2 pre-existing third-party swiper PostCSS CSS-nesting notices)
+```
 
 ---
 

@@ -731,4 +731,131 @@ describe("Auth Endpoints (server/controllers/Auth.js & ResetPassword.js)", () =>
       });
     });
   });
+
+  describe("GAP-002 Instructor Approval Signup Policy & Privilege Escalation Protection", () => {
+    const mailSender = require("../utils/mailSender");
+
+    const mockValidOtp = () => {
+      User.findOne.mockResolvedValue(null);
+      OTP.find.mockReturnValue({
+        sort: jest.fn().mockReturnValue({
+          limit: jest.fn().mockResolvedValue([{ otp: "123456", createdAt: new Date() }]),
+        }),
+      });
+      Profile.create.mockResolvedValue({ _id: "prof_new" });
+    };
+
+    it("should assign PENDING approvalStatus on instructor signup and ignore client-supplied APPROVED/approved", async () => {
+      mockValidOtp();
+      User.create.mockImplementation(async (doc) => ({ _id: "inst_new_1", ...doc }));
+
+      const res = await request(app).post("/api/v1/auth/signup").send({
+        firstName: "New",
+        lastName: "Instructor",
+        email: "new.inst@example.com",
+        password: "ValidPassword1!",
+        confirmPassword: "ValidPassword1!",
+        accountType: "Instructor",
+        otp: "123456",
+        approved: true,
+        approvalStatus: "APPROVED",
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(User.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accountType: "Instructor",
+          approvalStatus: "PENDING",
+          approved: false,
+        })
+      );
+      expect(res.body.user.approvalStatus).toBe("PENDING");
+      expect(res.body.user.approved).toBe(false);
+      expect(res.body.user.password).toBeUndefined();
+      expect(mailSender).toHaveBeenCalledWith(
+        "new.inst@example.com",
+        expect.stringMatching(/Application Received/i),
+        expect.any(String)
+      );
+    });
+
+    it("should still succeed instructor signup if application-received email fails", async () => {
+      mockValidOtp();
+      mailSender.mockRejectedValueOnce(new Error("SMTP offline"));
+      User.create.mockImplementation(async (doc) => ({ _id: "inst_new_2", ...doc }));
+
+      const res = await request(app).post("/api/v1/auth/signup").send({
+        firstName: "Resilient",
+        lastName: "Instructor",
+        email: "resilient.inst@example.com",
+        password: "ValidPassword1!",
+        confirmPassword: "ValidPassword1!",
+        accountType: "Instructor",
+        otp: "123456",
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.user.approvalStatus).toBe("PENDING");
+    });
+
+    it("should reject public signup attempting to create an Admin account with 403", async () => {
+      const res = await request(app).post("/api/v1/auth/signup").send({
+        firstName: "Evil",
+        lastName: "Admin",
+        email: "evil.admin@example.com",
+        password: "ValidPassword1!",
+        confirmPassword: "ValidPassword1!",
+        accountType: "Admin",
+        otp: "123456",
+      });
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toMatch(/Administrator accounts cannot be created/i);
+      expect(User.create).not.toHaveBeenCalled();
+    });
+
+    it("should reject signup with invalid accountType with 400", async () => {
+      const res = await request(app).post("/api/v1/auth/signup").send({
+        firstName: "Bad",
+        lastName: "Role",
+        email: "bad.role@example.com",
+        password: "ValidPassword1!",
+        confirmPassword: "ValidPassword1!",
+        accountType: "SuperUser",
+        otp: "123456",
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(User.create).not.toHaveBeenCalled();
+    });
+
+    it("should keep student signup unaffected (approved=true, no instructor approvalStatus)", async () => {
+      mockValidOtp();
+      User.create.mockImplementation(async (doc) => ({ _id: "stu_new_1", ...doc }));
+
+      const res = await request(app).post("/api/v1/auth/signup").send({
+        firstName: "Normal",
+        lastName: "Student",
+        email: "normal.student@example.com",
+        password: "ValidPassword1!",
+        confirmPassword: "ValidPassword1!",
+        accountType: "Student",
+        otp: "123456",
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(User.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accountType: "Student",
+          approved: true,
+        })
+      );
+      expect(User.create.mock.calls[0][0].approvalStatus).toBeUndefined();
+    });
+  });
 });

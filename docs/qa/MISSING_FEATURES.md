@@ -15,14 +15,14 @@
   - **Verification:** `category.test.js` (+6), `integration.realdb.test.js` (+1 full real-DB RBAC/CRUD/consistency test), `AdminRoute.test.jsx` (5/5), `adminAPI.test.js` (3/3), `CategoryManagement.test.jsx` (3/3), and Playwright `E2E-27`–`E2E-29` (3/3).
 - **Remaining Optional Scope:** Full Admin User/Instructor management UI (covered separately under `GAP-002`).
 
-### `GAP-002` — Instructor Approval Enforcement
-- **Classification:** Confirmed Partial Implementation (`server/controllers/Auth.js` line 87 computes `const approved = accountType !== "Instructor"`)
-- **What is missing:** `User.js` schema has no `approved` field (Mongoose silently drops it on signup), `login` does not check `approved`, and there is no Admin approval endpoint/UI.
-- **What happens if not implemented:** Dead logic in `Auth.js` gives a false sense of instructor moderation.
-- **Required Changes:**
-  - *Backend:* Either add `approved: { type: Boolean, default: true }` to `server/models/User.js` + admin approval routes, OR remove the dead `approved` flag if self-serve instructor onboarding is intended.
-  - *Database:* Minor schema addition on `User` if kept.
-- **Priority:** Medium | **Complexity:** `LOW`
+### `GAP-002` — Instructor Approval Enforcement & Admin User Management — `RESOLVED (Cycle #10)`
+- **Classification:** Confirmed Partial Implementation (`server/controllers/Auth.js` previously computed `approved = accountType !== "Instructor"` without schema persistence or enforcement)
+- **Resolution (Cycle #10):**
+  - **Schema, Policy & Safe Migration:** Added `approved`, `approvalStatus` (`PENDING` | `APPROVED` | `REJECTED`), `approvalReviewedAt`, `approvalReviewedBy`, `rejectionReason`, and compound index `{ accountType: 1, approvalStatus: 1, createdAt: -1 }` to `server/models/User.js`. Created `server/utils/instructorApproval.js` (authoritative resolution treating legacy pre-migration instructors without `approvalStatus` as `APPROVED`) and idempotent `server/scripts/migrateInstructorApproval.js`.
+  - **Backend Enforcement & Security:** Hardened `Auth.js` `signUp` to allow only `"Student"` / `"Instructor"` (fixing `BUG-034`, blocking `"Admin"` self-signup with `403`), unconditionally assign `approvalStatus: "PENDING"` & `approved: false` for new instructors regardless of client payload, and send best-effort application-received email. Added DB-backed `isApprovedInstructor` middleware in `server/middlewares/auth.js` gating ALL restricted instructor endpoints (`createCourse`, `editCourse`, `deleteCourse`, `getInstructorCourses`, `add/update/deleteSection`, `add/update/deleteSubSection`, `instructorDashboard`, plus DB check in `getFullCourseDetails`) while preserving student course access. Fixed `BUG-035` by sanitizing `Profile.js` user responses.
+  - **Admin User Management APIs & UI:** Added `/api/v1/admin` (`server/routes/Admin.js`, `server/controllers/AdminUsers.js`) behind `auth, isAdmin`: `GET /users/stats`, `GET /users`, `GET /users/:userId`, `GET /instructors`, `PUT /instructors/:userId/approve`, `PUT /instructors/:userId/reject` (safe projections, ObjectId/query-injection guards, duplicate/invalid transition `409`, anti-self-action `403`, no role mutation, best-effort approval/rejection emails). Built responsive `UserManagement.jsx` (`/dashboard/admin/users`) with 7 real-DB KPI cards, filter tabs, search, server-side pagination, details modal, confirmation dialogs, and AdminDashboard callout; added `ApprovedInstructorRoute.jsx`, `InstructorApprovalNotice.jsx`, `MyProfile.jsx` status banners, sidebar/drawer filtering, and `App.jsx` hard-refresh DB hydration.
+  - **Verification:** `adminUsers.test.js` (14), `authMiddleware.test.js` (+7), `auth.test.js` (+5), `course.test.js` (+2), `profile.test.js` (+2), `section.test.js` (+1), `BE-DB-13` & `BE-DB-14` (real MongoDB 8.0), `ApprovedInstructorRoute.test.jsx` (5), `InstructorApprovalNotice.test.jsx` (3), `UserManagement.test.jsx` (4), `adminAPI.test.js` (+3), and Playwright `E2E-35`–`E2E-38` (4/4).
+- **Separate Future Scope:** Account suspension/banning & admin-initiated user deletion remain intentionally decoupled from onboarding approval.
 
 ### `GAP-003` — Legal & Policy Pages (Pending User-Approved Copy) *(Partially Resolved in Cycle #3)*
 - **Classification:** Confirmed Requirement Pending Content Confirmation

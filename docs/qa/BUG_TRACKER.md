@@ -1,15 +1,47 @@
 # StudyNotion — Bug Tracker & Root Cause Analysis
 
 > **Last Updated:** 2026-11-18  
-> **Audit Cycle:** Cycle #9 (`GAP-007` + `BUG-032` & `BUG-033`)  
+> **Audit Cycle:** Cycle #10 (`GAP-002` + `BUG-034` & `BUG-035`)  
 > **Severity Levels:** `CRITICAL` | `HIGH` | `MEDIUM` | `LOW`  
-> **Total Logged:** 31 (`BUG-001`–`BUG-033`, excluding unused gap) | **Fixed & Verified:** 31 | **Open:** 0
+> **Total Logged:** 33 (`BUG-001`–`BUG-035`, excluding unused gap) | **Fixed & Verified:** 33 | **Open:** 0
 
 ---
 
 ## Open Bugs
 
-*None — all tracked bugs across Cycles #1–#9 have been fixed and verified.*
+*None — all tracked bugs across Cycles #1–#10 have been fixed and verified.*
+
+---
+
+## Cycle #10 — Newly Discovered & Fixed Security Bugs + Feature Delivery (`GAP-002`)
+
+### `BUG-034` — Public Signup Endpoint Accepted Arbitrary `accountType` (Including `"Admin"`)
+- **Module:** Authentication & Security (`Auth.js`)
+- **Severity:** `HIGH` | **Priority:** P1 | **Status:** `FIXED & VERIFIED`
+- **Location:** [`server/controllers/Auth.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/controllers/Auth.js#L43-L56)
+- **How Discovered:** Phase 1–2 security audit of `POST /api/v1/auth/signup` during Cycle #10 (`GAP-002`).
+- **Root Cause:** `exports.signUp` passed client-supplied `req.body.accountType` directly into `User.create(...)`. Because `User.js` defines `enum: ["Admin", "Student", "Instructor"]`, any unauthenticated user submitting `{ accountType: "Admin" }` with a valid OTP could self-register an Administrator account.
+- **Resolution:** Enforced strict `ALLOWED_SIGNUP_ROLES = new Set(["Student", "Instructor"])` in `Auth.js`: explicitly returns `403 Forbidden` when `accountType === "Admin"` and `400 Bad Request` for any other unrecognized role. Backend also unconditionally assigns initial approval state (`PENDING` / `approved: false` for Instructors; `approved: true` for Students) while ignoring any client-supplied approval fields.
+- **Regression Verification:** [`server/__tests__/auth.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/auth.test.js) and real-MongoDB integration test `BE-DB-13`.
+
+### `BUG-035` — Profile Endpoints Returned Raw Mongoose `User` Documents Including `password`, `token` & `resetPasswordExpires`
+- **Module:** Profile API (`Profile.js`)
+- **Severity:** `MEDIUM` | **Priority:** P1 | **Status:** `FIXED & VERIFIED`
+- **Location:** [`server/controllers/Profile.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/controllers/Profile.js#L75-L209)
+- **How Discovered:** Phase 3–6 audit of `GET /api/v1/profile/getUserDetails`, `PUT /api/v1/profile/updateProfile`, and `PUT /api/v1/profile/updateDisplayPicture` when adding hard-refresh user hydration.
+- **Root Cause:** `Profile.js` returned Mongoose `User` documents directly in JSON responses without projecting out `password`, `token`, or `resetPasswordExpires`.
+- **Resolution:** Applied `sanitizeUserForClient()` from [`server/utils/instructorApproval.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/utils/instructorApproval.js) to all three profile responses, guaranteeing sensitive fields are stripped while normalizing authoritative `approvalStatus` and `approved` fields for Instructors.
+- **Regression Verification:** [`server/__tests__/profile.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/profile.test.js) and `BE-DB-13` (asserts `password` and `token` are `undefined`).
+
+### `GAP-002` *(Tracked Separately)* — Instructor Approval Enforcement & Admin User Management
+- **Module:** Authentication, Instructor RBAC, Admin Dashboard & User Management, Notifications
+- **Status:** `RESOLVED & VERIFIED`
+- **Implementation Summary:**
+  - Added authoritative `approvalStatus` (`PENDING` | `APPROVED` | `REJECTED`), `approved`, `approvalReviewedAt`, `approvalReviewedBy`, `rejectionReason` & compound index to `User.js`, plus backward-compatible legacy resolution & idempotent migration script (`server/scripts/migrateInstructorApproval.js`).
+  - Added DB-backed `isApprovedInstructor` middleware gating all restricted instructor endpoints (`createCourse`, `editCourse`, `deleteCourse`, `getInstructorCourses`, section/subsection CRUD, `instructorDashboard`, and DB check in `getFullCourseDetails`) without affecting student course access.
+  - Built Admin User Management APIs (`/api/v1/admin/*`) and responsive `UserManagement.jsx` UI (`/dashboard/admin/users`) with 7 real-DB KPIs, search, filter tabs, pagination, details modal, confirmation dialogs, optional rejection reason, and best-effort lifecycle emails (`instructorApprovalEmail.js`).
+  - Built `ApprovedInstructorRoute.jsx`, `InstructorApprovalNotice.jsx`, `MyProfile.jsx` status banners, sidebar/drawer filtering, and `App.jsx` hard-refresh hydration defeating `localStorage` spoofing.
+- **Verification:** `adminUsers.test.js` (14), `authMiddleware.test.js` (+7), `auth.test.js` (+5), `course.test.js` (+2), `profile.test.js` (+2), `section.test.js` (+1), `BE-DB-13`–`BE-DB-14` (real MongoDB 8.0), `ApprovedInstructorRoute.test.jsx` (5), `InstructorApprovalNotice.test.jsx` (3), `UserManagement.test.jsx` (4), `adminAPI.test.js` (+3), Playwright `E2E-35`–`E2E-38` (4/4).
 
 ---
 

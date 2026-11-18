@@ -32,6 +32,12 @@ describe("Course Endpoints (server/controllers/Course.js)", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    User.findById.mockResolvedValue({
+      _id: "instructor_123",
+      accountType: "Instructor",
+      approvalStatus: "APPROVED",
+      approved: true,
+    });
   });
 
   describe("GET /api/v1/course/getAllCourses", () => {
@@ -494,6 +500,84 @@ describe("Course Endpoints (server/controllers/Course.js)", () => {
       expect(res.status).toBe(500);
       expect(res.body.success).toBe(false);
       expect(res.body.message).toMatch(/Failed to search courses/i);
+    });
+  });
+
+  describe("GAP-002 Instructor Approval Enforcement on Course Routes", () => {
+    it("should block PENDING instructor from createCourse, editCourse, deleteCourse, and getInstructorCourses (403)", async () => {
+      User.findById.mockResolvedValue({
+        _id: "instructor_123",
+        accountType: "Instructor",
+        approvalStatus: "PENDING",
+        approved: false,
+      });
+
+      const createRes = await request(app)
+        .post("/api/v1/course/createCourse")
+        .set("Authorization", `Bearer ${instructorToken}`)
+        .send({
+          courseName: "Blocked Course",
+          courseDescription: "Desc",
+          whatYouWillLearn: "Learn",
+          price: 500,
+          approved: true,
+          approvalStatus: "APPROVED",
+        });
+      expect(createRes.status).toBe(403);
+      expect(createRes.body.code).toBe("INSTRUCTOR_PENDING_APPROVAL");
+      expect(Course.create).not.toHaveBeenCalled();
+
+      const editRes = await request(app)
+        .post("/api/v1/course/editCourse")
+        .set("Authorization", `Bearer ${instructorToken}`)
+        .send({ courseId: "c1", status: "Published" });
+      expect(editRes.status).toBe(403);
+
+      const deleteRes = await request(app)
+        .delete("/api/v1/course/deleteCourse")
+        .set("Authorization", `Bearer ${instructorToken}`)
+        .send({ courseId: "c1" });
+      expect(deleteRes.status).toBe(403);
+
+      const listRes = await request(app)
+        .get("/api/v1/course/getInstructorCourses")
+        .set("Authorization", `Bearer ${instructorToken}`);
+      expect(listRes.status).toBe(403);
+    });
+
+    it("should block REJECTED instructor from getFullCourseDetails while allowing enrolled students", async () => {
+      Course.findById.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue({
+          _id: "c1",
+          instructor: { _id: "instructor_123" },
+          studentEnrolled: ["student_123"],
+          courseContent: [],
+        }),
+      });
+      CourseProgress.findOne.mockResolvedValue(null);
+
+      User.findById.mockResolvedValue({
+        _id: "instructor_123",
+        accountType: "Instructor",
+        approvalStatus: "REJECTED",
+        approved: false,
+      });
+
+      const rejectedRes = await request(app)
+        .post("/api/v1/course/getFullCourseDetails")
+        .set("Authorization", `Bearer ${instructorToken}`)
+        .send({ courseId: "c1" });
+      expect(rejectedRes.status).toBe(403);
+      expect(rejectedRes.body.code).toBe("INSTRUCTOR_REJECTED");
+
+      // Enrolled student remains unaffected
+      const studentRes = await request(app)
+        .post("/api/v1/course/getFullCourseDetails")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({ courseId: "c1" });
+      expect(studentRes.status).toBe(200);
+      expect(studentRes.body.success).toBe(true);
     });
   });
 });

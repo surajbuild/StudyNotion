@@ -29,6 +29,8 @@ const TEST_FIXTURES = {
         email: "qa.instructor@isolated.test",
         accountType: "Instructor",
         contactNumber: "9000000002",
+        approvalStatus: "APPROVED",
+        approved: true,
     },
     admin: {
         firstName: "QA",
@@ -43,6 +45,15 @@ const TEST_FIXTURES = {
         email: "qa.disposable@isolated.test",
         accountType: "Student",
         contactNumber: "9000000004",
+    },
+    pendingInstructor: {
+        firstName: "QA",
+        lastName: "PendingInstructor",
+        email: "qa.pending.instructor@isolated.test",
+        accountType: "Instructor",
+        contactNumber: "9000000005",
+        approvalStatus: "PENDING",
+        approved: false,
     },
 };
 
@@ -120,7 +131,7 @@ const seedTestDatabase = async ({ assetBaseUrl } = {}) => {
             about: profileOverrides.about || `Synthetic ${spec.accountType} test profile`,
             contactNumber: spec.contactNumber,
         });
-        const user = await User.create({
+        const userData = {
             firstName: spec.firstName,
             lastName: spec.lastName,
             email: spec.email,
@@ -129,7 +140,15 @@ const seedTestDatabase = async ({ assetBaseUrl } = {}) => {
             contactNumber: spec.contactNumber,
             additionalDetails: profile._id,
             image: `https://api.dicebear.com/5.x/initials/svg?seed=${spec.firstName}%20${spec.lastName}`,
-        });
+        };
+        // Only set approvalStatus/approved if defined in fixture (Instructors)
+        if (spec.approvalStatus !== undefined) {
+            userData.approvalStatus = spec.approvalStatus;
+        }
+        if (spec.approved !== undefined) {
+            userData.approved = spec.approved;
+        }
+        const user = await User.create(userData);
         return { user, profile };
     };
 
@@ -137,6 +156,7 @@ const seedTestDatabase = async ({ assetBaseUrl } = {}) => {
     const { user: instructor } = await createAccount(TEST_FIXTURES.instructor);
     const { user: admin } = await createAccount(TEST_FIXTURES.admin);
     const { user: disposableStudent } = await createAccount(TEST_FIXTURES.disposableStudent);
+    const { user: pendingInstructor } = await createAccount(TEST_FIXTURES.pendingInstructor);
 
     // Seed Categories
     const [webDevCat, dataScienceCat, devopsCat] = await Category.create([
@@ -299,6 +319,8 @@ const seedTestDatabase = async ({ assetBaseUrl } = {}) => {
             adminEmail: admin.email,
             disposableStudentId: disposableStudent._id.toString(),
             disposableStudentEmail: disposableStudent.email,
+            pendingInstructorId: pendingInstructor._id.toString(),
+            pendingInstructorEmail: pendingInstructor.email,
         },
         categories: {
             webDevId: webDevCat._id.toString(),

@@ -4,6 +4,10 @@ if (!isTestMode()) {
     require("dotenv").config();
 }
 const User = require("../models/User");
+const {
+    APPROVAL_STATUS,
+    resolveInstructorApprovalStatus,
+} = require("../utils/instructorApproval");
 
 // ============================================================
 // auth — verifies the JWT attached to every protected request
@@ -80,6 +84,98 @@ exports.isInstructor = async (req, res, next) => {
         return res.status(500).json({
             success: false,
             message: "Could not verify user role",
+        });
+    }
+};
+
+// ============================================================
+// isApprovedInstructor — guards routes that only APPROVED instructors
+// can access. Always fetches authoritative role & approval status
+// from MongoDB so a pending/rejected instructor cannot bypass checks
+// via stale JWTs, Redux state, or modified request payloads.
+// ============================================================
+exports.isApprovedInstructor = async (req, res, next) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({
+                success: false,
+                message: "Authentication required",
+            });
+        }
+
+        if (req.user.accountType !== "Instructor") {
+            return res.status(403).json({
+                success: false,
+                message: "This route is accessible to instructors only",
+            });
+        }
+
+        const userId = req.user.id || req.user._id;
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                message: "Invalid authentication token payload",
+            });
+        }
+
+        // Always fetch authoritative approval status from the database
+        const query = User.findById(userId);
+        const dbUser =
+            query && typeof query.select === "function"
+                ? await query.select("accountType approvalStatus approved")
+                : await query;
+
+        if (!dbUser) {
+            return res.status(401).json({
+                success: false,
+                message: "User account not found",
+            });
+        }
+
+        if (dbUser.accountType !== "Instructor") {
+            return res.status(403).json({
+                success: false,
+                message: "This route is accessible to instructors only",
+            });
+        }
+
+        const status = resolveInstructorApprovalStatus(dbUser);
+
+        if (status === APPROVAL_STATUS.PENDING) {
+            return res.status(403).json({
+                success: false,
+                code: "INSTRUCTOR_PENDING_APPROVAL",
+                approvalStatus: APPROVAL_STATUS.PENDING,
+                message:
+                    "Your instructor account is pending administrator approval. Please wait until an administrator approves your application.",
+            });
+        }
+
+        if (status === APPROVAL_STATUS.REJECTED) {
+            return res.status(403).json({
+                success: false,
+                code: "INSTRUCTOR_REJECTED",
+                approvalStatus: APPROVAL_STATUS.REJECTED,
+                message:
+                    "Your instructor application was not approved. Please contact support for assistance.",
+            });
+        }
+
+        if (status !== APPROVAL_STATUS.APPROVED) {
+            return res.status(403).json({
+                success: false,
+                code: "INSTRUCTOR_NOT_APPROVED",
+                message: "Your instructor account is not approved for this operation",
+            });
+        }
+
+        req.instructorApprovalStatus = APPROVAL_STATUS.APPROVED;
+        next();
+    } catch (error) {
+        console.error("isApprovedInstructor middleware error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Could not verify instructor approval status",
         });
     }
 };

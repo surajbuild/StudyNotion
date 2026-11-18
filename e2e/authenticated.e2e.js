@@ -2047,6 +2047,403 @@ async function runAuthenticatedE2E() {
         }
 
         // =========================================================================
+        // E2E-35 (GAP-002): Pending Instructor Signup, Route Guard, Hard-Refresh Spoofing Defense & API 403
+        // =========================================================================
+        const pendingInstEmail = "e2e35.pending.inst@isolated.test";
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                await page.goto(`${FRONTEND_URL}/#/signup`, { waitUntil: "networkidle" });
+                await page.getByRole("button", { name: /^Instructor$/i }).click();
+                await page.fill('input[name="firstName"]', "Aarav");
+                await page.fill('input[name="lastName"]', "Applicant");
+                await page.fill('input[name="email"]', pendingInstEmail);
+                await page.fill('input[name="password"]', TEST_PASSWORD);
+                await page.fill('input[name="confirmPassword"]', TEST_PASSWORD);
+
+                const [otpResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/auth/sendotp"), { timeout: 15000 }),
+                    page.getByRole("button", { name: /Create Account/i }).click(),
+                ]);
+                await waitForHash(page, "/verify-email");
+
+                const otpRes = await fetchJson(
+                    `${API_BASE_URL}/__test__/otp?email=${encodeURIComponent(pendingInstEmail)}`
+                );
+                const otp = otpRes.data?.otp || "";
+                await page.locator('form input[placeholder="-"]').first().click();
+                await page.keyboard.type(otp, { delay: 30 });
+
+                const [signupResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/auth/signup"), { timeout: 15000 }),
+                    page.getByRole("button", { name: /Verify Email/i }).click(),
+                ]);
+                await waitForHash(page, "/login");
+
+                // Verify application-received email captured in mock outbox
+                const emailsRes = await fetchJson(`${API_BASE_URL}/__test__/emails`);
+                const appEmailCaptured = (emailsRes.data?.emails || []).some(
+                    (m) => m.to === pendingInstEmail && /Application Received/i.test(m.subject)
+                );
+
+                // Login as newly registered pending instructor
+                const loginStatus = await uiLogin(page, pendingInstEmail, TEST_PASSWORD);
+                await waitForHash(page, "/dashboard/my-profile");
+                await page.waitForSelector('[data-testid="profile-instructor-pending-banner"]', {
+                    timeout: 15000,
+                });
+                const profileHasPendingBanner = await page
+                    .locator('[data-testid="profile-instructor-pending-banner"]')
+                    .isVisible();
+
+                // Sidebar must NOT show My Courses or Add Course for pending instructor
+                const bodyText = await page.locator("body").innerText();
+                const sidebarHidesCourseLinks =
+                    !bodyText.includes("Add Course") && !bodyText.includes("My Courses");
+
+                // Direct URL access to /dashboard/add-course redirects cleanly to /dashboard/instructor
+                await page.goto(`${FRONTEND_URL}/#/dashboard/add-course`, {
+                    waitUntil: "networkidle",
+                });
+                await waitForHash(page, "/dashboard/instructor");
+                await page.waitForSelector('[data-testid="instructor-approval-notice"]', {
+                    timeout: 15000,
+                });
+                const pendingNoticeShown = (
+                    await page.locator('[data-testid="instructor-approval-notice"]').innerText()
+                ).includes("Instructor Account Pending Approval");
+
+                // Spoof localStorage.user to APPROVED and perform hard reload -> backend hydration restores PENDING!
+                await page.evaluate(() => {
+                    const stored = JSON.parse(localStorage.getItem("user") || "{}");
+                    stored.approvalStatus = "APPROVED";
+                    stored.approved = true;
+                    localStorage.setItem("user", JSON.stringify(stored));
+                });
+                await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/profile/getUserDetails"), {
+                        timeout: 15000,
+                    }),
+                    page.reload({ waitUntil: "networkidle" }),
+                ]);
+                await page.waitForSelector('[data-testid="instructor-approval-notice"]', {
+                    timeout: 15000,
+                });
+                const hardRefreshDefeatedSpoof = (
+                    await page.locator('[data-testid="instructor-approval-notice"]').innerText()
+                ).includes("Pending Approval");
+
+                // Direct API call with pending JWT must return 403
+                const directApiStatuses = await page.evaluate(async (apiBase) => {
+                    const tok = localStorage.getItem("token");
+                    const createRes = await fetch(`${apiBase}/course/createCourse`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${tok}`,
+                        },
+                        body: JSON.stringify({
+                            courseName: "Blocked Direct Course",
+                            courseDescription: "Blocked",
+                            whatYouWillLearn: "None",
+                            price: 100,
+                            approved: true,
+                            approvalStatus: "APPROVED",
+                        }),
+                    });
+                    const dashRes = await fetch(`${apiBase}/profile/instructorDashboard`, {
+                        headers: { Authorization: `Bearer ${tok}` },
+                    });
+                    return { createStatus: createRes.status, dashStatus: dashRes.status };
+                }, API_BASE_URL);
+
+                record(
+                    "E2E-35",
+                    "GAP-002 Pending Instructor Signup, Route Guard, Hard-Refresh Spoof Defense & Direct API 403",
+                    otpResp.status() === 200 &&
+                        signupResp.status() === 200 &&
+                        appEmailCaptured &&
+                        loginStatus === 200 &&
+                        profileHasPendingBanner &&
+                        sidebarHidesCourseLinks &&
+                        pendingNoticeShown &&
+                        hardRefreshDefeatedSpoof &&
+                        directApiStatuses.createStatus === 403 &&
+                        directApiStatuses.dashStatus === 403,
+                    `appEmail=${appEmailCaptured}, profileBanner=${profileHasPendingBanner}, sidebarHidden=${sidebarHidesCourseLinks}, notice=${pendingNoticeShown}, hardRefresh=${hardRefreshDefeatedSpoof}, api=${JSON.stringify(directApiStatuses)}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-36 (GAP-002): Admin User Management UI, KPIs, Details Modal, Mobile 375px & Approve -> Unlock
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                await uiLogin(page, FIXTURES.adminEmail, TEST_PASSWORD);
+                await waitForHash(page, "/dashboard/admin");
+                await page.waitForSelector('[data-testid="admin-pending-instructors-banner"]', {
+                    timeout: 15000,
+                });
+
+                // Navigate to User Management via callout link and await initial stats load
+                await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/admin/users/stats"), {
+                        timeout: 15000,
+                    }),
+                    page.locator('[data-testid="admin-pending-instructors-banner"] a').click(),
+                ]);
+                await waitForHash(page, "/dashboard/admin/users");
+                await page.waitForSelector(`[data-testid="user-row-${pendingInstEmail}"]`, {
+                    timeout: 15000,
+                });
+
+                const statsPendingCount = Number(
+                    await page.locator('[data-testid="stat-pending-instructors"]').innerText()
+                );
+
+                // Search for our newly registered pending instructor
+                await page.fill('input[aria-label="Search users by name or email"]', pendingInstEmail);
+                await page.waitForTimeout(500);
+                await page.waitForSelector(`[data-testid="user-row-${pendingInstEmail}"]`, {
+                    timeout: 15000,
+                });
+
+                // Open Details modal and verify safe details
+                await page
+                    .locator(`button[aria-label="View details for ${pendingInstEmail}"]:visible`)
+                    .first()
+                    .click();
+                await page.waitForSelector('div[role="dialog"]', { timeout: 10000 });
+                const detailsText = await page.locator('div[role="dialog"]').innerText();
+                const detailsModalOk =
+                    detailsText.includes("Aarav Applicant") &&
+                    detailsText.includes(pendingInstEmail) &&
+                    !detailsText.includes("$2b$");
+                await page.locator('button[aria-label="Close user details"]').click();
+
+                // Verify Mobile 375px layout on Admin User Management
+                await page.setViewportSize({ width: 375, height: 812 });
+                await page.waitForTimeout(300);
+                const mobileOverflow = await page.evaluate(
+                    () => document.documentElement.scrollWidth > window.innerWidth
+                );
+                await page.setViewportSize({ width: 1280, height: 860 });
+
+                // Approve instructor via confirmation modal
+                await page
+                    .locator(`button[aria-label="Approve ${pendingInstEmail}"]:visible`)
+                    .first()
+                    .click();
+                await page.waitForSelector("text=Approve Instructor?", { timeout: 10000 });
+                const [approveResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/approve"), { timeout: 15000 }),
+                    page.getByRole("button", { name: /^Approve Instructor$/i }).click(),
+                ]);
+                await page.waitForTimeout(500);
+
+                // Verify approval email captured in mock outbox
+                const emailsRes = await fetchJson(`${API_BASE_URL}/__test__/emails`);
+                const approvalEmailCaptured = (emailsRes.data?.emails || []).some(
+                    (m) => m.to === pendingInstEmail && /Approved/i.test(m.subject)
+                );
+
+                // Verify user now appears under Approved Instructors tab
+                await page.getByRole("tab", { name: /Approved Instructors/i }).click();
+                await page.waitForSelector(`[data-testid="user-row-${pendingInstEmail}"]`, {
+                    timeout: 15000,
+                });
+                const inApprovedTab = await page
+                    .locator(`[data-testid="user-row-${pendingInstEmail}"]`)
+                    .isVisible();
+
+                // Logout Admin, login as newly approved instructor -> full dashboard & Add Course unlocked!
+                await uiLogout(page);
+                await uiLogin(page, pendingInstEmail, TEST_PASSWORD);
+                await page.goto(`${FRONTEND_URL}/#/dashboard/add-course`, {
+                    waitUntil: "networkidle",
+                });
+                await waitForHash(page, "/dashboard/add-course");
+                await page.waitForSelector('input[name="courseTitle"]', { timeout: 15000 });
+                const addCourseUnlocked = (await page.locator("body").innerText()).includes(
+                    "Course Information"
+                );
+
+                record(
+                    "E2E-36",
+                    "GAP-002 Admin User Management UI, Details Modal, Mobile 375px & Approve -> Instructor Unlock",
+                    statsPendingCount >= 2 &&
+                        detailsModalOk &&
+                        !mobileOverflow &&
+                        approveResp.status() === 200 &&
+                        approvalEmailCaptured &&
+                        inApprovedTab &&
+                        addCourseUnlocked,
+                    `pendingBefore=${statsPendingCount}, detailsOk=${detailsModalOk}, mobileOverflow=${mobileOverflow}, approve=${approveResp.status()}, email=${approvalEmailCaptured}, approvedTab=${inApprovedTab}, unlocked=${addCourseUnlocked}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-37 (GAP-002): Admin Instructor Rejection with Reason, Rejected UX & Backend 403
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                const seededPendingEmail = seeded.users.pendingInstructorEmail;
+                await uiLogin(page, FIXTURES.adminEmail, TEST_PASSWORD);
+                await page.goto(`${FRONTEND_URL}/#/dashboard/admin/users?tab=PENDING`, {
+                    waitUntil: "networkidle",
+                });
+                await page.waitForSelector(`[data-testid="user-row-${seededPendingEmail}"]`, {
+                    timeout: 15000,
+                });
+
+                await page
+                    .locator(`button[aria-label="Reject ${seededPendingEmail}"]:visible`)
+                    .first()
+                    .click();
+                await page.waitForSelector("#reject-reason-input", { timeout: 10000 });
+                await page.fill("#reject-reason-input", "Please provide teaching credentials");
+                const [rejectResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/reject"), { timeout: 15000 }),
+                    page.getByRole("button", { name: /Confirm Rejection/i }).click(),
+                ]);
+                await page.waitForTimeout(500);
+
+                // Verify rejection email captured with reason
+                const emailsRes = await fetchJson(`${API_BASE_URL}/__test__/emails`);
+                const rejectEmailCaptured = (emailsRes.data?.emails || []).some(
+                    (m) =>
+                        m.to === seededPendingEmail &&
+                        /Application Update/i.test(m.subject) &&
+                        (m.html || "").includes("Please provide teaching credentials")
+                );
+
+                // Verify user appears in Rejected Instructors tab
+                await page.getByRole("tab", { name: /Rejected Instructors/i }).click();
+                await page.waitForSelector(`[data-testid="user-row-${seededPendingEmail}"]`, {
+                    timeout: 15000,
+                });
+                const inRejectedTab = await page
+                    .locator(`[data-testid="user-row-${seededPendingEmail}"]`)
+                    .isVisible();
+
+                // Login as rejected instructor -> sees rejection banner + reason, blocked from /add-course & API
+                await uiLogout(page);
+                await uiLogin(page, seededPendingEmail, TEST_PASSWORD);
+                await page.waitForSelector('[data-testid="profile-instructor-rejected-banner"]', {
+                    timeout: 15000,
+                });
+                await page.goto(`${FRONTEND_URL}/#/dashboard/add-course`, {
+                    waitUntil: "networkidle",
+                });
+                await waitForHash(page, "/dashboard/instructor");
+                await page.waitForSelector('[data-testid="instructor-approval-notice"]', {
+                    timeout: 15000,
+                });
+                const rejectedNoticeText = await page
+                    .locator('[data-testid="instructor-approval-notice"]')
+                    .innerText();
+                const rejectedNoticeOk =
+                    rejectedNoticeText.includes("Instructor Application Not Approved") &&
+                    rejectedNoticeText.includes("Please provide teaching credentials") &&
+                    rejectedNoticeText.includes("Contact Support");
+
+                const rejectedApiStatus = await page.evaluate(async (apiBase) => {
+                    const tok = localStorage.getItem("token");
+                    const res = await fetch(`${apiBase}/course/createCourse`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${tok}`,
+                        },
+                        body: JSON.stringify({
+                            courseName: "Rejected Attempt",
+                            courseDescription: "Blocked",
+                            whatYouWillLearn: "None",
+                            price: 100,
+                        }),
+                    });
+                    return res.status;
+                }, API_BASE_URL);
+
+                record(
+                    "E2E-37",
+                    "GAP-002 Admin Instructor Rejection with Reason, Rejected UX & Backend 403",
+                    rejectResp.status() === 200 &&
+                        rejectEmailCaptured &&
+                        inRejectedTab &&
+                        rejectedNoticeOk &&
+                        rejectedApiStatus === 403,
+                    `reject=${rejectResp.status()}, email=${rejectEmailCaptured}, rejectedTab=${inRejectedTab}, noticeOk=${rejectedNoticeOk}, apiStatus=${rejectedApiStatus}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-38 (GAP-002): Admin User Management RBAC (Student & Instructor Blocked from UI & API)
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                // Student blocked from /dashboard/admin/users UI and /api/v1/admin/* APIs
+                await uiLogin(page, FIXTURES.studentEmail, TEST_PASSWORD);
+                await page.goto(`${FRONTEND_URL}/#/dashboard/admin/users`, {
+                    waitUntil: "networkidle",
+                });
+                await waitForHash(page, "/dashboard/my-profile");
+                const studentBlockedUi = (await page.url()).includes("/dashboard/my-profile");
+                const studentApi403 = await page.evaluate(async (apiBase) => {
+                    const tok = localStorage.getItem("token");
+                    const r1 = await fetch(`${apiBase}/admin/users/stats`, {
+                        headers: { Authorization: `Bearer ${tok}` },
+                    });
+                    const r2 = await fetch(`${apiBase}/admin/users`, {
+                        headers: { Authorization: `Bearer ${tok}` },
+                    });
+                    return r1.status === 403 && r2.status === 403;
+                }, API_BASE_URL);
+
+                // Approved Instructor blocked from /dashboard/admin/users UI and approve API
+                await uiLogout(page);
+                await uiLogin(page, FIXTURES.instructorEmail, TEST_PASSWORD);
+                await page.goto(`${FRONTEND_URL}/#/dashboard/admin/users`, {
+                    waitUntil: "networkidle",
+                });
+                await waitForHash(page, "/dashboard/my-profile");
+                const instructorBlockedUi = (await page.url()).includes("/dashboard/my-profile");
+                const instructorApi403 = await page.evaluate(
+                    async ({ apiBase, targetId }) => {
+                        const tok = localStorage.getItem("token");
+                        const r = await fetch(`${apiBase}/admin/instructors/${targetId}/approve`, {
+                            method: "PUT",
+                            headers: { Authorization: `Bearer ${tok}` },
+                        });
+                        return r.status === 403;
+                    },
+                    { apiBase: API_BASE_URL, targetId: seeded.users.pendingInstructorId }
+                );
+
+                record(
+                    "E2E-38",
+                    "GAP-002 Admin User Management RBAC Protection (Student & Instructor Blocked)",
+                    studentBlockedUi && studentApi403 && instructorBlockedUi && instructorApi403,
+                    `studentUi=${studentBlockedUi}, studentApi403=${studentApi403}, instructorUi=${instructorBlockedUi}, instructorApi403=${instructorApi403}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
         // Regression Checks against Isolated Environment (Footer, 404, 401 Interceptor, Mobile)
         // =========================================================================
         {

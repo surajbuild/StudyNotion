@@ -53,6 +53,7 @@ const {
   auth,
   isStudent,
   isInstructor,
+  isApprovedInstructor,
   isAdmin,
 } = require("../middlewares/auth");
 
@@ -61,26 +62,26 @@ const {
 //                                  Course routes
 // *******************************************************************************
 
-//Ciurse can only be created by instructors
-router.post("/createCourse", auth, isInstructor, createCourse);
+//Course can only be created by APPROVED instructors
+router.post("/createCourse", auth, isApprovedInstructor, createCourse);
 
 //Add a Section to a course
-router.post("/addSection", auth, isInstructor, createSection);
+router.post("/addSection", auth, isApprovedInstructor, createSection);
 
 //Update a section
-router.post("/updateSection", auth, isInstructor, updateSection);
+router.post("/updateSection", auth, isApprovedInstructor, updateSection);
 
 //Delete a subsection
-router.post("/deleteSection", auth, isInstructor, deleteSection);
+router.post("/deleteSection", auth, isApprovedInstructor, deleteSection);
 
 //Add a subsection to a section
-router.post("/addSubSection", auth, isInstructor, createSubSection);
+router.post("/addSubSection", auth, isApprovedInstructor, createSubSection);
 
 //Update a subsection
-router.post("/updateSubSection", auth, isInstructor, updateSubSection);
+router.post("/updateSubSection", auth, isApprovedInstructor, updateSubSection);
 
 //Delete a subsection
-router.post("/deleteSubSection", auth, isInstructor, deleteSubSection);
+router.post("/deleteSubSection", auth, isApprovedInstructor, deleteSubSection);
 
 //Get all Registered Courses
 router.get("/getAllCourses", getAllCourses);
@@ -95,13 +96,13 @@ router.post("/getCourseDetails", getCourseDetails);
 router.post("/getFullCourseDetails", auth, getFullCourseDetails);
 
 //Edit Course routes
-router.post("/editCourse", auth, isInstructor, editCourse);
+router.post("/editCourse", auth, isApprovedInstructor, editCourse);
 
 //Get all courses under a specific instructor
-router.get("/getInstructorCourses", auth, isInstructor, getInstructorCourses);
+router.get("/getInstructorCourses", auth, isApprovedInstructor, getInstructorCourses);
 
 //Delete a course
-router.delete("/deleteCourse", auth, isInstructor, deleteCourse);
+router.delete("/deleteCourse", auth, isApprovedInstructor, deleteCourse);
 
 router.post("/updateCourseProgress", auth, isStudent, updateCourseProgress)
 

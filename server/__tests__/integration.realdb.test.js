@@ -1717,4 +1717,376 @@ describe("Isolated Real-MongoDB Full-Stack Integration Suite (GAP-009)", () => {
             expect(postResetLogin.status).toBe(200);
         });
     });
+
+    describe("11. Instructor Approval Enforcement, Migration & Admin User Management (GAP-002 Real MongoDB)", () => {
+        test("BE-DB-13: enforces PENDING signup, blocks restricted instructor APIs, preserves legacy instructors via migration, and unlocks immediately upon Admin approval", async () => {
+            const bcrypt = require("bcrypt");
+            const mailSender = require("../utils/mailSender");
+            const { migrateExistingInstructors } = require("../scripts/migrateInstructorApproval");
+
+            mailSender.clearSentEmails();
+
+            // 1. Public Admin self-signup MUST be blocked (403)
+            const evilAdminRes = await request(app).post("/api/v1/auth/signup").send({
+                firstName: "Rogue",
+                lastName: "Admin",
+                email: "rogue.admin@isolated.test",
+                password: "ValidPassword1!",
+                confirmPassword: "ValidPassword1!",
+                accountType: "Admin",
+                otp: "123456",
+            });
+            expect(evilAdminRes.status).toBe(403);
+            expect(await User.findOne({ email: "rogue.admin@isolated.test" })).toBeNull();
+
+            // 2. New Instructor OTP + Signup with spoofed approved/approvalStatus -> backend forces PENDING
+            const newInstEmail = "gap002.pending.inst@isolated.test";
+            const otpReq = await request(app)
+                .post("/api/v1/auth/sendotp")
+                .send({ email: newInstEmail });
+            expect(otpReq.status).toBe(200);
+            const otpDoc = await OTP.findOne({ email: newInstEmail }).sort({ createdAt: -1 });
+
+            const signupRes = await request(app).post("/api/v1/auth/signup").send({
+                firstName: "Pending",
+                lastName: "Educator",
+                email: newInstEmail,
+                password: "ValidPassword1!",
+                confirmPassword: "ValidPassword1!",
+                accountType: "Instructor",
+                otp: otpDoc.otp,
+                approved: true,
+                approvalStatus: "APPROVED",
+            });
+            expect(signupRes.status).toBe(200);
+            expect(signupRes.body.user.approvalStatus).toBe("PENDING");
+            expect(signupRes.body.user.approved).toBe(false);
+            expect(signupRes.body.user.password).toBeUndefined();
+
+            const persistedPending = await User.findOne({ email: newInstEmail }).lean();
+            expect(persistedPending.approvalStatus).toBe("PENDING");
+            expect(persistedPending.approved).toBe(false);
+
+            // Application received email captured in mock outbox
+            const appReceivedEmails = mailSender
+                .getSentEmails()
+                .filter((m) => m.to === newInstEmail && /Application Received/i.test(m.subject));
+            expect(appReceivedEmails.length).toBeGreaterThanOrEqual(1);
+
+            // 3. Pending instructor logs in -> profile accessible, ALL restricted instructor routes blocked (403)
+            const pendingLogin = await request(app)
+                .post("/api/v1/auth/login")
+                .send({ email: newInstEmail, password: "ValidPassword1!" });
+            expect(pendingLogin.status).toBe(200);
+            expect(pendingLogin.body.user.approvalStatus).toBe("PENDING");
+            expect(pendingLogin.body.user.approved).toBe(false);
+            const pendingJwt = pendingLogin.body.token;
+
+            // Profile endpoint remains accessible and returns authoritative status without password/token
+            const profileRes = await request(app)
+                .get("/api/v1/profile/getUserDetails")
+                .set("Authorization", `Bearer ${pendingJwt}`);
+            expect(profileRes.status).toBe(200);
+            expect(profileRes.body.userDetails.approvalStatus).toBe("PENDING");
+            expect(profileRes.body.userDetails.password).toBeUndefined();
+            expect(profileRes.body.userDetails.token).toBeUndefined();
+
+            // Restricted endpoints all reject with 403
+            expect(
+                (
+                    await request(app)
+                        .post("/api/v1/course/createCourse")
+                        .set("Authorization", `Bearer ${pendingJwt}`)
+                        .send({
+                            courseName: "Blocked Pending Course",
+                            courseDescription: "Should fail",
+                            whatYouWillLearn: "Nothing",
+                            price: 100,
+                            approved: true,
+                            approvalStatus: "APPROVED",
+                        })
+                ).status
+            ).toBe(403);
+            expect(
+                (
+                    await request(app)
+                        .post("/api/v1/course/editCourse")
+                        .set("Authorization", `Bearer ${pendingJwt}`)
+                        .send({ courseId: seeded.courses.enrolledCourseId, status: "Published" })
+                ).status
+            ).toBe(403);
+            expect(
+                (
+                    await request(app)
+                        .delete("/api/v1/course/deleteCourse")
+                        .set("Authorization", `Bearer ${pendingJwt}`)
+                        .send({ courseId: seeded.courses.enrolledCourseId })
+                ).status
+            ).toBe(403);
+            expect(
+                (
+                    await request(app)
+                        .get("/api/v1/course/getInstructorCourses")
+                        .set("Authorization", `Bearer ${pendingJwt}`)
+                ).status
+            ).toBe(403);
+            expect(
+                (
+                    await request(app)
+                        .post("/api/v1/course/addSection")
+                        .set("Authorization", `Bearer ${pendingJwt}`)
+                        .send({ sectionName: "Blocked", courseId: seeded.courses.enrolledCourseId })
+                ).status
+            ).toBe(403);
+            expect(
+                (
+                    await request(app)
+                        .post("/api/v1/course/addSubSection")
+                        .set("Authorization", `Bearer ${pendingJwt}`)
+                        .send({ sectionId: seeded.courses.enrolledFirstSectionId, title: "Blocked" })
+                ).status
+            ).toBe(403);
+            expect(
+                (
+                    await request(app)
+                        .get("/api/v1/profile/instructorDashboard")
+                        .set("Authorization", `Bearer ${pendingJwt}`)
+                ).status
+            ).toBe(403);
+            expect(
+                (
+                    await request(app)
+                        .post("/api/v1/course/getFullCourseDetails")
+                        .set("Authorization", `Bearer ${pendingJwt}`)
+                        .send({ courseId: seeded.courses.enrolledCourseId })
+                ).status
+            ).toBe(403);
+
+            // 4. Backward-compatible legacy instructor (raw DB doc without approvalStatus) + idempotent migration
+            const legacyProf = await Profile.create({});
+            const legacyHash = await bcrypt.hash("LegacyInst8!", 10);
+            const rawLegacyInsert = await User.collection.insertOne({
+                firstName: "Legacy",
+                lastName: "Mentor",
+                email: "legacy.mentor@isolated.test",
+                password: legacyHash,
+                accountType: "Instructor",
+                additionalDetails: legacyProf._id,
+                image: "https://api.dicebear.com/5.x/initials/svg?seed=Legacy%20Mentor",
+                courses: [],
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            });
+            const legacyLogin = await request(app)
+                .post("/api/v1/auth/login")
+                .send({ email: "legacy.mentor@isolated.test", password: "LegacyInst8!" });
+            expect(legacyLogin.status).toBe(200);
+            expect(legacyLogin.body.user.approvalStatus).toBe("APPROVED");
+
+            // Legacy instructor can access dashboard BEFORE migration
+            const preMigDash = await request(app)
+                .get("/api/v1/profile/instructorDashboard")
+                .set("Authorization", `Bearer ${legacyLogin.body.token}`);
+            expect(preMigDash.status).toBe(200);
+
+            // Run idempotent migration -> backfills legacy doc to APPROVED without touching PENDING
+            const migSummary = await migrateExistingInstructors();
+            expect(migSummary.approvedBackfilled).toBeGreaterThanOrEqual(1);
+            const migratedLegacy = await User.findById(rawLegacyInsert.insertedId).lean();
+            expect(migratedLegacy.approvalStatus).toBe("APPROVED");
+            expect(migratedLegacy.approved).toBe(true);
+            const stillPending = await User.findById(persistedPending._id).lean();
+            expect(stillPending.approvalStatus).toBe("PENDING");
+
+            // 5. Admin approves the pending instructor -> immediate unlock using the EXACT SAME JWT
+            const approveRes = await request(app)
+                .put(`/api/v1/admin/instructors/${persistedPending._id}/approve`)
+                .set("Authorization", `Bearer ${adminToken}`)
+                .send({ accountType: "Admin" }); // Role mutation ignored
+            expect(approveRes.status).toBe(200);
+            expect(approveRes.body.data.approvalStatus).toBe("APPROVED");
+            expect(approveRes.body.data.accountType).toBe("Instructor");
+
+            // Duplicate approval returns 409
+            const dupApprove = await request(app)
+                .put(`/api/v1/admin/instructors/${persistedPending._id}/approve`)
+                .set("Authorization", `Bearer ${adminToken}`);
+            expect(dupApprove.status).toBe(409);
+
+            // Approval email captured
+            const approvedEmails = mailSender
+                .getSentEmails()
+                .filter((m) => m.to === newInstEmail && /Approved/i.test(m.subject));
+            expect(approvedEmails.length).toBeGreaterThanOrEqual(1);
+
+            // Newly approved instructor immediately creates & publishes a course with existing JWT
+            const createCourseRes = await request(app)
+                .post("/api/v1/course/createCourse")
+                .set("Authorization", `Bearer ${pendingJwt}`)
+                .send({
+                    courseName: "Post-Approval Course",
+                    courseDescription: "Created right after admin approval",
+                    whatYouWillLearn: "End-to-end approval flow",
+                    price: 499,
+                    category: seeded.categories.webDevId,
+                    status: "Published",
+                });
+            expect(createCourseRes.status).toBe(200);
+            const postApprovalDash = await request(app)
+                .get("/api/v1/profile/instructorDashboard")
+                .set("Authorization", `Bearer ${pendingJwt}`);
+            expect(postApprovalDash.status).toBe(200);
+            expect(postApprovalDash.body.courses.length).toBe(1);
+        });
+
+        test("BE-DB-14: verifies Admin User Management stats, search, pagination, rejection lifecycle, security isolation, and student access preservation", async () => {
+            const jwt = require("jsonwebtoken");
+            const mailSender = require("../utils/mailSender");
+            mailSender.clearSentEmails();
+
+            const expiredAdminJwt = jwt.sign(
+                { id: seeded.users.adminId, email: seeded.users.adminEmail, accountType: "Admin" },
+                process.env.JWT_SECRET,
+                { expiresIn: "-5s" }
+            );
+
+            // 1. Security checks on all /api/v1/admin/* endpoints
+            const endpoints = [
+                { method: "get", path: "/api/v1/admin/users/stats" },
+                { method: "get", path: "/api/v1/admin/users" },
+                { method: "get", path: `/api/v1/admin/users/${seeded.users.pendingInstructorId}` },
+                { method: "get", path: "/api/v1/admin/instructors" },
+                { method: "put", path: `/api/v1/admin/instructors/${seeded.users.pendingInstructorId}/approve` },
+                { method: "put", path: `/api/v1/admin/instructors/${seeded.users.pendingInstructorId}/reject` },
+            ];
+            for (const ep of endpoints) {
+                expect((await request(app)[ep.method](ep.path)).status).toBe(401);
+                expect(
+                    (
+                        await request(app)
+                            [ep.method](ep.path)
+                            .set("Authorization", `Bearer ${expiredAdminJwt}`)
+                    ).status
+                ).toBe(401);
+                expect(
+                    (
+                        await request(app)
+                            [ep.method](ep.path)
+                            .set("Authorization", `Bearer ${studentToken}`)
+                    ).status
+                ).toBe(403);
+                expect(
+                    (
+                        await request(app)
+                            [ep.method](ep.path)
+                            .set("Authorization", `Bearer ${instructorToken}`)
+                    ).status
+                ).toBe(403);
+            }
+
+            // 2. Admin fetches stats, searches, filters, and paginates users (no sensitive data leaked)
+            const statsRes = await request(app)
+                .get("/api/v1/admin/users/stats")
+                .set("Authorization", `Bearer ${adminToken}`);
+            expect(statsRes.status).toBe(200);
+            expect(statsRes.body.data.totalUsers).toBeGreaterThanOrEqual(5);
+            expect(statsRes.body.data.pendingInstructors).toBeGreaterThanOrEqual(1);
+            expect(statsRes.body.data.approvedInstructors).toBeGreaterThanOrEqual(1);
+            expect(statsRes.body.data.totalAdmins).toBeGreaterThanOrEqual(1);
+
+            const searchPending = await request(app)
+                .get("/api/v1/admin/users")
+                .set("Authorization", `Bearer ${adminToken}`)
+                .query({ search: "PendingInstructor", approvalStatus: "PENDING", page: "1", limit: "2" });
+            expect(searchPending.status).toBe(200);
+            expect(searchPending.body.data.users.length).toBe(1);
+            expect(searchPending.body.data.users[0].email).toBe(seeded.users.pendingInstructorEmail);
+            expect(searchPending.body.data.users[0].password).toBeUndefined();
+            expect(searchPending.body.data.users[0].token).toBeUndefined();
+
+            const detailsRes = await request(app)
+                .get(`/api/v1/admin/users/${seeded.users.pendingInstructorId}`)
+                .set("Authorization", `Bearer ${adminToken}`);
+            expect(detailsRes.status).toBe(200);
+            expect(detailsRes.body.data.email).toBe(seeded.users.pendingInstructorEmail);
+            expect(detailsRes.body.data.password).toBeUndefined();
+
+            // 3. Reject seeded pending instructor with reason -> email sent, stats updated, API access blocked
+            const rejectRes = await request(app)
+                .put(`/api/v1/admin/instructors/${seeded.users.pendingInstructorId}/reject`)
+                .set("Authorization", `Bearer ${adminToken}`)
+                .send({ reason: "Please add verified teaching credentials" });
+            expect(rejectRes.status).toBe(200);
+            expect(rejectRes.body.data.approvalStatus).toBe("REJECTED");
+            expect(rejectRes.body.data.rejectionReason).toBe("Please add verified teaching credentials");
+
+            const rejectEmails = mailSender
+                .getSentEmails()
+                .filter(
+                    (m) =>
+                        m.to === seeded.users.pendingInstructorEmail &&
+                        /Application Update/i.test(m.subject)
+                );
+            expect(rejectEmails.length).toBeGreaterThanOrEqual(1);
+            expect(rejectEmails[0].html).toContain("Please add verified teaching credentials");
+
+            // Duplicate reject (409), rejecting already-approved instructor (409), self-reject (403), student target (400)
+            expect(
+                (
+                    await request(app)
+                        .put(`/api/v1/admin/instructors/${seeded.users.pendingInstructorId}/reject`)
+                        .set("Authorization", `Bearer ${adminToken}`)
+                ).status
+            ).toBe(409);
+            expect(
+                (
+                    await request(app)
+                        .put(`/api/v1/admin/instructors/${seeded.users.instructorId}/reject`)
+                        .set("Authorization", `Bearer ${adminToken}`)
+                ).status
+            ).toBe(409);
+            expect(
+                (
+                    await request(app)
+                        .put(`/api/v1/admin/instructors/${seeded.users.adminId}/reject`)
+                        .set("Authorization", `Bearer ${adminToken}`)
+                ).status
+            ).toBe(403);
+            expect(
+                (
+                    await request(app)
+                        .put(`/api/v1/admin/instructors/${seeded.users.studentId}/approve`)
+                        .set("Authorization", `Bearer ${adminToken}`)
+                ).status
+            ).toBe(400);
+
+            // Rejected instructor login shows REJECTED status and is blocked from restricted APIs
+            const rejLogin = await request(app)
+                .post("/api/v1/auth/login")
+                .send({ email: seeded.users.pendingInstructorEmail, password: fixturePassword });
+            expect(rejLogin.status).toBe(200);
+            expect(rejLogin.body.user.approvalStatus).toBe("REJECTED");
+            expect(
+                (
+                    await request(app)
+                        .post("/api/v1/course/createCourse")
+                        .set("Authorization", `Bearer ${rejLogin.body.token}`)
+                        .send({
+                            courseName: "Rejected Attempt",
+                            courseDescription: "Blocked",
+                            whatYouWillLearn: "None",
+                            price: 0,
+                        })
+                ).status
+            ).toBe(403);
+
+            // 4. Enrolled student access to purchased course remains 100% intact
+            const studentFullCourse = await request(app)
+                .post("/api/v1/course/getFullCourseDetails")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({ courseId: seeded.courses.enrolledCourseId });
+            expect(studentFullCourse.status).toBe(200);
+            expect(studentFullCourse.body.success).toBe(true);
+        });
+    });
 });

@@ -7,6 +7,10 @@ const SubSection = require("../models/SubSection");
 const CourseProgress = require("../models/CourseProgress");
 const { imageUploadToCloudinary } = require("../utils/imageUploader");
 const cache = require("../utils/cache");
+const {
+  APPROVAL_STATUS,
+  resolveInstructorApprovalStatus,
+} = require("../utils/instructorApproval");
 
 const ALL_COURSES_CACHE_KEY = "getAllCourses";
 const COURSE_DETAILS_PREFIX = "getCourseDetails:";
@@ -555,6 +559,34 @@ exports.getFullCourseDetails = async (req, res) => {
     const accountType = req.user.accountType;
 
     if (accountType === "Instructor") {
+        // Verify authoritative instructor approval status from DB (never trust JWT/client)
+        const instructorQuery = User.findById(userId);
+        const dbInstructor =
+            instructorQuery && typeof instructorQuery.select === "function"
+                ? await instructorQuery.select("accountType approvalStatus approved")
+                : await instructorQuery;
+        if (!dbInstructor || dbInstructor.accountType !== "Instructor") {
+            return res.status(403).json({
+                success: false,
+                message: "You are not authorized to view this course",
+            });
+        }
+        const approvalStatus = resolveInstructorApprovalStatus(dbInstructor);
+        if (approvalStatus !== APPROVAL_STATUS.APPROVED) {
+            return res.status(403).json({
+                success: false,
+                code:
+                    approvalStatus === APPROVAL_STATUS.REJECTED
+                        ? "INSTRUCTOR_REJECTED"
+                        : "INSTRUCTOR_PENDING_APPROVAL",
+                approvalStatus,
+                message:
+                    approvalStatus === APPROVAL_STATUS.REJECTED
+                        ? "Your instructor application was not approved. Please contact support for assistance."
+                        : "Your instructor account is pending administrator approval.",
+            });
+        }
+
         if (courseDetails.instructor?._id.toString() !== userId) {
             return res.status(403).json({
                 success: false,

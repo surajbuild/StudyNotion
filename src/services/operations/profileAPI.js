@@ -51,6 +51,39 @@ export function getUserDetails(token, navigate) {
 }
 
 // ============================================================
+// REFRESH CURRENT USER (SILENT) — syncs authoritative user &
+// approvalStatus from MongoDB on page boot / hard refresh so
+// tampered localStorage cannot bypass instructor restrictions
+// and recent admin approvals take effect immediately.
+// ============================================================
+export async function refreshCurrentUser(token, dispatch) {
+    if (!token) return null;
+    try {
+        const response = await apiConnector("GET", GET_USER_DETAILS_API, null, {
+            Authorization: `Bearer ${token}`,
+        });
+        if (!response?.data?.success) {
+            return null;
+        }
+        const userData = response.data.userDetails || response.data.data;
+        if (!userData) return null;
+
+        const userImage = userData.image
+            ? userData.image
+            : `https://api.dicebear.com/6.x/initials/svg?seed=${userData.firstName} ${userData.lastName}`;
+        const hydratedUser = { ...userData, image: userImage };
+        if (dispatch) {
+            dispatch(setUser(hydratedUser));
+        }
+        localStorage.setItem("user", JSON.stringify(hydratedUser));
+        return hydratedUser;
+    } catch {
+        // Non-blocking: 401 expiry is handled globally by apiconnector interceptor
+        return null;
+    }
+}
+
+// ============================================================
 // GET USER ENROLLED COURSES — returns all courses a student is in
 // ============================================================
 export async function getUserEnrolledCourses(token) {

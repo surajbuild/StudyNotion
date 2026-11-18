@@ -19,6 +19,7 @@ export const sidebarLinks = [
     name: "My Courses",
     path: "/dashboard/my-courses",
     type: ACCOUNT_TYPE.INSTRUCTOR,
+    requiresApproval: true,
     icon: "VscVm",
   },
   {
@@ -26,6 +27,7 @@ export const sidebarLinks = [
     name: "Add Course",
     path: "/dashboard/add-course",
     type: ACCOUNT_TYPE.INSTRUCTOR,
+    requiresApproval: true,
     icon: "VscAdd",
   },
   {
@@ -67,5 +69,12 @@ export const sidebarLinks = [
     path: "/dashboard/admin/categories",
     type: ACCOUNT_TYPE.ADMIN,
     icon: "VscFolderLibrary",
+  },
+  {
+    id: 10,
+    name: "User Management",
+    path: "/dashboard/admin/users",
+    type: ACCOUNT_TYPE.ADMIN,
+    icon: "VscOrganization",
   },
 ];

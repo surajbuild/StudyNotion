@@ -3,17 +3,21 @@ import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { getInstructorData } from '../../../../services/operations/profileAPI';
 import { fetchInstructorCourses } from '../../../../services/operations/courseDetailsAPI';
+import { isInstructorApproved } from '../../../../utils/constants';
 import InstructorChart from './InstructorChart';
+import InstructorApprovalNotice from './InstructorApprovalNotice';
 
 const Instructor = () => {
 
     const { user } = useSelector((state) => state.profile);
     const { token } = useSelector((state) => state.auth);
+    const approved = isInstructorApproved(user);
     const [loading, setLoading] = useState(false);
     const [instructorData, setInstructorData] = useState(null);
     const [courses, setCourses] = useState([]);
 
     useEffect(() => {
+        if (!approved || !token) return;
         const getCourseDataWithStats = async () => {
             setLoading(true);
             const instructorApiData = await getInstructorData(token);
@@ -29,7 +33,11 @@ const Instructor = () => {
             setLoading(false);
         }
         getCourseDataWithStats();
-    }, [token])
+    }, [token, approved])
+
+    if (!approved) {
+        return <InstructorApprovalNotice />;
+    }
 
     const totalAmount = instructorData?.reduce((acc, curr) => acc + curr.totalAmountGenerated, 0) ?? 0;
     // ✅ FIX: was (acc, curr) => curr.totalStudentsEnrolled — missing acc + so only last value returned

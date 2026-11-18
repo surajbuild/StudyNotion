@@ -75,12 +75,17 @@ export const categories = {
   CATEGORIES_API: BASE_URL + "/course/showAllCategories",
 };
 
-// ---------- ADMIN DASHBOARD & CATEGORY MANAGEMENT ----------
+// ---------- ADMIN DASHBOARD, CATEGORY & USER MANAGEMENT ----------
 export const adminEndpoints = {
   ADMIN_DASHBOARD_API: BASE_URL + "/course/adminDashboard",
   CREATE_CATEGORY_API: BASE_URL + "/course/createCategory",
   UPDATE_CATEGORY_API: BASE_URL + "/course/updateCategory",
   DELETE_CATEGORY_API: BASE_URL + "/course/deleteCategory",
+  ADMIN_USER_STATS_API: BASE_URL + "/admin/users/stats",
+  ADMIN_USERS_LIST_API: BASE_URL + "/admin/users",
+  ADMIN_USER_DETAILS_API: BASE_URL + "/admin/users",
+  ADMIN_INSTRUCTORS_LIST_API: BASE_URL + "/admin/instructors",
+  ADMIN_INSTRUCTOR_ACTION_BASE_API: BASE_URL + "/admin/instructors",
 };
 
 // ---------- CATALOG PAGE ----------

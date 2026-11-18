@@ -4,6 +4,7 @@ const User = require("../models/User");
 const CourseProgress = require("../models/CourseProgress");
 const Course = require("../models/Course");
 const { imageUploadToCloudinary } = require("../utils/imageUploader");
+const { sanitizeUserForClient } = require("../utils/instructorApproval");
 
 // Helper: convert total seconds 
 const convertSecondsToDuration = (totalSeconds) => {
@@ -75,7 +76,7 @@ exports.updateProfile = async (req, res) => {
             success: true,
             message: "Profile updated successfully",
             profileDetails,
-            updatedUserDetails,
+            updatedUserDetails: sanitizeUserForClient(updatedUserDetails),
         });
     } catch (error) {
         console.error("updateProfile error:", error);
@@ -122,7 +123,7 @@ exports.updateDisplayPicture = async (req, res) => {
             success: true,
             message: "Display picture updated successfully",
             image: user.image,
-            user,
+            user: sanitizeUserForClient(user),
         });
     } catch (error) {
         console.error("updateDisplayPicture error:", error);
@@ -204,7 +205,7 @@ exports.getAllUserDetails = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "User data fetched successfully",
-            userDetails,
+            userDetails: sanitizeUserForClient(userDetails),
         });
     } catch (error) {
         console.error("getAllUserDetails error:", error);

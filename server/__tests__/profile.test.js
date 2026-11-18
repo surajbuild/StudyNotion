@@ -127,7 +127,13 @@ describe("Profile Endpoints (server/controllers/Profile.js)", () => {
   });
 
   describe("GET /api/v1/profile/instructorDashboard", () => {
-    it("should return course analytics and earnings for instructor", async () => {
+    it("should return course analytics and earnings for approved instructor", async () => {
+      User.findById.mockResolvedValue({
+        _id: "inst_1",
+        accountType: "Instructor",
+        approvalStatus: "APPROVED",
+        approved: true,
+      });
       Course.find.mockResolvedValue([
         {
           _id: "c1",
@@ -146,6 +152,41 @@ describe("Profile Endpoints (server/controllers/Profile.js)", () => {
       expect(res.body.courses).toHaveLength(1);
       expect(res.body.courses[0].totalStudentsEnrolled).toBe(2);
       expect(res.body.courses[0].totalAmountGenerated).toBe(2000);
+    });
+
+    it("should block pending instructor from accessing instructor dashboard with 403", async () => {
+      User.findById.mockResolvedValue({
+        _id: "inst_1",
+        accountType: "Instructor",
+        approvalStatus: "PENDING",
+        approved: false,
+      });
+
+      const res = await request(app)
+        .get("/api/v1/profile/instructorDashboard")
+        .set("Authorization", `Bearer ${instructorToken}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe("INSTRUCTOR_PENDING_APPROVAL");
+      expect(Course.find).not.toHaveBeenCalled();
+    });
+
+    it("should block rejected instructor from accessing instructor dashboard with 403", async () => {
+      User.findById.mockResolvedValue({
+        _id: "inst_1",
+        accountType: "Instructor",
+        approvalStatus: "REJECTED",
+        approved: false,
+      });
+
+      const res = await request(app)
+        .get("/api/v1/profile/instructorDashboard")
+        .set("Authorization", `Bearer ${instructorToken}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe("INSTRUCTOR_REJECTED");
     });
   });
 });

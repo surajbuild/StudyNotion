@@ -38,6 +38,7 @@ const paymentRoutes = require("./routes/Payment");
 const cartRoutes = require("./routes/Cart");
 const courseRoutes = require("./routes/Course");
 const contactRoutes = require("./routes/Contact");
+const adminRoutes = require("./routes/Admin");
 
 const PORT = process.env.PORT || 4000;
 
@@ -104,6 +105,7 @@ app.use("/api/v1/course", courseRoutes);
 app.use("/api/v1/payment", paymentRoutes);
 app.use("/api/v1/cart", cartRoutes);
 app.use("/api/v1/reach", emailLimiter, contactRoutes);
+app.use("/api/v1/admin", adminRoutes);
 
 // Test-only harness endpoints — strictly mounted ONLY in explicit isolated mock test mode
 if (isTestMode() && process.env.STUDYNOTION_TEST_MODE === "true" && isExternalMockMode()) {

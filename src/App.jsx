@@ -5,9 +5,11 @@ import Navbar from "./components/common/Navbar";
 import OpenRoute from "./components/core/Auth/OpenRoute";
 import PrivateRoute from "./components/core/Auth/PrivateRoute";
 import AdminRoute from "./components/core/Auth/AdminRoute";
+import ApprovedInstructorRoute from "./components/core/Auth/ApprovedInstructorRoute";
 import { ACCOUNT_TYPE } from "./utils/constants";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchUserCart } from "./services/operations/cartAPI";
+import { refreshCurrentUser } from "./services/operations/profileAPI";
 
 const Home = lazy(() => import("./pages/Home"));
 const Login = lazy(() => import("./pages/Login"));
@@ -32,6 +34,7 @@ const EditCourse = lazy(() => import("./components/core/Dashboard/EditCourse"));
 const Instructor = lazy(() => import("./components/core/Dashboard/InstructorDashboard/Instructor"));
 const AdminDashboard = lazy(() => import("./components/core/Dashboard/Admin/AdminDashboard"));
 const CategoryManagement = lazy(() => import("./components/core/Dashboard/Admin/CategoryManagement"));
+const UserManagement = lazy(() => import("./components/core/Dashboard/Admin/UserManagement"));
 const CourseDetails = lazy(() => import("./pages/CourseDetails"));
 const ViewCourse = lazy(() => import("./pages/ViewCourse"));
 const VideoDetails = lazy(() => import("./components/core/ViewCourse/VideoDetails"));
@@ -49,6 +52,13 @@ function App() {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.profile);
   const { token } = useSelector((state) => state.auth);
+
+  // Hydrate authoritative user & approvalStatus from backend on page boot / hard refresh
+  useEffect(() => {
+    if (token) {
+      refreshCurrentUser(token, dispatch);
+    }
+  }, [token, dispatch]);
 
   // Hydrate persistent MongoDB cart on page reload / multi-device student session
   useEffect(() => {
@@ -101,9 +111,30 @@ function App() {
             {/* Instructor routes */}
             {user?.accountType === ACCOUNT_TYPE.INSTRUCTOR && (
               <>
-                <Route path="my-courses" element={<MyCourses />} />
-                <Route path="add-course" element={<AddCourse />} />
-                <Route path="edit-course/:courseId" element={<EditCourse />} />
+                <Route
+                  path="my-courses"
+                  element={
+                    <ApprovedInstructorRoute>
+                      <MyCourses />
+                    </ApprovedInstructorRoute>
+                  }
+                />
+                <Route
+                  path="add-course"
+                  element={
+                    <ApprovedInstructorRoute>
+                      <AddCourse />
+                    </ApprovedInstructorRoute>
+                  }
+                />
+                <Route
+                  path="edit-course/:courseId"
+                  element={
+                    <ApprovedInstructorRoute>
+                      <EditCourse />
+                    </ApprovedInstructorRoute>
+                  }
+                />
                 <Route path="instructor" element={<Instructor />} />
               </>
             )}
@@ -122,6 +153,14 @@ function App() {
               element={
                 <AdminRoute>
                   <CategoryManagement />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="admin/users"
+              element={
+                <AdminRoute>
+                  <UserManagement />
                 </AdminRoute>
               }
             />
