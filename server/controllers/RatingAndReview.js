@@ -126,7 +126,7 @@ exports.getAverageRating = async (req, res) => {
     }
 }
 
-//get all rating and reviews
+//get all rating and reviews (SEC-004: email excluded to prevent public PII exposure)
 exports.getAllRating = async (req, res) => {
     try{
         const allReviews = await RatingAndReview.find({})
@@ -134,7 +134,7 @@ exports.getAllRating = async (req, res) => {
                            .limit(20)
                            .populate({
                             path: "user",
-                            select: "firstName lastName email image",
+                            select: "firstName lastName image",
                            })
                            .populate({
                             path: "course",
