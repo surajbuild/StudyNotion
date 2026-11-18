@@ -1,5 +1,8 @@
 const jwt = require("jsonwebtoken");
-require("dotenv").config();
+const { isTestMode } = require("../config/testSafety");
+if (!isTestMode()) {
+    require("dotenv").config();
+}
 const User = require("../models/User");
 
 // ============================================================

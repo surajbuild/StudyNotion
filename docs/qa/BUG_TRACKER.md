@@ -1,15 +1,37 @@
 # StudyNotion — Bug Tracker & Root Cause Analysis
 
 > **Last Updated:** 2026-11-18  
-> **Audit Cycle:** Cycle #3  
+> **Audit Cycle:** Cycle #4 (`GAP-009`)  
 > **Severity Levels:** `CRITICAL` | `HIGH` | `MEDIUM` | `LOW`  
-> **Total Logged:** 25 (+ `BUG-028` from Cycle #1) | **Fixed & Verified:** 25 (+ `BUG-028`) | **Open:** 0
+> **Total Logged:** 27 (`BUG-001`–`BUG-029`, excluding unused gap) | **Fixed & Verified:** 27 | **Open:** 0
 
 ---
 
 ## Open Bugs
 
-*None — all tracked bugs across Cycles #1, #2, and #3 have been fixed and verified.*
+*None — all tracked bugs across Cycles #1, #2, #3, and #4 have been fixed and verified.*
+
+---
+
+## Cycle #4 — Newly Discovered & Fixed Bug + Isolated Test Infrastructure (`GAP-009`)
+
+### `BUG-029` — Edit Course Form Silently Blocked Submission & Omitted Existing Thumbnail Preview
+- **Module:** Instructor Module (`EditCourse` / `CourseInformationForm`)
+- **Severity:** `HIGH` | **Priority:** P1 | **Status:** `FIXED & VERIFIED`
+- **Location:** [`src/components/core/Dashboard/AddCourse/CourseInformation/CourseInformationForm.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/components/core/Dashboard/AddCourse/CourseInformation/CourseInformationForm.jsx#L34-L105)
+- **How Discovered:** Unblocking live authenticated Playwright `E2E-20` against the isolated MongoDB environment revealed that clicking `Save Changes` after editing a course title never fired `POST /api/v1/course/editCourse`.
+- **Root Cause:**
+  1. `CourseInformationForm` called `setValue("courseCategory", course.category?._id)` on mount *before* async `fetchCourseCategories()` populated the `<select>` `<option>` list, while registering `courseCategory` with `{ required: true }` on a `<select disabled={editCourse || loading}>`. React Hook Form validation rejected the empty/disabled `<select>` silently, preventing every course edit submission.
+  2. When `data.courseCategory` was `undefined` on a disabled `<select>`, `data.courseCategory !== course.category?._id` could also append `"undefined"` as `category` to `FormData`.
+  3. `<Upload>` was passed `thumbnail={editCourse ? course.thumbnail : null}` instead of its expected prop `editData`, hiding the existing thumbnail preview during edits.
+- **Resolution:** Re-synced `courseCategory` after async categories load, set `required: !editCourse` on the disabled edit-mode select, guarded `if (data.courseCategory && ...)` before appending `category`, and passed `editData={editCourse ? course.thumbnail : null}` to `<Upload>`.
+- **Regression Verification:** Live Playwright `E2E-20` (edit course title -> `POST /api/v1/course/editCourse` HTTP 200 -> persisted updated title visible in `/dashboard/my-courses`) + `npx eslint src --max-warnings=0` + `npm run build`.
+
+### `GAP-009` *(Tracked Separately)* — Isolated MongoDB Testing Environment & Safety Guardrails
+- **Module:** Backend Infrastructure & QA Automation
+- **Status:** `RESOLVED & VERIFIED`
+- **Location:** [`server/config/testSafety.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/config/testSafety.js), [`server/config/database.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/config/database.js), [`server/test-env/mongoInstance.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/test-env/mongoInstance.js), [`server/test-env/seed.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/test-env/seed.js), [`server/test-env/startIsolatedEnv.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/test-env/startIsolatedEnv.js), [`e2e/authenticated.e2e.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/e2e/authenticated.e2e.js), [`docker-compose.test.yml`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/docker-compose.test.yml)
+- **Verification:** `server/__tests__/testSafety.test.js` (10/10 PASS), `server/__tests__/integration.realdb.test.js` (6/6 PASS against real isolated MongoDB 8.0 on `127.0.0.1:27018`), and `e2e/authenticated.e2e.js` (9/9 PASS — all 6 previously blocked tests `E2E-16`–`E2E-21` + 3 regressions).
 
 ---
 

@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-11-18 — QA Cycle #4 (`GAP-009`: Isolated MongoDB Testing Environment & Unblocking All 6 Authenticated E2E Tests)
+
+| Task / Bug ID | Files Modified / Added | Changes Made | Tests Executed | Verification Status |
+|---------------|------------------------|--------------|----------------|---------------------|
+| `CHECKPOINT` | Cycle #3 commit `c5281b9` (local only) | Created clean local checkpoint commit preserving all Cycle #3 fixes and QA docs (unpushed) | `git status` | `VERIFIED` |
+| `GAP-009` (Safety) | `server/config/testSafety.js` (new), `server/__tests__/testSafety.test.js` (new), `server/config/database.js`, `server/index.js`, `server/middlewares/auth.js`, `server/controllers/Auth.js`, `server/controllers/ResetPassword.js`, `.gitignore` | Implemented strict `MONGODB_TEST_URL` isolation: blocks production/Atlas URIs, non-local hosts, non-`test` DB names, missing test flags, and matching `MONGODB_URL`; prevents reading production `server/.env` in test mode; masks credentials in logs | `server/__tests__/testSafety.test.js` (10/10 PASS) | `VERIFIED` |
+| `GAP-009` (Test DB & Mocks) | `server/test-env/mongoInstance.js` (new), `server/test-env/seed.js` (new), `server/test-env/startIsolatedEnv.js` (new), `docker-compose.test.yml` (new), `server/.env.test.example` (new), `server/utils/mailSender.js`, `server/utils/imageUploader.js`, `server/config/razorpay.js`, `server/middlewares/rateLimiters.js`, `package.json`, `server/package.json` | Built ephemeral local MongoDB 8.0 lifecycle manager (port `27018`), repeatable synthetic seeding/cleanup/teardown, and test-only stubs for SMTP, Cloudinary, and Razorpay orders (zero production data or external side effects) | `npm run test:server:integration` (6/6 PASS) | `VERIFIED` |
+| `GAP-009` (Integration) | `server/__tests__/integration.realdb.test.js` (new) | Added real-MongoDB full-stack Supertest suite verifying auth/OTP/cookies/logout, profile/password persistence, payment enrollment + progress + `$avg` rating aggregation, instructor CRUD + cascade delete, RBAC/IDOR, and profile delete cascade | `npm run test:all` (15 FE suites / 61 tests + 13 BE suites / 104 tests PASS) | `VERIFIED` |
+| `GAP-009` (Auth E2E) | `e2e/authenticated.e2e.js` (new) | Unblocked and executed all 6 previously blocked live Playwright E2E journeys (`E2E-16` through `E2E-21`) plus 3 regressions (`REG-01`–`REG-03`) against isolated frontend (`3001`), backend (`4001`), and MongoDB (`27018`) | `node e2e/authenticated.e2e.js` (9/9 PASS, 0 page errors, 0 Swiper warnings) | `VERIFIED` |
+| `BUG-029` | `src/components/core/Dashboard/AddCourse/CourseInformation/CourseInformationForm.jsx` | Fixed genuine defect uncovered by `E2E-20`: re-synced `courseCategory` after async fetch, set `required: !editCourse` on disabled select, guarded undefined `category` in `FormData`, and fixed `<Upload editData={...}>` prop | Playwright `E2E-20` + `npx eslint src --max-warnings=0` + `npm run build` | `VERIFIED` |
+| `QA-SYS` | `docs/qa/*` (7 tracking files) | Updated QA tracking system for Cycle #4 (199/199 executed tests PASS, 0 blocked, 0 open bugs) while preserving Cycles #1–#3 history | All suites + ESLint + Build | `VERIFIED` |
+
+---
+
 ## 2026-11-18 — QA Cycle #3 (Close All Remaining Bugs & Full Regression Verification)
 
 | Task / Bug ID | Files Modified / Added | Changes Made | Tests Executed | Verification Status |

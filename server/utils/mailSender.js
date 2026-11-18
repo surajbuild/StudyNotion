@@ -1,6 +1,9 @@
 const nodemailer = require("nodemailer");
 const fs = require("fs");
 const path = require("path");
+const { isExternalMockMode } = require("../config/testSafety");
+
+const sentTestEmails = [];
 
 const inlineLogoCid = "studynotion-logo";
 const inlineLogoPath = path.join(__dirname, "../../public/studynotion-logo.png");
@@ -41,6 +44,19 @@ const getTransportConfig = () => {
 };
 
 const mailSender = async (email, title, body) => {
+    if (isExternalMockMode()) {
+        const mockMessageId = `test-mock-mail-${Date.now()}-${sentTestEmails.length + 1}`;
+        sentTestEmails.push({
+            to: email,
+            subject: title,
+            html: body,
+            text: htmlToText(body),
+            messageId: mockMessageId,
+            sentAt: new Date().toISOString(),
+        });
+        return { messageId: mockMessageId, mocked: true };
+    }
+
     // console.log("email:" ,email)
     const transporter = nodemailer.createTransport(getTransportConfig());
     const from = process.env.MAIL_FROM || process.env.MAIL_USER?.trim();
@@ -65,6 +81,11 @@ const mailSender = async (email, title, body) => {
 
     console.log(`Email sent to ${email} (ID: ${info.messageId})`);
     return info;
+};
+
+mailSender.getSentEmails = () => [...sentTestEmails];
+mailSender.clearSentEmails = () => {
+    sentTestEmails.length = 0;
 };
 
 module.exports = mailSender;

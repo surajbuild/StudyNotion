@@ -1,9 +1,9 @@
 # StudyNotion — Continuous QA Dashboard
 
 > **Last Audit Date:** 2026-11-18  
-> **Audit Cycle:** Cycle #3 (Close All Remaining Bugs + Full Regression & E2E Verification)  
-> **Application Stack:** React 18 + Redux Toolkit + React Router 7 (HashRouter) | Express 5 + Mongoose 8 + MongoDB Atlas  
-> **External Integrations:** Razorpay (Test Mode), Cloudinary, Nodemailer (Gmail SMTP)
+> **Audit Cycle:** Cycle #4 (`GAP-009`: Isolated MongoDB Testing Environment + Unblocking All 6 Authenticated E2E Tests)  
+> **Application Stack:** React 18 + Redux Toolkit + React Router 7 (HashRouter) | Express 5 + Mongoose 8 + MongoDB 8 (Isolated Test) / Atlas (Prod)  
+> **External Integrations:** Razorpay (Mocked/Sandbox in Test), Cloudinary (Mocked in Test), Nodemailer (In-Memory Capture in Test)
 
 ---
 
@@ -12,24 +12,25 @@
 | Metric | Count | Percentage / Formula |
 |--------|-------|----------------------|
 | **Total Discovered Features** | **54** | 100% baseline (`FEATURE_MATRIX.md`) |
-| ↳ Fully Implemented | **40** | `40 / 54 = 74.1%` (+5 from Cycle #2: `F-AUTH-04`, `F-AUTH-09`, `F-STU-11`, `F-COM-03`, `F-COM-06`) |
+| ↳ Fully Implemented | **43** | `43 / 54 = 79.6%` (+3 from Cycle #3: `F-INF-03`, `F-STU-08`, `F-INS-08`) |
 | ↳ Partially Implemented | **4** | `4 / 54 = 7.4%` (`F-STU-07`, `F-INS-10`, `F-INS-11`, `F-ADM-01`) |
-| ↳ Implemented But Broken | **0** | `0 / 54 = 0.0%` (was 1 in Cycle #2) |
-| ↳ Not Implemented (Gaps) | **8** | `8 / 54 = 14.8%` (Search, Admin UI, Notifications, Quizzes, Certificates, etc.) |
-| ↳ Blocked / Not Live-Verified | **2** | `2 / 54 = 3.7%` (Live Razorpay checkout modal, Live Cloudinary video upload — verified via mocked integration tests only) |
+| ↳ Implemented But Broken | **0** | `0 / 54 = 0.0%` |
+| ↳ Not Implemented (Gaps) | **7** | `7 / 54 = 13.0%` (Search, Filters/Pagination, Admin UI, Instructor Approval, Notifications, Quizzes, Certificates) |
+| ↳ Blocked / Not Live-Verified | **0** | `0 / 54 = 0.0%` (was 2 in Cycle #3 — unblocked via isolated test environment) |
 
 ---
 
-## 2. Test Execution Status
+## 2. Test Execution Status (0 Blocked, 100% Pass Rate)
 
-| Test Layer | Tool | Total Cases | Passed | Failed | Blocked | Pending | Pass Rate (Executed) |
-|------------|------|-------------|--------|--------|---------|---------|----------------------|
-| **Backend Unit & API Integration** | Jest + Supertest | 88 | 88 | 0 | 0 | 0 | `88 / 88 = 100.0%` (+2 in Cycle #3) |
-| **Frontend Unit & Component Tests** | Jest (CRA) | 61 | 61 | 0 | 0 | 0 | `61 / 61 = 100.0%` (+16 in Cycle #3) |
+| Test Layer | Tool | Total Cases | Passed | Failed | Blocked | Pending | Pass Rate |
+|------------|------|-------------|--------|--------|---------|---------|-----------|
+| **Backend Unit, API & Safety Guardrails** | Jest + Supertest | 98 | 98 | 0 | 0 | 0 | `98 / 98 = 100.0%` (+10 safety tests in Cycle #4) |
+| **Backend Real-MongoDB Integration** | Jest + Supertest + Local MongoDB 8.0 | 6 | 6 | 0 | 0 | 0 | `6 / 6 = 100.0%` (**NEW** in Cycle #4) |
+| **Frontend Unit & Component Tests** | Jest (CRA) | 61 | 61 | 0 | 0 | 0 | `61 / 61 = 100.0%` |
 | **Live Browser E2E (Cycle #2 Public & Auth)** | Playwright (Chromium) | 18 | 18 | 0 | 0 | 0 | `18 / 18 = 100.0%` |
 | **Live Browser E2E (Cycle #3 Bug & Regression)** | Playwright (Chromium) | 7 | 7 | 0 | 0 | 0 | `7 / 7 = 100.0%` |
-| **Authenticated Live E2E (Student/Instructor)** | Playwright | 6 | 0 | 0 | 6 | 0 | Blocked — requires dedicated non-production test accounts + isolated test DB (`GAP-009`) |
-| **TOTAL** | — | **180** | **174** | **0** | **6** | **0** | **`174 / 174 = 100.0%` executed (`174 / 180 = 96.7%` overall)** |
+| **Authenticated Live E2E (`E2E-16`–`E2E-21` + `REG-01`–`03`)** | Playwright + Isolated MongoDB | 9 | 9 | 0 | 0 | 0 | `9 / 9 = 100.0%` (**ALL 6 BLOCKED TESTS UNBLOCKED**) |
+| **TOTAL** | — | **199** | **199** | **0** | **0** | **0** | **`199 / 199 = 100.0%`** |
 
 ---
 
@@ -38,12 +39,12 @@
 | Severity | Discovered | Fixed & Verified | Open |
 |----------|------------|------------------|------|
 | **CRITICAL** | 3 | 3 (`BUG-002`, `BUG-003`, `BUG-009`) | **0** |
-| **HIGH** | 10 | 10 (`BUG-004`, `BUG-005`, `BUG-008`, `BUG-010`–`BUG-016`, `BUG-023`*) | **0** |
-| **MEDIUM** | 10 | 10 (`BUG-001`, `BUG-006`, `BUG-007`, `BUG-017`–`BUG-022`, `BUG-024`, `BUG-025`*) | **0** |
+| **HIGH** | 12 | 12 (`BUG-004`, `BUG-005`, `BUG-008`, `BUG-010`–`BUG-016`, `BUG-023`, `BUG-028`, `BUG-029`*) | **0** |
+| **MEDIUM** | 10 | 10 (`BUG-001`, `BUG-006`, `BUG-007`, `BUG-017`–`BUG-022`, `BUG-024`, `BUG-025`) | **0** |
 | **LOW** | 2 | 2 (`BUG-026`, `BUG-027`) | **0** |
-| **TOTAL** | **25** | **25** (`25 / 25 = 100.0%`) | **0** |
+| **TOTAL** | **27** | **27** (`27 / 27 = 100.0%`) | **0** |
 
-*\*Note: `BUG-028` (password reset HashRouter URL fix from Cycle #1) is also logged and verified in [`BUG_TRACKER.md`](./BUG_TRACKER.md), bringing total closed defects across Cycles #1–#3 to 26 (25 tracked in the main table + `BUG-028`), plus `GAP-006` (server-side `POST /api/v1/auth/logout` endpoint) tracked separately from `BUG-025`.*
+*\*Note: `BUG-029` (`HIGH`: `CourseInformationForm.jsx` blocked saving course edits due to `required: true` on disabled async `courseCategory` select + `Upload` prop mismatch) was discovered live while unblocking `E2E-20` in Cycle #4 and fixed immediately. Separately tracked infrastructure/integration milestones resolved: `GAP-006` (Cycle #3) and `GAP-009` (Cycle #4).*
 
 ---
 
@@ -52,12 +53,12 @@
 | Module | Total Features | Fully Impl. | Partial | Broken | Not Impl. | Blocked | Open Bugs |
 |--------|---------------|-------------|---------|--------|-----------|---------|-----------|
 | **A. Authentication & Security** | 12 | 11 | 0 | 0 | 1 | 0 | **0** |
-| **B. Student Module** | 14 | 10 | 1 | 0 | 2 | 1 | **0** |
-| **C. Instructor Module** | 12 | 9 | 2 | 0 | 0 | 1 | **0** |
+| **B. Student Module** | 14 | 11 | 1 | 0 | 2 | 0 | **0** |
+| **C. Instructor Module** | 12 | 10 | 2 | 0 | 0 | 0 | **0** |
 | **D. Admin & Categories** | 3 | 1 | 1 | 0 | 1 | 0 | **0** |
 | **E. Common / Public UI** | 10 | 7 | 0 | 0 | 3 | 0 | **0** |
-| **F. Backend Infra & Build** | 3 | 2 | 0 | 0 | 1 | 0 | **0** |
-| **TOTAL** | **54** | **40** | **4** | **0** | **8** | **2** | **0** |
+| **F. Backend Infra & Build** | 3 | 3 | 0 | 0 | 0 | 0 | **0** |
+| **TOTAL** | **54** | **43** | **4** | **0** | **7** | **0** | **0** |
 
 ---
 
@@ -65,31 +66,30 @@
 
 | Check | Command | Result |
 |-------|---------|--------|
-| **Frontend ESLint (Strict)** | `npx eslint src --max-warnings=0` | **PASS** — 0 errors, 0 warnings (0 `eslint-disable` comments added) |
-| **Frontend Production Build** | `npm run build` | **PASS** — Exit 0, 0 ESLint warnings (2 pre-existing Swiper PostCSS CSS-nesting notices) |
-| **Backend Startup & DB** | `npm run dev` (`server/index.js`) | **PASS** — `DB connected successfully`, `Server running on port 4000` |
+| **Frontend ESLint (Strict)** | `npx eslint src --max-warnings=0` | **PASS** — 0 errors, 0 warnings |
+| **Frontend Production Build** | `npm run build` | **PASS** — Exit 0, 0 ESLint warnings |
+| **Isolated MongoDB Test Env** | `node server/test-env/startIsolatedEnv.js` | **PASS** — Ephemeral local MongoDB 8.0 on `127.0.0.1:27018/studynotion_test`, production `.env` never read |
 
 ---
 
 ## 6. Remaining Priority Work
 
 ### Open Bugs
-- **None (0 open bugs).** All 5 remaining bugs from Cycle #2 (`BUG-023`–`BUG-027`) plus `GAP-006` are fixed and verified.
+- **None (0 open bugs).**
 
 ### Highest-Impact Missing Features (see [`MISSING_FEATURES.md`](./MISSING_FEATURES.md))
-1. **`GAP-009` — Isolated MongoDB Test Environment + Authenticated E2E Seed Script** (unblocks the 6 blocked live authenticated Playwright journeys safely without touching production Atlas).
-2. **`GAP-004` — Global Course Search, Filtering & Pagination** (highest learner-facing value).
-3. **`GAP-001` — Admin Dashboard & Category Management UI** (unlocks existing backend `createCategory` + `isAdmin` role).
-4. **`GAP-005` — Free Course (₹0) Direct Enrollment Flow** (resolves publish/Razorpay conflict for free courses).
-5. **Legal & Policy Pages (Pending User Requirements):** Privacy Policy, Terms of Service, and Cookie Policy links were removed from Footer rather than publishing unapproved legal copy; add routes once legal copy is confirmed.
+1. **`GAP-004` — Global Course Search, Filtering & Pagination** (highest learner-facing value).
+2. **`GAP-001` — Admin Dashboard & Category Management UI** (unlocks existing backend `createCategory` + `isAdmin` role).
+3. **`GAP-005` — Free Course (₹0) Direct Enrollment Flow** (resolves publish/Razorpay conflict for free courses).
+4. **`GAP-008` — Database-Backed Cart & Order History** (adds payment replay protection & invoice history).
 
 ---
 
 ## 7. Quick Links to QA Tracking System
 
 - **[FEATURE_MATRIX.md](./FEATURE_MATRIX.md)** — Complete 54-feature inventory with separate Implementation vs. Testing status
-- **[TEST_CASES.md](./TEST_CASES.md)** — Detailed test cases across Backend, Frontend, and Playwright E2E
-- **[BUG_TRACKER.md](./BUG_TRACKER.md)** — All 26 discovered bugs + `GAP-006` with root causes, fixes, and regression links
+- **[TEST_CASES.md](./TEST_CASES.md)** — Detailed 199-test registry across Backend, Real-DB Integration, Frontend, and Playwright E2E
+- **[BUG_TRACKER.md](./BUG_TRACKER.md)** — All 27 discovered & verified bugs + `GAP-006` / `GAP-009`
 - **[MISSING_FEATURES.md](./MISSING_FEATURES.md)** — Feature gap analysis (Required vs. Inferred vs. Optional)
 - **[TEST_REPORT.md](./TEST_REPORT.md)** — Cycle-by-cycle execution logs, commands, and build verification
 - **[CHANGELOG_QA.md](./CHANGELOG_QA.md)** — Chronological log of every fix and QA update

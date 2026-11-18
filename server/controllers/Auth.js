@@ -7,8 +7,11 @@ const mailSender = require("../utils/mailSender");
 const otpTemplate = require("../mail/templates/emailVerificationTemplate");
 const Profile = require("../models/Profile");
 const jwt = require("jsonwebtoken");
+const { isTestMode } = require("../config/testSafety");
 
-require("dotenv").config();
+if (!isTestMode()) {
+    require("dotenv").config();
+}
 
 // ============================================================
 // SIGN UP — creates a new user account after OTP verification

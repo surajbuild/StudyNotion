@@ -1,0 +1,14 @@
+services:
+  mongo-test:
+    image: mongo:7
+    container_name: studynotion-mongo-test
+    ports:
+      - "27018:27017"
+    tmpfs:
+      - /data/db
+    command: ["mongod", "--quiet", "--noauth"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

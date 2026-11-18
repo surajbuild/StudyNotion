@@ -3,7 +3,10 @@ const mailSender = require("../utils/mailSender");
 const { resetPasswordEmail } = require("../mail/templates/resetPasswordEmail");
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
-require('dotenv').config();
+const { isTestMode } = require("../config/testSafety");
+if (!isTestMode()) {
+    require('dotenv').config();
+}
 
 //reset password token
 exports.resetPasswordToken = async (req, res) => {

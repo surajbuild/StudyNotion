@@ -47,7 +47,10 @@
     "build": "node --openssl-legacy-provider node_modules/react-scripts/bin/react-scripts.js build",
     "test": "node --openssl-legacy-provider node_modules/react-scripts/bin/react-scripts.js test --watchAll=false",
     "test:server": "cd server && npm test",
+    "test:server:integration": "cd server && npm run test:integration",
     "test:all": "npm test && npm run test:server",
+    "test:e2e:isolated": "node e2e/authenticated.e2e.js",
+    "start:test-backend": "node server/test-env/startIsolatedEnv.js",
     "eject": "react-scripts eject",
     "server": "node --watch server/index.js",
     "dev": "node dev.js"

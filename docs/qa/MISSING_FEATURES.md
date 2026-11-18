@@ -81,10 +81,11 @@
 - **Required Changes:** Add `Order` model in `server/models/Order.js`, persist verified payment IDs in `Payments.js` (checking `razorpay_payment_id` uniqueness to prevent replay), and add a "Purchase History" tab in Student Dashboard.
 - **Priority:** Medium | **Complexity:** `MEDIUM`
 
-### `GAP-009` — Dedicated Isolated MongoDB Test Environment + Authenticated E2E Seed Script
-- **What is missing:** Backend tests currently mock Mongoose models (fast and deterministic, but do not exercise live MongoDB aggregation pipelines or real indexes), and Playwright E2E cannot test authenticated Student/Instructor journeys without non-production seed accounts.
-- **Required Changes:** Add `docker-compose.test.yml` (MongoDB 7 container) or local test DB URI (`MONGODB_TEST_URL`) + seed script to run full-stack authenticated Playwright journeys safely.
-- **Priority:** Medium | **Complexity:** `MEDIUM`
+### `GAP-009` — Dedicated Isolated MongoDB Test Environment + Authenticated E2E Seed Script — `RESOLVED (Cycle #4)`
+- **Resolution (Cycle #4):**
+  - Implemented strict safety guardrails (`server/config/testSafety.js` + `testSafety.test.js`, 10/10 PASS) rejecting production/Atlas URIs, missing `NODE_ENV=test`, non-local hosts, and non-`test` database names, while preventing `server/.env` from being read in test mode.
+  - Added automated ephemeral local MongoDB 8.0 lifecycle manager (`server/test-env/mongoInstance.js`, port `27018`), repeatable seeder/teardown (`server/test-env/seed.js`), isolated test backend launcher (`server/test-env/startIsolatedEnv.js`, port `4001`), `docker-compose.test.yml`, and `server/.env.test.example`.
+  - Added real-MongoDB integration test suite (`server/__tests__/integration.realdb.test.js`, 6/6 PASS) and unblocked all 6 previously blocked authenticated Playwright E2E journeys (`e2e/authenticated.e2e.js`, `E2E-16`–`E2E-21` + `REG-01`–`REG-03`, 9/9 PASS).
 
 ---
 

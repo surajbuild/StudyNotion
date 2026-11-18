@@ -39,16 +39,20 @@ const CourseInformationForm = () => {
                 setCourseCategories(categories)
             }
             setLoading(false)
+            if (editCourse && course) {
+                const catId = course.category?._id || course.category || ""
+                if (catId) setValue("courseCategory", catId)
+            }
         }
 
         // Pre-fill form fields when editing an existing course
-        if (editCourse) {
+        if (editCourse && course) {
             setValue("courseTitle", course.courseName)
             setValue("courseShortDesc", course.courseDescription)
             setValue("coursePrice", course.price)
             setValue("courseTags", course.tag)
             setValue("courseBenefits", course.whatYouWillLearn)
-            setValue("courseCategory", course.category?._id)
+            setValue("courseCategory", course.category?._id || course.category || "")
             setValue("courseRequirements", course.instructions)
         }
 
@@ -94,7 +98,7 @@ const CourseInformationForm = () => {
                 formData.append("price", data.coursePrice)
             if (data.courseBenefits !== course.whatYouWillLearn)
                 formData.append("whatYouWillLearn", data.courseBenefits)
-            if (data.courseCategory !== course.category?._id)
+            if (data.courseCategory && data.courseCategory !== (course.category?._id || course.category))
                 formData.append("category", data.courseCategory)
             if (data.courseRequirements?.toString() !== course.instructions?.toString())
                 formData.append("instructions", JSON.stringify(data.courseRequirements))
@@ -214,7 +218,7 @@ const CourseInformationForm = () => {
                     mismatch between the Course and Category collections. */}
                 <select
                     disabled={editCourse || loading}
-                    {...register("courseCategory", { required: true })}
+                    {...register("courseCategory", { required: !editCourse })}
                     className="form-style w-full rounded-lg border border-richblack-600 bg-richblack-700 px-4 py-3 text-sm text-richblack-5 focus:border-yellow-50 focus:outline-none transition-all disabled:cursor-not-allowed disabled:opacity-60"
                 >
                     <option value="">Select Category</option>
@@ -247,7 +251,7 @@ const CourseInformationForm = () => {
                 register={register}
                 setValue={setValue}
                 errors={errors}
-                thumbnail={editCourse ? course.thumbnail : null}
+                editData={editCourse ? course.thumbnail : null}
             />
 
             {/* ── Benefits / What You Will Learn ────────────────────────────── */}
