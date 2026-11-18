@@ -1632,8 +1632,16 @@ describe("Isolated Real-MongoDB Full-Stack Integration Suite (GAP-009)", () => {
                 .send({ email: legacyEmail });
             expect(tokenReq.status).toBe(200);
 
+            // SEC-002: Token is hashed before storing; raw token is delivered via email
+            const sentEmails = mailSender.getSentEmails();
+            const lastEmail = sentEmails[sentEmails.length - 1];
+            const tokenMatch = lastEmail.html.match(/update-password\/([a-zA-Z0-9_-]+)/);
+            const realResetToken = tokenMatch ? tokenMatch[1] : null;
+
             const userWithToken = await User.findOne({ email: legacyEmail }).lean();
-            const realResetToken = userWithToken.token;
+            expect(userWithToken.token).toBeNull();
+            expect(typeof userWithToken.resetPasswordTokenHash).toBe("string");
+            expect(userWithToken.resetPasswordTokenHash).not.toBe(realResetToken);
             expect(typeof realResetToken).toBe("string");
             expect(realResetToken.length).toBeGreaterThan(10);
 
@@ -2251,6 +2259,308 @@ describe("Isolated Real-MongoDB Full-Stack Integration Suite (GAP-009)", () => {
             expect(page1Res.body.data.students[0]._id).not.toBe(page2Res.body.data.students[0]._id);
             expect(page1Res.body.data.pagination.hasNextPage).toBe(true);
             expect(page2Res.body.data.pagination.hasPrevPage).toBe(true);
+        });
+    });
+
+    describe("13. Critical Security Hardening, Privacy & Session Protection (Cycle #12 Real MongoDB)", () => {
+        const bcrypt = require("bcrypt");
+
+        test("BE-DB-16: Hashed password reset tokens in real MongoDB (SEC-002) - raw token never persisted, single-use enforced", async () => {
+            const mailSender = require("../utils/mailSender");
+            const secUserEmail = "sec.reset@isolated.test";
+            const initialPassword = "InitialPassword123";
+
+            // Create a dedicated user for reset token testing
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash(initialPassword, salt);
+            const testProfile = await Profile.create({ gender: "Other", dateOfBirth: null, about: "", contactNumber: null });
+            const secUser = await User.create({
+                firstName: "Sec",
+                lastName: "User",
+                email: secUserEmail,
+                password: hashedPassword,
+                accountType: "Student",
+                additionalDetails: testProfile._id,
+                image: "https://api.dicebear.com/5.x/initials/svg?seed=Sec%20User",
+            });
+
+            // 1. Request password reset token
+            mailSender.clearSentEmails();
+            const reqRes = await request(app)
+                .post("/api/v1/auth/reset-password-token")
+                .send({ email: secUserEmail });
+            expect(reqRes.status).toBe(200);
+
+            // 2. Verify raw token was sent in the email
+            const sentEmails = mailSender.getSentEmails();
+            expect(sentEmails.length).toBeGreaterThanOrEqual(1);
+            const emailBody = sentEmails[sentEmails.length - 1].html;
+            const match = emailBody.match(/update-password\/([a-zA-Z0-9_-]+)/);
+            expect(match).not.toBeNull();
+            const rawToken = match[1];
+
+            // 3. Verify real database state: raw token is NEVER stored; SHA-256 hash is stored
+            const dbUserAfterReq = await User.findOne({ email: secUserEmail }).lean();
+            expect(dbUserAfterReq.token).toBeNull();
+            expect(dbUserAfterReq.resetPasswordTokenHash).toBeDefined();
+            expect(dbUserAfterReq.resetPasswordTokenHash).not.toBe(rawToken);
+            expect(dbUserAfterReq.resetPasswordTokenHash.length).toBe(64); // SHA-256 hex length
+            expect(dbUserAfterReq.resetPasswordExpires).toBeDefined();
+
+            // 4. Attempt reset with a fabricated plaintext token -> 401 Token is invalid
+            const fakeReset = await request(app)
+                .post("/api/v1/auth/reset-password")
+                .send({
+                    password: "NewSecurePassword123",
+                    confirmPassword: "NewSecurePassword123",
+                    token: "fabricated-plaintext-token-12345",
+                });
+            expect(fakeReset.status).toBe(401);
+            expect(fakeReset.body.message).toMatch(/invalid/i);
+
+            // 5. Complete reset with the genuine raw token -> 200 Success
+            const validReset = await request(app)
+                .post("/api/v1/auth/reset-password")
+                .send({
+                    password: "NewSecurePassword123",
+                    confirmPassword: "NewSecurePassword123",
+                    token: rawToken,
+                });
+            expect(validReset.status).toBe(200);
+
+            // 6. Verify single-use: token hash cleared, tokenVersion incremented
+            const dbUserAfterReset = await User.findOne({ email: secUserEmail }).lean();
+            expect(dbUserAfterReset.resetPasswordTokenHash).toBeNull();
+            expect(dbUserAfterReset.resetPasswordExpires).toBeNull();
+            expect(dbUserAfterReset.tokenVersion).toBe(1);
+
+            // 7. Verify token cannot be reused -> 401 Token is invalid
+            const reusedReset = await request(app)
+                .post("/api/v1/auth/reset-password")
+                .send({
+                    password: "AnotherPassword123",
+                    confirmPassword: "AnotherPassword123",
+                    token: rawToken,
+                });
+            expect(reusedReset.status).toBe(401);
+        });
+
+        test("BE-DB-17: Immediate JWT revocation upon password change (SEC-003)", async () => {
+            const email = "jwt.revocation.change@isolated.test";
+            const oldPassword = "PasswordBeforeChange1";
+            const newPassword = "PasswordAfterChange2";
+
+            // Seed user
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash(oldPassword, salt);
+            const profile = await Profile.create({ gender: "Other", dateOfBirth: null, about: "", contactNumber: null });
+            await User.create({
+                firstName: "Revoke",
+                lastName: "Change",
+                email,
+                password: hashedPassword,
+                accountType: "Student",
+                additionalDetails: profile._id,
+                image: "https://api.dicebear.com/5.x/initials/svg?seed=Revoke%20Change",
+            });
+
+            // 1. Login and obtain initial JWT (token A)
+            const loginRes1 = await request(app)
+                .post("/api/v1/auth/login")
+                .send({ email, password: oldPassword });
+            expect(loginRes1.status).toBe(200);
+            const tokenA = loginRes1.body.token;
+
+            // 2. Token A successfully accesses authenticated endpoint
+            const accessRes1 = await request(app)
+                .get("/api/v1/profile/getUserDetails")
+                .set("Authorization", `Bearer ${tokenA}`);
+            expect(accessRes1.status).toBe(200);
+
+            // 3. User changes password using Token A
+            const changeRes = await request(app)
+                .post("/api/v1/auth/changepassword")
+                .set("Authorization", `Bearer ${tokenA}`)
+                .send({
+                    oldPassword,
+                    newPassword,
+                    confirmNewPassword: newPassword,
+                });
+            expect(changeRes.status).toBe(200);
+
+            // 4. Token A is NOW REVOKED and rejected with 401 TOKEN_REVOKED
+            const accessResAfterChange = await request(app)
+                .get("/api/v1/profile/getUserDetails")
+                .set("Authorization", `Bearer ${tokenA}`);
+            expect(accessResAfterChange.status).toBe(401);
+            expect(accessResAfterChange.body.code).toBe("TOKEN_REVOKED");
+
+            // 5. Login with new password yields Token B
+            const loginRes2 = await request(app)
+                .post("/api/v1/auth/login")
+                .send({ email, password: newPassword });
+            expect(loginRes2.status).toBe(200);
+            const tokenB = loginRes2.body.token;
+
+            // 6. Token B successfully accesses protected route
+            const accessRes2 = await request(app)
+                .get("/api/v1/profile/getUserDetails")
+                .set("Authorization", `Bearer ${tokenB}`);
+            expect(accessRes2.status).toBe(200);
+        });
+
+        test("BE-DB-18: Immediate JWT revocation upon password reset (SEC-003)", async () => {
+            const mailSender = require("../utils/mailSender");
+            const email = "jwt.revocation.reset@isolated.test";
+            const oldPassword = "PasswordBeforeReset1";
+            const newPassword = "PasswordAfterReset2";
+
+            // Seed user
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash(oldPassword, salt);
+            const profile = await Profile.create({ gender: "Other", dateOfBirth: null, about: "", contactNumber: null });
+            await User.create({
+                firstName: "Revoke",
+                lastName: "Reset",
+                email,
+                password: hashedPassword,
+                accountType: "Student",
+                additionalDetails: profile._id,
+                image: "https://api.dicebear.com/5.x/initials/svg?seed=Revoke%20Reset",
+            });
+
+            // 1. Login to get active JWT (token A)
+            const login1 = await request(app)
+                .post("/api/v1/auth/login")
+                .send({ email, password: oldPassword });
+            expect(login1.status).toBe(200);
+            const tokenA = login1.body.token;
+
+            // Token A works
+            expect((await request(app).get("/api/v1/profile/getUserDetails").set("Authorization", `Bearer ${tokenA}`)).status).toBe(200);
+
+            // 2. Request reset link
+            mailSender.clearSentEmails();
+            await request(app).post("/api/v1/auth/reset-password-token").send({ email });
+            const emailBody = mailSender.getSentEmails().pop().html;
+            const rawToken = emailBody.match(/update-password\/([a-zA-Z0-9_-]+)/)[1];
+
+            // 3. Reset password using the link
+            const resetRes = await request(app)
+                .post("/api/v1/auth/reset-password")
+                .send({
+                    password: newPassword,
+                    confirmPassword: newPassword,
+                    token: rawToken,
+                });
+            expect(resetRes.status).toBe(200);
+
+            // 4. Token A is NOW REVOKED and rejected with 401 TOKEN_REVOKED
+            const accessResAfterReset = await request(app)
+                .get("/api/v1/profile/getUserDetails")
+                .set("Authorization", `Bearer ${tokenA}`);
+            expect(accessResAfterReset.status).toBe(401);
+            expect(accessResAfterReset.body.code).toBe("TOKEN_REVOKED");
+
+            // 5. Login with new password yields Token B which works
+            const login2 = await request(app)
+                .post("/api/v1/auth/login")
+                .send({ email, password: newPassword });
+            expect(login2.status).toBe(200);
+            const tokenB = login2.body.token;
+
+            expect((await request(app).get("/api/v1/profile/getUserDetails").set("Authorization", `Bearer ${tokenB}`)).status).toBe(200);
+        });
+
+        test("BE-DB-19: Public reviews privacy (SEC-004) - student email excluded from public reviews endpoint", async () => {
+            const studentEmail = "private.reviewer@isolated.test";
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash("Password1234", salt);
+            const profile = await Profile.create({ gender: "Female", dateOfBirth: null, about: "", contactNumber: null });
+            const reviewer = await User.create({
+                firstName: "Private",
+                lastName: "Reviewer",
+                email: studentEmail,
+                password: hashedPassword,
+                accountType: "Student",
+                additionalDetails: profile._id,
+                image: "https://api.dicebear.com/5.x/initials/svg?seed=Private%20Reviewer",
+            });
+
+            // Seed a course and enroll student
+            const cat = await Category.create({ name: "Privacy Cat " + Date.now(), description: "Privacy test category" });
+            const course = await Course.create({
+                courseName: "Privacy Testing Course",
+                courseDescription: "Testing PII protection",
+                instructor: seeded.users.instructorId,
+                whatYouWillLearn: "Security",
+                price: 0,
+                thumbnail: "https://example.com/thumb.jpg",
+                category: cat._id,
+                status: "Published",
+                studentEnrolled: [reviewer._id],
+            });
+
+            // Student leaves a review
+            const reviewDoc = await RatingAndReview.create({
+                user: reviewer._id,
+                course: course._id,
+                rating: 5,
+                review: "Outstanding security course with strict data protection!",
+            });
+            await Course.findByIdAndUpdate(course._id, { $push: { ratingAndReviews: reviewDoc._id } });
+
+            // Fetch public reviews anonymously (no Authorization header)
+            const publicReviewsRes = await request(app).get("/api/v1/course/getReviews");
+            expect(publicReviewsRes.status).toBe(200);
+            expect(publicReviewsRes.body.success).toBe(true);
+
+            const foundReview = publicReviewsRes.body.data.find(
+                (r) => r.course && r.course.courseName === "Privacy Testing Course"
+            );
+            expect(foundReview).toBeDefined();
+            expect(foundReview.user).toBeDefined();
+            expect(foundReview.user.firstName).toBe("Private");
+            expect(foundReview.user.lastName).toBe("Reviewer");
+            expect(foundReview.user.image).toBeDefined();
+
+            // SEC-004: Email must NOT be exposed
+            expect(foundReview.user.email).toBeUndefined();
+        });
+
+        test("BE-DB-20: Request body JWT rejection (SEC-006) and Strict CORS enforcement (SEC-001)", async () => {
+            const token = studentToken;
+
+            // 1. SEC-006: Passing token ONLY in request body must be rejected (401 Missing)
+            const bodyTokenRes = await request(app)
+                .put("/api/v1/profile/updateProfile")
+                .send({ token, gender: "Other", about: "Trying body token" });
+            expect(bodyTokenRes.status).toBe(401);
+            expect(bodyTokenRes.body.message).toMatch(/token is missing/i);
+
+            // 2. Passing token in Authorization header works (200)
+            const headerTokenRes = await request(app)
+                .put("/api/v1/profile/updateProfile")
+                .set("Authorization", `Bearer ${token}`)
+                .send({ gender: "Other", contactNumber: "9876543210", about: "Legitimate header token" });
+            expect(headerTokenRes.status).toBe(200);
+
+            // 3. SEC-001: Untrusted origin blocked with 403
+            const blockedOriginRes = await request(app)
+                .get("/api/v1/profile/getUserDetails")
+                .set("Origin", "https://malicious.vercel.app")
+                .set("Authorization", `Bearer ${token}`);
+            expect(blockedOriginRes.status).toBe(403);
+            expect(blockedOriginRes.body.message).toMatch(/CORS blocked/i);
+
+            // 4. SEC-001: Allowed origin succeeds with matching CORS header
+            const allowedOriginRes = await request(app)
+                .get("/api/v1/profile/getUserDetails")
+                .set("Origin", "http://localhost:3001")
+                .set("Authorization", `Bearer ${token}`);
+            expect(allowedOriginRes.status).toBe(200);
+            expect(allowedOriginRes.headers["access-control-allow-origin"]).toBe("http://localhost:3001");
+            expect(allowedOriginRes.headers["access-control-allow-credentials"]).toBe("true");
         });
     });
 });
