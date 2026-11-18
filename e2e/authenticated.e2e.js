@@ -2012,10 +2012,9 @@ async function runAuthenticatedE2E() {
                     "Password Reset Successfully"
                 );
 
-                // 5. Single-use token verification: reusing the token returns 401
-                await page.goto(`${FRONTEND_URL}/#/update-password/${resetToken}`, {
-                    waitUntil: "networkidle",
-                });
+                // 5. Single-use token verification: reload same reset URL -> reusing token returns 401
+                await page.reload({ waitUntil: "networkidle" });
+                await page.waitForSelector('input[name="password"]', { timeout: 15000 });
                 await page.fill('input[name="password"]', "AnotherNew9!");
                 await page.fill('input[name="confirmPassword"]', "AnotherNew9!");
                 const [reuseResp] = await Promise.all([
