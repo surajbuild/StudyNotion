@@ -4,6 +4,7 @@ const { resetPasswordEmail } = require("../mail/templates/resetPasswordEmail");
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const { isTestMode } = require("../config/testSafety");
+const { validateNewPassword } = require("../utils/passwordPolicy");
 if (!isTestMode()) {
     require('dotenv').config();
 }
@@ -62,15 +63,42 @@ exports.resetPassword = async (req, res) => {
     try{
         //data fetch
         const {password, confirmPassword, token} = req.body;
+
+        // Guard missing/empty/non-string token so User.findOne({ token: null }) can never match cleared tokens
+        if(!token || typeof token !== "string" || !token.trim()){
+            return res.status(400).json({
+                success: false,
+                message: "Password reset token is required",
+            });
+        }
+
+        if(!password || !confirmPassword){
+            return res.status(400).json({
+                success: false,
+                message: "Password and confirm password are required",
+            });
+        }
+
+        // Enforce consistent minimum password policy
+        const passwordValidation = validateNewPassword(password);
+        if(!passwordValidation.valid){
+            return res.status(400).json({
+                success: false,
+                message: passwordValidation.message,
+            });
+        }
+
         //validation
-        if(password !== confirmPassword){
+        if(typeof confirmPassword !== "string" || password !== confirmPassword){
             return res.status(401).json({
                 success: false,
                 message: "Password did not match"
             });
         }
+
+        const trimmedToken = token.trim();
         //get user details from db using token
-        const userDetails = await User.findOne({token: token});
+        const userDetails = await User.findOne({token: trimmedToken});
         //if no entry - invalid token
         if(!userDetails){
             return res.status(401).json({
@@ -79,17 +107,17 @@ exports.resetPassword = async (req, res) => {
             });
         }
         //token time check
-        if( userDetails.resetPasswordExpires < Date.now() ) {
+        if(!userDetails.resetPasswordExpires || userDetails.resetPasswordExpires < Date.now() ) {
             return res.status(401).json({
                 success: false,
                 message: "Token is expired, Please regenerate your token",
             });
         }
 
-        //hash password and clear token fields
+        //hash password and clear token fields (single-use token invalidation)
         const hashedPassword = await bcrypt.hash(password, 10);
         await User.findOneAndUpdate(
-            { token: token },
+            { _id: userDetails._id, token: trimmedToken },
             { password: hashedPassword, token: null, resetPasswordExpires: null },
             { new: true }
         );

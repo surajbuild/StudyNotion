@@ -8,6 +8,7 @@ const otpTemplate = require("../mail/templates/emailVerificationTemplate");
 const Profile = require("../models/Profile");
 const jwt = require("jsonwebtoken");
 const { isTestMode } = require("../config/testSafety");
+const { validateNewPassword } = require("../utils/passwordPolicy");
 
 if (!isTestMode()) {
     require("dotenv").config();
@@ -37,8 +38,17 @@ exports.signUp = async (req, res) => {
             });
         }
 
+        // Enforce consistent minimum password policy (applies to Student & Instructor signups)
+        const passwordValidation = validateNewPassword(password);
+        if (!passwordValidation.valid) {
+            return res.status(400).json({
+                success: false,
+                message: passwordValidation.message,
+            });
+        }
+
         // Passwords must match
-        if (password !== confirmPassword) {
+        if (typeof confirmPassword !== "string" || password !== confirmPassword) {
             return res.status(400).json({
                 success: false,
                 message: "Password and Confirm Password do not match",
@@ -142,6 +152,13 @@ exports.login = async (req, res) => {
             });
         }
 
+        if (typeof password !== "string") {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid credentials format",
+            });
+        }
+
         // Populate additionalDetails so the client gets a complete user object
         const user = await User.findOne({ email }).populate("additionalDetails");
 
@@ -152,6 +169,16 @@ exports.login = async (req, res) => {
             });
         }
 
+        // Guard accounts without a local password hash (e.g., future OAuth-only accounts)
+        if (!user.password) {
+            return res.status(401).json({
+                success: false,
+                message: "Password login is not enabled for this account",
+            });
+        }
+
+        // NOTE: Intentionally do NOT enforce minimum password length on login so
+        // existing users with historical shorter passwords are never locked out.
         const passwordMatch = await bcrypt.compare(password, user.password);
         if (!passwordMatch) {
             return res.status(401).json({
@@ -280,6 +307,27 @@ exports.changePassword = async (req, res) => {
             });
         }
 
+        if (
+            typeof oldPassword !== "string" ||
+            typeof newPassword !== "string" ||
+            typeof confirmNewPassword !== "string"
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Password fields must be valid strings",
+            });
+        }
+
+        // Enforce consistent minimum password policy on the NEW password only
+        // (oldPassword is NOT restricted so legacy users can upgrade short passwords)
+        const passwordValidation = validateNewPassword(newPassword);
+        if (!passwordValidation.valid) {
+            return res.status(400).json({
+                success: false,
+                message: passwordValidation.message,
+            });
+        }
+
         if (newPassword !== confirmNewPassword) {
             return res.status(400).json({
                 success: false,
@@ -298,6 +346,13 @@ exports.changePassword = async (req, res) => {
         const user = await User.findById(userId);
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        if (!user.password) {
+            return res.status(400).json({
+                success: false,
+                message: "Password change is not available for accounts without a local password",
+            });
         }
 
         const isMatch = await bcrypt.compare(oldPassword, user.password);
