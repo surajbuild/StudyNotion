@@ -18,7 +18,8 @@ process.env.FOLDER_NAME = process.env.FOLDER_NAME || "studynotion_test_uploads";
 const { ensureIsolatedMongo } = require("./mongoInstance");
 const database = require("../config/database");
 const { seedTestDatabase, teardownTestDatabase } = require("./seed");
-const { startSweeper } = require("../utils/cache");
+const { clear: clearCache, startSweeper } = require("../utils/cache");
+const mailSender = require("../utils/mailSender");
 
 const startIsolatedBackend = async () => {
     const mongo = await ensureIsolatedMongo();
@@ -29,6 +30,10 @@ const startIsolatedBackend = async () => {
     // Mount reset endpoint so E2E runners can re-seed cleanly between runs if desired
     app.post("/api/v1/__test__/reseed", async (req, res) => {
         try {
+            clearCache();
+            if (typeof mailSender.clearSentEmails === "function") {
+                mailSender.clearSentEmails();
+            }
             const summary = await seedTestDatabase();
             return res.status(200).json({ success: true, data: summary });
         } catch (err) {
