@@ -59,10 +59,12 @@
 
 ## Category C — Missing Validations & UX Gaps
 
-### `GAP-007` — Password Policy Consistency Across Signup, Settings, and Reset
-- **What is missing:** `Settings/UpdatePassword.jsx` enforces `minLength: 8`, while `SignupForm.jsx`, `pages/UpdatePassword.jsx`, and backend `Auth.js`/`ResetPassword.js` accept 1-character passwords like `"a"`.
-- **Required Changes:** Enforce consistent minimum password length (e.g., ≥ 8 chars) on both frontend forms and backend controllers (`Auth.js`, `ResetPassword.js`).
-- **Priority:** Medium | **Complexity:** `LOW`
+### `GAP-007` — Password Policy Consistency Across Signup, Settings, and Reset — `RESOLVED (Cycle #9)`
+- **Resolution (Cycle #9):**
+  - **Shared Policy Utility:** Created [`server/utils/passwordPolicy.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/utils/passwordPolicy.js) and [`src/utils/passwordPolicy.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/utils/passwordPolicy.js) defining `MIN_PASSWORD_LENGTH = 8` and `validateNewPassword()` (rejecting non-strings, empty/whitespace-only strings, and passwords `< 8` characters with `"Password must be at least 8 characters long"`).
+  - **Backend Enforcement:** Enforced `validateNewPassword()` in `POST /api/v1/auth/signup` (Student & Instructor), `POST /api/v1/auth/changepassword` (on `newPassword` only — `oldPassword` unrestricted so legacy users can upgrade), and `POST /api/v1/auth/reset-password` (also fixing `BUG-032` by rejecting missing/empty/`null` reset tokens before querying MongoDB). Verified `POST /api/v1/auth/login` intentionally does NOT enforce `minLength: 8` (preventing legacy user lockout) and safely rejects accounts without a local password hash (`401`).
+  - **Frontend Enforcement:** Updated `SignupForm.jsx`, `src/pages/UpdatePassword.jsx`, and `src/components/core/Dashboard/Settings/UpdatePassword.jsx` with consistent inline `role="alert"` validation, helper text, and network-request blocking for `< 8`-char passwords while preserving confirm-password match checks, visibility toggles, and loading/error states.
+  - **Verification:** `auth.test.js` (+16 tests, 38/38), `integration.realdb.test.js` (`BE-DB-12`), `passwordPolicy.test.js` (3/3), `SignupForm.test.jsx` (3/3), `pages/UpdatePassword.test.jsx` (3/3), `Settings/UpdatePassword.test.jsx` (2/2), and Playwright `E2E-33`–`E2E-34` (2/2).
 
 ### `GAP-008` — Database-Backed Shopping Cart & Order History — `RESOLVED (Cycle #8)`
 - **Resolution (Cycle #8):**

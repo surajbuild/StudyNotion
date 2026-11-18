@@ -1,8 +1,62 @@
 # StudyNotion — Detailed QA Test Report
 
-> **Latest Cycle:** Cycle #8 — `GAP-008` Database-Backed Shopping Cart, Order Security & Order History + `BUG-031` Fix  
+> **Latest Cycle:** Cycle #9 — `GAP-007` Consistent Password Policy Enforcement + `BUG-032` & `BUG-033` Fixes  
 > **Date:** 2026-11-18  
 > **Environment:** Windows 11 | Node.js v22.16.0 | React 18 (CRA 5) | Express 5 | Mongoose 8 | MongoDB 8.0 (Isolated Local Ephemeral on `127.0.0.1:27018`) | Chromium 1208 (Playwright)
+
+---
+
+## Cycle #9 — Execution Summary (2026-11-18)
+
+| Test Suite / Verification Gate | Command | Suites | Tests | Passed | Failed | Blocked | Result |
+|-------------------------------|---------|--------|-------|--------|--------|---------|--------|
+| **Frontend Unit & Component Tests** | `npm test` | 29 | 100 | 100 | 0 | 0 | **PASS** (8.30s, +4 suites / +11 tests) |
+| **Backend Unit, API & Safety Guardrails** | `npm run test:server` | 13 | 146 | 146 | 0 | 0 | **PASS** (+16 tests in `auth.test.js`) |
+| **Backend Real-MongoDB Full-Stack Integration** | `npm run test:server` (`integration.realdb.test.js`) | 1 | 12 | 12 | 0 | 0 | **PASS** (9.69s, +1 suite: `BE-DB-12`) |
+| **Isolated Authenticated & Feature Playwright E2E (`E2E-16`–`34` + `REG-01`–`03`)** | `npm run test:e2e:isolated` | 1 | 22 | 22 | 0 | 0 | **PASS** (+2 new `E2E-33`–`E2E-34`, 0 page errors, 0 Swiper warnings) |
+| **Public Catalog & Console/Network Regression (`PUB-01`–`PUB-04`)** | `node scratch/public_regression.js` | 1 | 4 | 4 | 0 | 0 | **PASS** (0 console errors, 0 page errors, 0 failed network requests) |
+| **Cycle #9 Live-Executed Subtotal** | — | **45** | **284** | **284** | **0** | **0** | **PASS (`284 / 284` live + `25` historical Cycle #2–#3 = `309 / 309` cumulative)** |
+| **Strict Frontend ESLint** | `npx eslint src --max-warnings=0` | — | — | 0 errors, 0 warnings | — | — | **PASS** (Exit 0) |
+| **Frontend Production Build** | `npm run build` | — | — | Exit 0 (0 ESLint warnings) | — | — | **PASS** |
+
+### Cycle #9 Actual Verification Outputs
+
+#### A. Automated Unit & Real-MongoDB Integration Suites
+```text
+Frontend (npm test):
+Test Suites: 29 passed, 29 total
+Tests:       100 passed, 100 total (added passwordPolicy.test.js [3], SignupForm.test.jsx [3], pages/UpdatePassword.test.jsx [3], Settings/UpdatePassword.test.jsx [2])
+Time:        8.302 s
+
+Backend (npm run test:server):
+PASS __tests__/integration.realdb.test.js (9.687 s) — 12/12 PASS (incl. BE-DB-12)
+Test Suites: 14 passed, 14 total
+Tests:       158 passed, 158 total (added auth.test.js [+16], integration.realdb.test.js [+1])
+Time:        32.923 s
+```
+
+#### B. Isolated Playwright E2E Run (`e2e/authenticated.e2e.js`) & Public Regression Audit
+```text
+[PASS] E2E-16..E2E-21 Authenticated Student, Razorpay Payment, ViewCourse, Instructor CRUD & Settings
+[PASS] E2E-22..E2E-23 GAP-005 Free Course Direct Enrollment & Publishing
+[PASS] E2E-24..E2E-26 GAP-004 Global Search, Filters, Sorting, Pagination & Mobile Search
+[PASS] E2E-27..E2E-29 GAP-001 Admin Security, Dashboard, Category CRUD & Consistency
+[PASS] E2E-30..E2E-32 GAP-008 Persistent DB Cart, Order History, Mixed Checkout & Cross-User Isolation
+[PASS] E2E-33 GAP-007 Signup (Instructor) & Settings Change Password Policy Enforcement: shortSignupBlocked=true, signup=200, firstLogin=200, shortChangeBlocked=true, wrongOld=401, validChange=200, relogin=200
+[PASS] E2E-34 GAP-007 Forgot/Reset Password Policy, Single-Use Token & Post-Reset Login: tokenReq=200, tokenCaptured=true, shortBlocked=true, mismatchBlocked=true, reset=200, successUI=true, reuseStatus=401, postResetLogin=200
+[PASS] REG-01..REG-03 Footer, Error Page & Mobile 375px Regressions
+
+PAGE ERRORS: 0 [] | SWIPER WARNINGS: 0 | TOTAL: 22 PASSED: 22 FAILED: 0
+
+Public Catalog & Console/Network Regression:
+[PASS] PUB-01..PUB-04 | CONSOLE_ERRORS: 0 [] | PAGE_ERRORS: 0 [] | FAILED_REQUESTS: 0 []
+```
+
+#### C. Strict ESLint & Production Build
+```text
+$ npx eslint src --max-warnings=0 -> Exit 0 (0 errors, 0 warnings)
+$ npm run build -> Exit 0 (0 [eslint] warnings; only 2 pre-existing third-party swiper PostCSS CSS-nesting notices)
+```
 
 ---
 

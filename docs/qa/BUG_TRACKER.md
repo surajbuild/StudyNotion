@@ -1,15 +1,46 @@
 # StudyNotion — Bug Tracker & Root Cause Analysis
 
 > **Last Updated:** 2026-11-18  
-> **Audit Cycle:** Cycle #8 (`GAP-008` + `BUG-031`)  
+> **Audit Cycle:** Cycle #9 (`GAP-007` + `BUG-032` & `BUG-033`)  
 > **Severity Levels:** `CRITICAL` | `HIGH` | `MEDIUM` | `LOW`  
-> **Total Logged:** 29 (`BUG-001`–`BUG-031`, excluding unused gap) | **Fixed & Verified:** 29 | **Open:** 0
+> **Total Logged:** 31 (`BUG-001`–`BUG-033`, excluding unused gap) | **Fixed & Verified:** 31 | **Open:** 0
 
 ---
 
 ## Open Bugs
 
-*None — all tracked bugs across Cycles #1–#8 have been fixed and verified.*
+*None — all tracked bugs across Cycles #1–#9 have been fixed and verified.*
+
+---
+
+## Cycle #9 — Newly Discovered & Fixed Bugs + Feature Delivery (`GAP-007`)
+
+### `BUG-032` — `resetPassword` Queried `User.findOne({ token })` Without Validating Missing/Empty/`null` Token
+- **Module:** Authentication & Password Reset (`ResetPassword.js`)
+- **Severity:** `MEDIUM` | **Priority:** P1 | **Status:** `FIXED & VERIFIED`
+- **Location:** [`server/controllers/ResetPassword.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/controllers/ResetPassword.js#L61-L108)
+- **How Discovered:** Security audit of all password-handling controllers during Cycle #9 (`GAP-007`).
+- **Root Cause:** `exports.resetPassword` passed `req.body.token` directly into `User.findOne({ token })` without validating presence or string type. Because completed resets clear `token: null`, sending `{ token: null }` or omitting `token` queried MongoDB for users with `token: null` (and allowed NoSQL operator objects such as `{ $ne: null }` to reach Mongoose if unguarded).
+- **Resolution:** Added strict pre-query validation requiring `token` to be a non-empty trimmed string (`400 "Password reset token is required"`), validated required `password` & `confirmPassword` (`400`), enforced `validateNewPassword(password)` (`400`), checked `!userDetails.resetPasswordExpires || userDetails.resetPasswordExpires < Date.now()`, and updated the user atomically by `{ _id: userDetails._id, token: trimmedToken }`.
+- **Regression Verification:** [`server/__tests__/auth.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/auth.test.js) (asserts `undefined`, `null`, `""`, `"   "`, and `{ $ne: null }` return `400` without calling `User.findOne`), `BE-DB-12`, and Playwright `E2E-34`.
+
+### `BUG-033` — `CourseDetailsCard` Ignored Redux `user.courses` When Determining Enrolled State
+- **Module:** Student Course Details (`CourseDetailsCard.jsx`)
+- **Severity:** `LOW` | **Priority:** P3 | **Status:** `FIXED & VERIFIED`
+- **Location:** [`src/components/core/Course/CourseDetailsCard.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/components/core/Course/CourseDetailsCard.jsx#L31-L36)
+- **How Discovered:** Diagnosing an intermittent `E2E-22` navigation timing check right after free course enrollment.
+- **Root Cause:** `CourseDetailsCard` computed `isAlreadyEnrolled` solely from `course?.studentEnrolled`, ignoring `user?.courses` which `enrollFreeCourse` already updates immediately in Redux/`localStorage`. If the user returned to a still-mounted or cached `CourseDetails` instance immediately after enrolling, the CTA briefly showed `"Enroll Now"` instead of `"Go To Course"`.
+- **Resolution:** Updated `isAlreadyEnrolled` to check both `course?.studentEnrolled` and `user?.courses`, and updated `E2E-22` to await `ViewCourse`'s `/course/getFullCourseDetails` + `<video>` mount cleanly.
+- **Regression Verification:** [`src/components/core/Course/__tests__/CourseDetailsCard.test.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/components/core/Course/__tests__/CourseDetailsCard.test.jsx) (4/4 PASS) + Playwright `E2E-22` (`PASS`).
+
+### `GAP-007` *(Tracked Separately)* — Consistent Minimum Password Policy Enforcement (≥ 8 Characters)
+- **Module:** Authentication & Security (Signup, Reset Password, Change Password, Login)
+- **Status:** `RESOLVED & VERIFIED`
+- **Implementation Summary:**
+  - Created shared backend & frontend policy modules (`server/utils/passwordPolicy.js`, `src/utils/passwordPolicy.js`) enforcing a minimum of 8 characters and rejecting non-string or whitespace-only new passwords.
+  - Enforced consistently across Student & Instructor signup (`SignupForm.jsx` + `Auth.js`), Reset Password (`pages/UpdatePassword.jsx` + `ResetPassword.js`), and Settings Change Password (`Settings/UpdatePassword.jsx` + `Auth.js`), blocking invalid client submissions with zero API calls and rejecting direct API/Postman bypasses with `400`.
+  - Preserved legacy user login (`POST /api/v1/auth/login` intentionally does NOT reject `< 8`-char historical passwords), kept `oldPassword` unrestricted on `changePassword` so legacy users can upgrade, and guarded accounts without a local password hash (`401` on login / `400` on changePassword).
+- **Verification:** `auth.test.js` (+16 tests), `BE-DB-12` (real MongoDB 8.0), `passwordPolicy.test.js` (3/3), `SignupForm.test.jsx` (3/3), `pages/UpdatePassword.test.jsx` (3/3), `Settings/UpdatePassword.test.jsx` (2/2), Playwright `E2E-33` & `E2E-34` (2/2).
 
 ---
 

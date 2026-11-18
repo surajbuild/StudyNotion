@@ -4,6 +4,17 @@
 
 ---
 
+## 2026-11-18 — QA Cycle #9 (`GAP-007`: Consistent Password Policy Enforcement + `BUG-032` & `BUG-033` Fixes)
+
+| Task / Bug ID | Files Modified / Added | Changes Made | Tests Executed | Verification Status |
+|---------------|------------------------|--------------|----------------|---------------------|
+| `GAP-007` (Backend Policy) + `BUG-032` | `server/utils/passwordPolicy.js` (new), `server/controllers/Auth.js`, `server/controllers/ResetPassword.js` | Created shared backend password validator (`MIN_PASSWORD_LENGTH = 8`) rejecting `<8`-char, whitespace-only, and non-string new passwords (`400`) across `signUp` (Student & Instructor), `changePassword` (`newPassword` only — `oldPassword` unrestricted for legacy upgrades), and `resetPassword`; preserved legacy `<8`-char password login without lockout and added safe handling for accounts without a local password hash; fixed `BUG-032` in `resetPassword` by rejecting missing/empty/`null`/non-string reset tokens (`400`) before querying MongoDB and clearing tokens atomically by `{ _id, token }` | `auth.test.js` (+16 tests, 38/38), `integration.realdb.test.js` (`BE-DB-12`) | `VERIFIED` |
+| `GAP-007` (Frontend Forms) | `src/utils/passwordPolicy.js` (new), `src/components/core/Auth/SignupForm.jsx`, `src/pages/UpdatePassword.jsx`, `src/components/core/Dashboard/Settings/UpdatePassword.jsx` | Created shared frontend password policy helper (`MIN_PASSWORD_LENGTH = 8`) and enforced consistent inline `role="alert"` validation, helper text, toast feedback, and network-request blocking across Signup (Student/Instructor), Reset Password (also aligned Weak strength threshold `< 8`), and Settings Change Password while keeping `oldPassword` unrestricted, preserving confirm-password matching & visibility toggles | `passwordPolicy.test.js` (3/3), `SignupForm.test.jsx` (3/3), `pages/UpdatePassword.test.jsx` (3/3), `Settings/UpdatePassword.test.jsx` (2/2), Playwright `E2E-33`–`E2E-34` | `VERIFIED` |
+| `BUG-033` + Test Env Hygiene | `src/components/core/Course/CourseDetailsCard.jsx`, `server/test-env/startIsolatedEnv.js`, `e2e/authenticated.e2e.js` | Updated `CourseDetailsCard` `isAlreadyEnrolled` check to consider Redux `user.courses` alongside `course.studentEnrolled` so enrolled state updates immediately; flushed in-memory `cache` & mock `mailSender` outbox on `/__test__/reseed`; ensured `E2E-22` awaits `ViewCourse` mount cleanly | `CourseDetailsCard.test.jsx` (4/4), Playwright `E2E-16`–`E2E-34` + `REG-01`–`03` (22/22) | `VERIFIED` |
+| `GAP-007` (Tests & Docs) | `server/__tests__/auth.test.js`, `server/__tests__/integration.realdb.test.js`, `src/utils/__tests__/passwordPolicy.test.js` (new), `src/components/core/Auth/__tests__/SignupForm.test.jsx` (new), `src/pages/__tests__/UpdatePassword.test.jsx` (new), `src/components/core/Dashboard/Settings/__tests__/UpdatePassword.test.jsx` (new), `e2e/authenticated.e2e.js`, `docs/qa/*` | Added 30 new tests across Backend Unit (+16), Real Isolated MongoDB Integration (+1), Frontend Jest (+11), and Live Playwright E2E (+2); updated all 7 QA tracking docs (`284/284` live-executed + `25` historical Cycle #2–#3 = `309/309` cumulative PASS, 0 open bugs, 0 blocked) | `npm test` (100 FE), `npm run test:server` (158 BE), Playwright (22/22 + 4/4 public), `npx eslint src --max-warnings=0`, `npm run build` | `VERIFIED` |
+
+---
+
 ## 2026-11-18 — QA Cycle #8 (`GAP-008`: Database-Backed Shopping Cart, Order Security & Order History + `BUG-031` Fix)
 
 | Task / Bug ID | Files Modified / Added | Changes Made | Tests Executed | Verification Status |
