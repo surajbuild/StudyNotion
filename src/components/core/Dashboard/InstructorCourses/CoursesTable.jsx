@@ -3,7 +3,7 @@ import { Table, Tbody, Td, Th, Thead, Tr } from "react-super-responsive-table"
 import "react-super-responsive-table/dist/SuperResponsiveTableStyle.css"
 import { useState } from "react"
 import { FaCheck } from "react-icons/fa"
-import { FiEdit2 } from "react-icons/fi"
+import { FiEdit2, FiUsers } from "react-icons/fi"
 import { HiClock } from "react-icons/hi"
 import { RiDeleteBin6Line } from "react-icons/ri"
 import { useNavigate } from "react-router-dom"
@@ -167,7 +167,7 @@ export default function CoursesTable({ courses, setCourses }) {
             <Th className="w-28 lg:w-32 text-left text-xs font-medium uppercase tracking-wider text-richblack-100">
               Status
             </Th>
-            <Th className="w-24 text-left text-xs font-medium uppercase tracking-wider text-richblack-100">
+            <Th className="w-36 text-left text-xs font-medium uppercase tracking-wider text-richblack-100">
               Actions
             </Th>
           </Tr>
@@ -261,9 +261,22 @@ export default function CoursesTable({ courses, setCourses }) {
                 </Td>
 
                 {/* Actions */}
-                <Td className="flex items-center justify-between md:justify-start md:w-24 text-sm font-medium text-richblack-100 py-1">
+                <Td className="flex items-center justify-between md:justify-start md:w-36 text-sm font-medium text-richblack-100 py-1">
                   <span className="text-xs uppercase tracking-wider text-richblack-400 font-semibold md:hidden">Actions:</span>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => {
+                        navigate(`/dashboard/course-students/${course._id}`)
+                      }}
+                      title="Manage Students"
+                      aria-label={`Manage Students for ${course.courseName}`}
+                      className="inline-flex items-center gap-1 rounded-md border border-richblack-600 bg-richblack-900 px-2 py-1 text-xs font-medium text-yellow-50 transition-all duration-200 hover:border-yellow-50/50 hover:bg-richblack-700 disabled:opacity-50"
+                    >
+                      <FiUsers size={15} />
+                      <span>{course.studentEnrolled?.length ?? 0}</span>
+                    </button>
                     <button
                       disabled={loading}
                       onClick={() => {

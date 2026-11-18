@@ -1,15 +1,37 @@
 # StudyNotion — Bug Tracker & Root Cause Analysis
 
 > **Last Updated:** 2026-11-18  
-> **Audit Cycle:** Cycle #10 (`GAP-002` + `BUG-034` & `BUG-035`)  
+> **Audit Cycle:** Cycle #11 (`F-INS-11` Instructor Student Roster & Progress Tracking + `BUG-036`)  
 > **Severity Levels:** `CRITICAL` | `HIGH` | `MEDIUM` | `LOW`  
-> **Total Logged:** 33 (`BUG-001`–`BUG-035`, excluding unused gap) | **Fixed & Verified:** 33 | **Open:** 0
+> **Total Logged:** 34 (`BUG-001`–`BUG-036`, excluding unused gap) | **Fixed & Verified:** 34 | **Open:** 0
 
 ---
 
 ## Open Bugs
 
-*None — all tracked bugs across Cycles #1–#10 have been fixed and verified.*
+*None — all tracked bugs across Cycles #1–#11 have been fixed and verified.*
+
+---
+
+## Cycle #11 — Newly Discovered & Fixed Bug + Feature Delivery (`F-INS-11`)
+
+### `BUG-036` — `Profile.getEnrolledCourses` Reported `100%` Completion on 0-Lecture Courses and Did Not Deduplicate or Validate Deleted Subsections
+- **Module:** Course Progress Calculation (`Profile.js` / `courseProgressHelper.js`)
+- **Severity:** `LOW` | **Priority:** P2 | **Status:** `FIXED & VERIFIED`
+- **Location:** [`server/controllers/Profile.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/controllers/Profile.js#L250-L285), [`server/utils/courseProgressHelper.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/utils/courseProgressHelper.js)
+- **How Discovered:** Phase 4 progress calculation audit while aligning instructor-facing roster progress with student-facing `getEnrolledCourses`.
+- **Root Cause:** `Profile.js` previously returned `progressPercentage = 100` when `totalSubSections === 0`, used `completedVideos.length` directly without intersecting against existing course subsections or deduplicating multiple `CourseProgress` records, and did not guard null/deleted section or subsection references.
+- **Resolution:** Extracted shared [`server/utils/courseProgressHelper.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/utils/courseProgressHelper.js) (`extractCourseLectureIds` + `calculateCourseProgress`) used by both `Profile.getEnrolledCourses` and `Course.getCourseEnrolledStudents`: returns `0%` for 0-lecture courses, deduplicates `completedVideos` across all matching `CourseProgress` documents, ignores deleted/unrelated subsections, and clamps completion to `[0, 100]`.
+- **Regression Verification:** [`server/__tests__/courseRoster.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/courseRoster.test.js) (8/8) and real-MongoDB integration test `BE-DB-15` (verifies exact parity between student `getEnrolledCourses` and instructor roster progress).
+
+### `F-INS-11` / `OPT-004` *(Tracked Separately)* — Instructor Enrolled Student Roster & Course Progress Tracking
+- **Module:** Instructor Course Management & Progress Tracking
+- **Status:** `RESOLVED & VERIFIED`
+- **Implementation Summary:**
+  - Added `enrolledAt` and `{ timestamps: true }` to `CourseProgress.js`, populating `enrolledAt` on new enrollments in `Payments.js` (`enrollStudents`) while falling back to authoritative `PAID` `Order` timestamps and returning `null` (never fabricated) for historical records without timestamps.
+  - Added `GET /api/v1/course/:courseId/enrolled-students` (`auth, isApprovedInstructor`) in `server/routes/Course.js` & `server/controllers/Course.js` with strict JWT-derived ownership check (`403` cross-instructor), ObjectId & query-injection validation (`400`), safe user projections, server-side search & pagination, and real course-level completion summary KPIs.
+  - Built responsive `CourseStudents.jsx` (`/dashboard/course-students/:courseId` behind `<ApprovedInstructorRoute>`) wired from `CoursesTable.jsx` ("Manage Students" button with enrolled count badge), featuring KPI cards, search, pagination, desktop table + mobile 375px cards, progress bars, `"Not recorded"` legacy enrollment date handling, and loading/empty/error/retry states.
+- **Verification:** `courseRoster.test.js` (8/8), `BE-DB-15` (real MongoDB 8.0), `CourseStudents.test.jsx` (3/3), `courseDetailsAPI.roster.test.js` (2/2), Playwright `E2E-39` & `E2E-40` (2/2).
 
 ---
 

@@ -31,6 +31,9 @@ const OrderHistory = lazy(() => import("./components/core/Dashboard/OrderHistory
 const MyCourses = lazy(() => import("./components/core/Dashboard/MyCourses"));
 const AddCourse = lazy(() => import("./components/core/Dashboard/AddCourse"));
 const EditCourse = lazy(() => import("./components/core/Dashboard/EditCourse"));
+const CourseStudents = lazy(() =>
+  import("./components/core/Dashboard/InstructorCourses/CourseStudents")
+);
 const Instructor = lazy(() => import("./components/core/Dashboard/InstructorDashboard/Instructor"));
 const AdminDashboard = lazy(() => import("./components/core/Dashboard/Admin/AdminDashboard"));
 const CategoryManagement = lazy(() => import("./components/core/Dashboard/Admin/CategoryManagement"));
@@ -132,6 +135,14 @@ function App() {
                   element={
                     <ApprovedInstructorRoute>
                       <EditCourse />
+                    </ApprovedInstructorRoute>
+                  }
+                />
+                <Route
+                  path="course-students/:courseId"
+                  element={
+                    <ApprovedInstructorRoute>
+                      <CourseStudents />
                     </ApprovedInstructorRoute>
                   }
                 />

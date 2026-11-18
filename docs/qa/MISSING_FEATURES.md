@@ -88,6 +88,6 @@
 | `OPT-001` | **Course Announcements / In-App Notifications** (referenced in `EditCourse` tips) | Allows instructors to message enrolled students | `MEDIUM` |
 | `OPT-002` | **Quizzes, Assignments & Q&A Discussion Threads** (referenced in Homepage copy) | Increases learner engagement & interactive coding practice | `HIGH` |
 | `OPT-003` | **Auto-Generated PDF Completion Certificates** | Awarded when `CourseProgress` reaches 100% | `MEDIUM` |
-| `OPT-004` | **Enrolled Student Roster View for Instructors** | Shows student names, join date, and individual completion % per course | `LOW` |
+| `OPT-004` | **Enrolled Student Roster View for Instructors (`F-INS-11`)** — `RESOLVED (Cycle #11)` | Shows student names, emails, authoritative enrollment date, and individual lecture completion % per course (`GET /api/v1/course/:courseId/enrolled-students`, `CourseStudents.jsx`) | `LOW` |
 | `OPT-005` | **Review Editing & Deletion** | Allows students to update/delete their own submitted rating & review | `LOW` |
 | `OPT-006` | **Swagger / OpenAPI Documentation** | Auto-documents all 30+ backend REST endpoints | `LOW` |

@@ -17,6 +17,7 @@ const {
     DELETE_SECTION_API,
     DELETE_SUBSECTION_API,
     GET_ALL_INSTRUCTOR_COURSES_API,
+    GET_COURSE_ENROLLED_STUDENTS_API,
     DELETE_COURSE_API,
     GET_FULL_COURSE_DETAILS_AUTHENTICATED,
     CREATE_RATING_API,
@@ -382,4 +383,33 @@ export const createRating = async (data, token) => {
         toast.dismiss(toastId);
     }
     return success;
+};
+
+export const fetchCourseEnrolledStudents = async (courseId, params = {}, token) => {
+    const cleanParams = {};
+    if (params.search && String(params.search).trim()) {
+        cleanParams.search = String(params.search).trim();
+    }
+    if (params.page) cleanParams.page = String(params.page);
+    if (params.limit) cleanParams.limit = String(params.limit);
+
+    try {
+        const response = await apiConnector(
+            "GET",
+            `${GET_COURSE_ENROLLED_STUDENTS_API}/${courseId}/enrolled-students`,
+            null,
+            { Authorization: `Bearer ${token}` },
+            cleanParams
+        );
+        if (!response?.data?.success) {
+            throw new Error(response?.data?.message || "Could not load enrolled students");
+        }
+        return response.data.data;
+    } catch (error) {
+        const message =
+            error?.response?.data?.message ||
+            error?.message ||
+            "Unable to load enrolled students. Please try again.";
+        throw new Error(message);
+    }
 };

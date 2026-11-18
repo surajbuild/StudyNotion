@@ -5,12 +5,17 @@ const User = require("../models/User");
 const Section = require("../models/Section");
 const SubSection = require("../models/SubSection");
 const CourseProgress = require("../models/CourseProgress");
+const Order = require("../models/Order");
 const { imageUploadToCloudinary } = require("../utils/imageUploader");
 const cache = require("../utils/cache");
 const {
   APPROVAL_STATUS,
   resolveInstructorApprovalStatus,
 } = require("../utils/instructorApproval");
+const {
+  extractCourseLectureIds,
+  calculateCourseProgress,
+} = require("../utils/courseProgressHelper");
 
 const ALL_COURSES_CACHE_KEY = "getAllCourses";
 const COURSE_DETAILS_PREFIX = "getCourseDetails:";
@@ -1078,6 +1083,316 @@ exports.searchCourses = async (req, res) => {
       success: false,
       message: "Failed to search courses",
       error: error.message,
+    });
+  }
+};
+
+// ============================================================
+// GET ENROLLED STUDENTS FOR INSTRUCTOR'S OWN COURSE (F-INS-11)
+// ============================================================
+const ROSTER_DEFAULT_PAGE = 1;
+const ROSTER_DEFAULT_LIMIT = 10;
+const ROSTER_MAX_LIMIT = 50;
+
+const parseRosterQueryParams = (query = {}) => {
+  for (const [key, val] of Object.entries(query)) {
+    if (/[$[\]]/.test(key)) {
+      return { error: `Invalid query parameter: ${key}` };
+    }
+    if (val !== undefined && val !== null && typeof val !== "string") {
+      return { error: `Invalid query parameter: ${key}` };
+    }
+  }
+
+  const rawSearch = (query.search ?? query.q ?? "").trim();
+  if (rawSearch.length > MAX_SEARCH_QUERY_LENGTH) {
+    return { error: `Search query must be ${MAX_SEARCH_QUERY_LENGTH} characters or fewer` };
+  }
+
+  let page = ROSTER_DEFAULT_PAGE;
+  if (query.page !== undefined && query.page !== "") {
+    if (!/^\d+$/.test(query.page.trim())) {
+      return { error: "page must be a positive integer" };
+    }
+    const parsedPage = Number(query.page.trim());
+    if (!Number.isSafeInteger(parsedPage) || parsedPage < 1 || parsedPage > MAX_PAGE) {
+      return { error: `page must be an integer between 1 and ${MAX_PAGE}` };
+    }
+    page = parsedPage;
+  }
+
+  let limit = ROSTER_DEFAULT_LIMIT;
+  if (query.limit !== undefined && query.limit !== "") {
+    if (!/^\d+$/.test(query.limit.trim())) {
+      return { error: "limit must be a positive integer" };
+    }
+    const parsedLimit = Number(query.limit.trim());
+    if (!Number.isSafeInteger(parsedLimit) || parsedLimit < 1) {
+      return { error: "limit must be a positive integer" };
+    }
+    limit = Math.min(parsedLimit, ROSTER_MAX_LIMIT);
+  }
+
+  return { search: rawSearch, page, limit };
+};
+
+const pickEarliestDate = (dates) => {
+  let earliest = null;
+  for (const d of dates) {
+    if (!d) continue;
+    const dt = d instanceof Date ? d : new Date(d);
+    if (Number.isNaN(dt.getTime())) continue;
+    if (!earliest || dt.getTime() < earliest.getTime()) {
+      earliest = dt;
+    }
+  }
+  return earliest ? earliest.toISOString() : null;
+};
+
+exports.getCourseEnrolledStudents = async (req, res) => {
+  try {
+    // Strictly derive instructor identity from verified JWT (never trust client-supplied instructorId)
+    const instructorId = req.user?.id;
+    const { courseId } = req.params || {};
+
+    if (
+      typeof courseId !== "string" ||
+      !OBJECT_ID_REGEX.test(courseId) ||
+      !mongoose.Types.ObjectId.isValid(courseId)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid course ID is required",
+      });
+    }
+
+    const parsed = parseRosterQueryParams(req.query || {});
+    if (parsed.error) {
+      return res.status(400).json({
+        success: false,
+        message: parsed.error,
+      });
+    }
+
+    const course = await Course.findById(courseId)
+      .select("courseName status thumbnail instructor studentEnrolled courseContent")
+      .populate({
+        path: "courseContent",
+        select: "subSection",
+        populate: { path: "subSection", select: "_id" },
+      })
+      .lean();
+
+    if (!course) {
+      return res.status(404).json({
+        success: false,
+        message: "Course not found",
+      });
+    }
+
+    // Strict ownership verification: instructors can only inspect their own courses
+    if (!course.instructor || course.instructor.toString() !== String(instructorId)) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not have permission to view enrolled students for this course",
+      });
+    }
+
+    const validLectureIds = extractCourseLectureIds(course);
+    const totalLectures = validLectureIds.size;
+
+    // Deduplicate enrolled student IDs while ignoring null/invalid entries
+    const uniqueEnrolledIds = [
+      ...new Set(
+        (Array.isArray(course.studentEnrolled) ? course.studentEnrolled : [])
+          .filter(Boolean)
+          .map((id) => id.toString())
+          .filter((id) => OBJECT_ID_REGEX.test(id))
+      ),
+    ];
+
+    if (uniqueEnrolledIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "Enrolled students fetched successfully",
+        data: {
+          course: {
+            _id: course._id,
+            courseName: course.courseName,
+            status: course.status,
+            thumbnail: course.thumbnail || null,
+            totalLectures,
+            totalEnrolled: 0,
+          },
+          summary: {
+            totalEnrolled: 0,
+            totalLectures,
+            averageCompletionPercentage: 0,
+            completedStudentsCount: 0,
+          },
+          students: [],
+          pagination: {
+            page: parsed.page,
+            limit: parsed.limit,
+            totalStudents: 0,
+            totalPages: 1,
+            hasNextPage: false,
+            hasPrevPage: false,
+          },
+        },
+      });
+    }
+
+    // Build student filter strictly scoped to students enrolled in THIS course
+    const baseFilter = { _id: { $in: uniqueEnrolledIds } };
+    const studentFilter = { ...baseFilter };
+
+    if (parsed.search) {
+      const tokens = parsed.search.split(/\s+/).filter(Boolean).slice(0, 5);
+      studentFilter.$and = tokens.map((token) => {
+        const regex = new RegExp(escapeRegex(token), "i");
+        return {
+          $or: [{ firstName: regex }, { lastName: regex }, { email: regex }],
+        };
+      });
+    }
+
+    const skip = (parsed.page - 1) * parsed.limit;
+
+    // Fetch paginated matching students (safe projection only), counts, and all CourseProgress
+    // records for this course in parallel — zero N+1 queries and zero sensitive fields exposed
+    const [pageStudents, filteredTotal, existingEnrolledTotal, allCourseProgress] =
+      await Promise.all([
+        User.find(studentFilter)
+          .select("firstName lastName email image")
+          .sort({ firstName: 1, lastName: 1, _id: 1 })
+          .skip(skip)
+          .limit(parsed.limit)
+          .lean(),
+        User.countDocuments(studentFilter),
+        User.countDocuments(baseFilter),
+        CourseProgress.find({
+          courseID: course._id,
+          userId: { $in: uniqueEnrolledIds },
+        })
+          .select("userId completedVideos enrolledAt")
+          .lean(),
+      ]);
+
+    // Group CourseProgress records by userId (handles duplicate progress docs safely)
+    const progressByUser = new Map();
+    for (const doc of Array.isArray(allCourseProgress) ? allCourseProgress : []) {
+      const uid = doc?.userId?.toString();
+      if (!uid) continue;
+      if (!progressByUser.has(uid)) {
+        progressByUser.set(uid, []);
+      }
+      progressByUser.get(uid).push(doc);
+    }
+
+    // Batch-fetch authoritative PAID Orders for current page students as enrollment date fallback
+    const pageStudentIds = (Array.isArray(pageStudents) ? pageStudents : []).map((s) => s._id);
+    const paidOrders =
+      pageStudentIds.length > 0
+        ? await Order.find({
+            user: { $in: pageStudentIds },
+            courses: course._id,
+            status: "PAID",
+          })
+            .select("user paidAt createdAt")
+            .lean()
+        : [];
+
+    const orderDatesByUser = new Map();
+    for (const ord of Array.isArray(paidOrders) ? paidOrders : []) {
+      const uid = ord?.user?.toString();
+      if (!uid) continue;
+      const dt = ord.paidAt || ord.createdAt;
+      if (!dt) continue;
+      if (!orderDatesByUser.has(uid)) {
+        orderDatesByUser.set(uid, []);
+      }
+      orderDatesByUser.get(uid).push(dt);
+    }
+
+    // Course-level reliable summary across all enrolled students
+    let completionSum = 0;
+    let completedStudentsCount = 0;
+    for (const uid of uniqueEnrolledIds) {
+      const stats = calculateCourseProgress(validLectureIds, progressByUser.get(uid) || []);
+      completionSum += stats.completionPercentage;
+      if (totalLectures > 0 && stats.completionPercentage === 100) {
+        completedStudentsCount += 1;
+      }
+    }
+    const effectiveEnrolledCount = existingEnrolledTotal || uniqueEnrolledIds.length;
+    const averageCompletionPercentage =
+      effectiveEnrolledCount > 0
+        ? Math.min(100, Math.round((completionSum / effectiveEnrolledCount) * 100) / 100)
+        : 0;
+
+    // Shape sanitized roster rows for the current page
+    const rosterStudents = (Array.isArray(pageStudents) ? pageStudents : []).map((student) => {
+      const uid = student._id.toString();
+      const userProgressDocs = progressByUser.get(uid) || [];
+      const progress = calculateCourseProgress(validLectureIds, userProgressDocs);
+
+      // Authoritative enrollment date: explicit CourseProgress.enrolledAt -> PAID Order date -> null (never fabricated)
+      const progressEnrolledDates = userProgressDocs
+        .map((doc) => doc?.enrolledAt)
+        .filter(Boolean);
+      const enrolledAt =
+        pickEarliestDate(progressEnrolledDates) ||
+        pickEarliestDate(orderDatesByUser.get(uid) || []);
+
+      return {
+        _id: student._id,
+        firstName: student.firstName,
+        lastName: student.lastName,
+        email: student.email,
+        image: student.image,
+        enrolledAt,
+        progress,
+      };
+    });
+
+    const totalMatching = filteredTotal || 0;
+    const totalPages = Math.max(1, Math.ceil(totalMatching / parsed.limit));
+
+    return res.status(200).json({
+      success: true,
+      message: "Enrolled students fetched successfully",
+      data: {
+        course: {
+          _id: course._id,
+          courseName: course.courseName,
+          status: course.status,
+          thumbnail: course.thumbnail || null,
+          totalLectures,
+          totalEnrolled: effectiveEnrolledCount,
+        },
+        summary: {
+          totalEnrolled: effectiveEnrolledCount,
+          totalLectures,
+          averageCompletionPercentage,
+          completedStudentsCount,
+        },
+        students: rosterStudents,
+        pagination: {
+          page: parsed.page,
+          limit: parsed.limit,
+          totalStudents: totalMatching,
+          totalPages,
+          hasNextPage: parsed.page < totalPages,
+          hasPrevPage: parsed.page > 1,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("getCourseEnrolledStudents error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch enrolled students",
     });
   }
 };

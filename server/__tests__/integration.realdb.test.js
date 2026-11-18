@@ -2089,4 +2089,168 @@ describe("Isolated Real-MongoDB Full-Stack Integration Suite (GAP-009)", () => {
             expect(studentFullCourse.body.success).toBe(true);
         });
     });
+
+    describe("12. Instructor Enrolled Student Roster & Course Progress Tracking (F-INS-11 Real MongoDB)", () => {
+        test("BE-DB-15: verifies enrollment visibility, live progress updates matching student progress, historical enrollment handling, search/pagination, and strict ownership isolation", async () => {
+            const bcrypt = require("bcrypt");
+
+            // Create a fresh approved second instructor to verify cross-instructor 403 isolation
+            const otherProf = await Profile.create({});
+            const otherInst = await User.create({
+                firstName: "Other",
+                lastName: "Instructor",
+                email: "other.roster.inst@isolated.test",
+                password: await bcrypt.hash(fixturePassword, 10),
+                accountType: "Instructor",
+                approvalStatus: "APPROVED",
+                approved: true,
+                additionalDetails: otherProf._id,
+                image: "https://api.dicebear.com/5.x/initials/svg?seed=Other%20Instructor",
+            });
+            const otherInstToken = (await loginAs(otherInst.email)).token;
+
+            // Create two students for real enrollment + search/pagination checks
+            const stuProf1 = await Profile.create({});
+            const rosterStudent1 = await User.create({
+                firstName: "Anya",
+                lastName: "Patel",
+                email: "anya.roster@isolated.test",
+                password: await bcrypt.hash(fixturePassword, 10),
+                accountType: "Student",
+                additionalDetails: stuProf1._id,
+                image: "https://api.dicebear.com/5.x/initials/svg?seed=Anya%20Patel",
+            });
+            const stu1Token = (await loginAs(rosterStudent1.email)).token;
+
+            const stuProf2 = await Profile.create({});
+            const legacyEnrolledStudent = await User.create({
+                firstName: "Zain",
+                lastName: "Historical",
+                email: "zain.legacy@isolated.test",
+                password: await bcrypt.hash(fixturePassword, 10),
+                accountType: "Student",
+                additionalDetails: stuProf2._id,
+                image: "https://api.dicebear.com/5.x/initials/svg?seed=Zain%20Historical",
+            });
+
+            // 1. Anya enrolls in QA Instructor's published Free course (1 lecture) via real enrollFreeCourse API
+            const freeCourseId = seeded.courses.freeCourseId;
+            const freeSubId = seeded.courses.freeCourseSubSectionId;
+            const enrollRes = await request(app)
+                .post("/api/v1/payment/enrollFreeCourse")
+                .set("Authorization", `Bearer ${stu1Token}`)
+                .send({ courseId: freeCourseId });
+            expect(enrollRes.status).toBe(200);
+
+            // Simulate a historical enrollment for Zain directly in studentEnrolled with NO enrolledAt & NO Order
+            await Course.findByIdAndUpdate(freeCourseId, {
+                $addToSet: { studentEnrolled: legacyEnrolledStudent._id },
+            });
+
+            // 2. Ownership & RBAC isolation checks: other approved instructor (even with spoofed instructorId) & student -> 403
+            const crossInstRes = await request(app)
+                .get(`/api/v1/course/${freeCourseId}/enrolled-students`)
+                .query({ instructorId: seeded.users.instructorId })
+                .set("Authorization", `Bearer ${otherInstToken}`);
+            expect(crossInstRes.status).toBe(403);
+
+            const studentAccessRes = await request(app)
+                .get(`/api/v1/course/${freeCourseId}/enrolled-students`)
+                .set("Authorization", `Bearer ${stu1Token}`);
+            expect(studentAccessRes.status).toBe(403);
+
+            // 3. Owning approved instructor fetches roster -> sees Anya (with enrolledAt, 0%) & Zain (null enrolledAt, 0%)
+            const initialRoster = await request(app)
+                .get(`/api/v1/course/${freeCourseId}/enrolled-students`)
+                .set("Authorization", `Bearer ${instructorToken}`);
+            expect(initialRoster.status).toBe(200);
+            expect(initialRoster.body.data.course.totalLectures).toBe(1);
+            expect(initialRoster.body.data.summary.totalEnrolled).toBeGreaterThanOrEqual(2);
+
+            const anyaBefore = initialRoster.body.data.students.find(
+                (s) => s.email === "anya.roster@isolated.test"
+            );
+            const zainBefore = initialRoster.body.data.students.find(
+                (s) => s.email === "zain.legacy@isolated.test"
+            );
+            expect(anyaBefore).toBeDefined();
+            expect(anyaBefore.enrolledAt).toBeTruthy();
+            expect(anyaBefore.progress).toEqual({
+                totalLectures: 1,
+                completedLectures: 0,
+                remainingLectures: 1,
+                completionPercentage: 0,
+            });
+            expect(anyaBefore.password).toBeUndefined();
+            expect(anyaBefore.token).toBeUndefined();
+
+            // Historical student has NO fabricated enrollment date
+            expect(zainBefore).toBeDefined();
+            expect(zainBefore.enrolledAt).toBeNull();
+
+            // 4. Anya completes the lecture via real updateCourseProgress API (plus inject a duplicate CourseProgress doc with a deleted lecture ID)
+            const completeRes = await request(app)
+                .post("/api/v1/course/updateCourseProgress")
+                .set("Authorization", `Bearer ${stu1Token}`)
+                .send({ courseId: freeCourseId, subsectionId: freeSubId });
+            expect(completeRes.status).toBe(200);
+
+            await CourseProgress.create({
+                courseID: freeCourseId,
+                userId: rosterStudent1._id,
+                completedVideos: [freeSubId, new mongoose.Types.ObjectId()],
+            });
+
+            // 5. Instructor re-fetches roster -> Anya now shows 100% (1/1, never >100%) matching student's getEnrolledCourses!
+            const updatedRoster = await request(app)
+                .get(`/api/v1/course/${freeCourseId}/enrolled-students`)
+                .set("Authorization", `Bearer ${instructorToken}`);
+            expect(updatedRoster.status).toBe(200);
+            const anyaAfter = updatedRoster.body.data.students.find(
+                (s) => s.email === "anya.roster@isolated.test"
+            );
+            expect(anyaAfter.progress).toEqual({
+                totalLectures: 1,
+                completedLectures: 1,
+                remainingLectures: 0,
+                completionPercentage: 100,
+            });
+
+            const studentEnrolledView = await request(app)
+                .get("/api/v1/profile/getEnrolledCourses")
+                .set("Authorization", `Bearer ${stu1Token}`);
+            expect(studentEnrolledView.status).toBe(200);
+            const anyaCourseProgress = studentEnrolledView.body.data.find(
+                (c) => c._id.toString() === freeCourseId
+            );
+            expect(anyaCourseProgress.progressPercentage).toBe(
+                anyaAfter.progress.completionPercentage
+            );
+
+            // 6. Server-side search & pagination verification
+            const searchRes = await request(app)
+                .get(`/api/v1/course/${freeCourseId}/enrolled-students`)
+                .query({ search: "Anya" })
+                .set("Authorization", `Bearer ${instructorToken}`);
+            expect(searchRes.status).toBe(200);
+            expect(searchRes.body.data.students).toHaveLength(1);
+            expect(searchRes.body.data.students[0].email).toBe("anya.roster@isolated.test");
+
+            const page1Res = await request(app)
+                .get(`/api/v1/course/${freeCourseId}/enrolled-students`)
+                .query({ page: "1", limit: "1" })
+                .set("Authorization", `Bearer ${instructorToken}`);
+            const page2Res = await request(app)
+                .get(`/api/v1/course/${freeCourseId}/enrolled-students`)
+                .query({ page: "2", limit: "1" })
+                .set("Authorization", `Bearer ${instructorToken}`);
+            expect(page1Res.status).toBe(200);
+            expect(page2Res.status).toBe(200);
+            expect(page1Res.body.data.students).toHaveLength(1);
+            expect(page2Res.body.data.students).toHaveLength(1);
+            expect(page1Res.body.data.students[0]._id).not.toBe(page2Res.body.data.students[0]._id);
+            expect(page1Res.body.data.pagination.hasNextPage).toBe(true);
+            expect(page2Res.body.data.pagination.hasPrevPage).toBe(true);
+        });
+    });
 });

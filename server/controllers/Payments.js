@@ -784,13 +784,19 @@ const enrollStudents = async (courses, userId) => {
         (courseId) => !existingCourseIds.has(courseId.toString())
     );
 
+    const enrolledAt = new Date();
     await Promise.all([
         Course.updateMany(
             { _id: { $in: courses } },
             { $addToSet: { studentEnrolled: userId } }
         ),
         ...coursesNeedingProgress.map((courseId) =>
-            CourseProgress.create({ courseID: courseId, userId, completedVideos: [] })
+            CourseProgress.create({
+                courseID: courseId,
+                userId,
+                completedVideos: [],
+                enrolledAt,
+            })
         ),
     ]);
 

@@ -2444,6 +2444,207 @@ async function runAuthenticatedE2E() {
         }
 
         // =========================================================================
+        // E2E-39 (F-INS-11): Instructor My Courses -> Manage Students -> Roster -> Student Completes Lecture -> Updated Progress
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                const targetCourseId = seeded.courses.freeCourseId;
+                const targetCourseName = seeded.courses.freeCourseName;
+                const trackedStudentEmail = "e2e16.student@isolated.test";
+
+                // 1. Approved Instructor logs in and opens My Courses
+                await uiLogin(page, FIXTURES.instructorEmail, TEST_PASSWORD);
+                await page.goto(`${FRONTEND_URL}/#/dashboard/my-courses`, {
+                    waitUntil: "networkidle",
+                });
+                const manageBtn = page
+                    .locator(`button[aria-label="Manage Students for ${targetCourseName}"]:visible`)
+                    .first();
+                await manageBtn.waitFor({ state: "visible", timeout: 15000 });
+
+                // 2. Click Manage Students -> lands on CourseStudents roster page
+                await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/enrolled-students"), {
+                        timeout: 15000,
+                    }),
+                    manageBtn.click(),
+                ]);
+                await waitForHash(page, `/dashboard/course-students/${targetCourseId}`);
+                await page.waitForSelector(`[data-testid="roster-row-${trackedStudentEmail}"]`, {
+                    timeout: 15000,
+                });
+
+                const rowBeforeText = await page
+                    .locator(`[data-testid="roster-row-${trackedStudentEmail}"]`)
+                    .innerText();
+                const initialProgressOk =
+                    rowBeforeText.includes("0 / 1 completed") &&
+                    rowBeforeText.includes("0%") &&
+                    !rowBeforeText.includes("Not recorded");
+
+                // 3. Search filter narrows roster cleanly
+                await page.fill(
+                    'input[aria-label="Search enrolled students by name or email"]',
+                    trackedStudentEmail
+                );
+                await page.waitForTimeout(500);
+                await page.waitForSelector(`[data-testid="roster-row-${trackedStudentEmail}"]`, {
+                    timeout: 10000,
+                });
+                const searchRowCount = await page.locator("tbody tr").count();
+                await page.locator('button[aria-label="Clear student search"]').click();
+                await page.waitForTimeout(500);
+
+                // 4. Verify Mobile 375px layout on Roster page
+                await page.setViewportSize({ width: 375, height: 812 });
+                await page.waitForTimeout(300);
+                const rosterMobileOverflow = await page.evaluate(
+                    () => document.documentElement.scrollWidth > window.innerWidth
+                );
+                await page.setViewportSize({ width: 1280, height: 860 });
+
+                // 5. In a separate student context, complete the lecture in ViewCourse
+                const { ctx: stuCtx, page: stuPage } = await newTrackedContext();
+                let lectureCompleteStatus = 0;
+                try {
+                    await uiLogin(stuPage, trackedStudentEmail, TEST_PASSWORD);
+                    await stuPage.goto(
+                        `${FRONTEND_URL}/#/view-course/${targetCourseId}/section/${seeded.courses.freeCourseSectionId}/sub-section/${seeded.courses.freeCourseSubSectionId}`,
+                        { waitUntil: "networkidle" }
+                    );
+                    await stuPage.waitForSelector("video", { timeout: 15000 });
+                    await stuPage.evaluate(() => {
+                        const v = document.querySelector("video");
+                        if (v) v.dispatchEvent(new Event("ended"));
+                    });
+                    const markBtn = stuPage.getByRole("button", { name: /Mark As Completed/i });
+                    await markBtn.waitFor({ state: "visible", timeout: 10000 });
+                    const [progResp] = await Promise.all([
+                        stuPage.waitForResponse((r) => r.url().includes("/course/updateCourseProgress"), {
+                            timeout: 15000,
+                        }),
+                        markBtn.click(),
+                    ]);
+                    lectureCompleteStatus = progResp.status();
+                } finally {
+                    await stuCtx.close();
+                }
+
+                // 6. Instructor reloads Student Roster -> sees updated 100% (1 / 1 completed)
+                await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/enrolled-students"), {
+                        timeout: 15000,
+                    }),
+                    page.reload({ waitUntil: "networkidle" }),
+                ]);
+                await page.waitForSelector(`[data-testid="roster-row-${trackedStudentEmail}"]`, {
+                    timeout: 15000,
+                });
+                const rowAfterText = await page
+                    .locator(`[data-testid="roster-row-${trackedStudentEmail}"]`)
+                    .innerText();
+                const updatedProgressOk =
+                    rowAfterText.includes("1 / 1 completed") &&
+                    rowAfterText.includes("100%") &&
+                    rowAfterText.includes("Completed");
+
+                record(
+                    "E2E-39",
+                    "F-INS-11 Instructor Student Roster, Search, Mobile 375px & Live Progress Sync",
+                    initialProgressOk &&
+                        searchRowCount === 1 &&
+                        !rosterMobileOverflow &&
+                        lectureCompleteStatus === 200 &&
+                        updatedProgressOk,
+                    `initialOk=${initialProgressOk}, searchCount=${searchRowCount}, mobileOverflow=${rosterMobileOverflow}, completeStatus=${lectureCompleteStatus}, updatedOk=${updatedProgressOk}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-40 (F-INS-11): Student Roster Cross-Instructor Ownership & Role/Approval Isolation
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                const targetCourseId = seeded.courses.freeCourseId;
+
+                // 1. Second Approved Instructor (not the owner) gets 403 UI error & 403 API even with spoofed instructorId
+                await uiLogin(page, pendingInstEmail, TEST_PASSWORD);
+                await page.goto(`${FRONTEND_URL}/#/dashboard/course-students/${targetCourseId}`, {
+                    waitUntil: "networkidle",
+                });
+                await page.waitForSelector('[role="alert"]', { timeout: 15000 });
+                const otherInstAlert = (await page.locator('[role="alert"]').first().innerText()).toLowerCase();
+                const otherInstUiBlocked = otherInstAlert.includes("permission");
+                const otherInstApi403 = await page.evaluate(
+                    async ({ apiBase, cid, spoofOwnerId }) => {
+                        const tok = localStorage.getItem("token");
+                        const res = await fetch(
+                            `${apiBase}/course/${cid}/enrolled-students?instructorId=${spoofOwnerId}`,
+                            { headers: { Authorization: `Bearer ${tok}` } }
+                        );
+                        return res.status === 403;
+                    },
+                    {
+                        apiBase: API_BASE_URL,
+                        cid: targetCourseId,
+                        spoofOwnerId: seeded.users.instructorId,
+                    }
+                );
+
+                // 2. Student blocked from roster API (403)
+                await uiLogout(page);
+                await uiLogin(page, FIXTURES.studentEmail, TEST_PASSWORD);
+                const studentApi403 = await page.evaluate(
+                    async ({ apiBase, cid }) => {
+                        const tok = localStorage.getItem("token");
+                        const res = await fetch(`${apiBase}/course/${cid}/enrolled-students`, {
+                            headers: { Authorization: `Bearer ${tok}` },
+                        });
+                        return res.status === 403;
+                    },
+                    { apiBase: API_BASE_URL, cid: targetCourseId }
+                );
+
+                // 3. Rejected Instructor redirected away from roster UI to /dashboard/instructor & gets 403 API
+                await uiLogout(page);
+                await uiLogin(page, seeded.users.pendingInstructorEmail, TEST_PASSWORD);
+                await page.goto(`${FRONTEND_URL}/#/dashboard/course-students/${targetCourseId}`, {
+                    waitUntil: "networkidle",
+                });
+                await waitForHash(page, "/dashboard/instructor");
+                const rejectedUiBlocked = (await page.url()).includes("/dashboard/instructor");
+                const rejectedApi403 = await page.evaluate(
+                    async ({ apiBase, cid }) => {
+                        const tok = localStorage.getItem("token");
+                        const res = await fetch(`${apiBase}/course/${cid}/enrolled-students`, {
+                            headers: { Authorization: `Bearer ${tok}` },
+                        });
+                        return res.status === 403;
+                    },
+                    { apiBase: API_BASE_URL, cid: targetCourseId }
+                );
+
+                record(
+                    "E2E-40",
+                    "F-INS-11 Roster Cross-Instructor Ownership, Student & Rejected Instructor Isolation",
+                    otherInstUiBlocked &&
+                        otherInstApi403 &&
+                        studentApi403 &&
+                        rejectedUiBlocked &&
+                        rejectedApi403,
+                    `otherInstUi=${otherInstUiBlocked}, otherInstApi403=${otherInstApi403}, studentApi403=${studentApi403}, rejectedUi=${rejectedUiBlocked}, rejectedApi403=${rejectedApi403}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
         // Regression Checks against Isolated Environment (Footer, 404, 401 Interceptor, Mobile)
         // =========================================================================
         {

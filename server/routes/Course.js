@@ -8,6 +8,7 @@ const {
   searchCourses,
   getCourseDetails,
   getInstructorCourses,
+  getCourseEnrolledStudents,
   editCourse,
   deleteCourse,
   getFullCourseDetails,
@@ -100,6 +101,9 @@ router.post("/editCourse", auth, isApprovedInstructor, editCourse);
 
 //Get all courses under a specific instructor
 router.get("/getInstructorCourses", auth, isApprovedInstructor, getInstructorCourses);
+
+//Get enrolled students & progress roster for an instructor's own course (F-INS-11)
+router.get("/:courseId/enrolled-students", auth, isApprovedInstructor, getCourseEnrolledStudents);
 
 //Delete a course
 router.delete("/deleteCourse", auth, isApprovedInstructor, deleteCourse);

@@ -1,8 +1,68 @@
 # StudyNotion — Detailed QA Test Report
 
-> **Latest Cycle:** Cycle #10 — `GAP-002` Instructor Approval Enforcement & Admin User Management + `BUG-034` & `BUG-035` Fixes  
+> **Latest Cycle:** Cycle #11 — `F-INS-11` Instructor Enrolled Student Roster & Course Progress Tracking + `BUG-036` Fix  
 > **Date:** 2026-11-18  
 > **Environment:** Windows 11 | Node.js v22.16.0 | React 18 (CRA 5) | Express 5 | Mongoose 8 | MongoDB 8.0 (Isolated Local Ephemeral on `127.0.0.1:27018`) | Chromium 1208 (Playwright)
+
+---
+
+## Cycle #11 — Execution Summary (2026-11-18)
+
+| Test Suite / Verification Gate | Command | Suites | Tests | Passed | Failed | Blocked | Result |
+|-------------------------------|---------|--------|-------|--------|--------|---------|--------|
+| **Frontend Unit & Component Tests** | `npm test` | 34 | 120 | 120 | 0 | 0 | **PASS** (15.61s, +2 suites / +5 tests) |
+| **Backend Unit, API & Safety Guardrails** | `npx jest --testPathIgnorePatterns=integration.realdb.test.js` | 15 | 185 | 185 | 0 | 0 | **PASS** (15.47s, +1 suite / +8 tests: `courseRoster.test.js`) |
+| **Backend Real-MongoDB Full-Stack Integration** | `npx jest __tests__/integration.realdb.test.js --runInBand --forceExit` | 1 | 15 | 15 | 0 | 0 | **PASS** (16.08s, +1 suite: `BE-DB-15`) |
+| **Isolated Authenticated & Feature Playwright E2E (`E2E-16`–`40` + `REG-01`–`03`)** | `node e2e/authenticated.e2e.js` | 1 | 28 | 28 | 0 | 0 | **PASS** (+2 new `E2E-39`–`E2E-40`, 0 page errors, 0 Swiper warnings) |
+| **Public Catalog & Console/Network Regression (`PUB-01`–`PUB-04`)** | `node scratch/public_regression.js` | 1 | 4 | 4 | 0 | 0 | **PASS** (0 console errors, 0 page errors, 0 failed network requests) |
+| **Cycle #11 Live-Executed Subtotal** | — | **52** | **352** | **352** | **0** | **0** | **PASS (`352 / 352` live + `25` historical Cycle #2–#3 = `377 / 377` cumulative)** |
+| **Strict Frontend ESLint** | `npx eslint src --max-warnings=0` | — | — | 0 errors, 0 warnings | — | — | **PASS** (Exit 0) |
+| **Frontend Production Build** | `npm run build` | — | — | Exit 0 (0 ESLint warnings) | — | — | **PASS** |
+
+### Cycle #11 Actual Verification Outputs
+
+#### A. Automated Unit & Real-MongoDB Integration Suites
+```text
+Frontend (npm test):
+Test Suites: 34 passed, 34 total
+Tests:       120 passed, 120 total (added CourseStudents.test.jsx [3], courseDetailsAPI.roster.test.js [2])
+Time:        15.605 s
+
+Backend Unit (server):
+Test Suites: 15 passed, 15 total
+Tests:       185 passed, 185 total (added courseRoster.test.js [8])
+Time:        15.473 s
+
+Backend Real-MongoDB Integration (server/__tests__/integration.realdb.test.js):
+Test Suites: 1 passed, 1 total
+Tests:       15 passed, 15 total (added BE-DB-15)
+Time:        16.075 s
+```
+
+#### B. Isolated Playwright E2E Run (`e2e/authenticated.e2e.js`) & Public Regression Audit
+```text
+[PASS] E2E-16..E2E-21 Authenticated Student, Razorpay Payment, ViewCourse, Instructor CRUD & Settings
+[PASS] E2E-22..E2E-23 GAP-005 Free Course Direct Enrollment & Publishing
+[PASS] E2E-24..E2E-26 GAP-004 Global Search, Filters, Sorting, Pagination & Mobile Search
+[PASS] E2E-27..E2E-29 GAP-001 Admin Security, Dashboard, Category CRUD & Consistency
+[PASS] E2E-30..E2E-32 GAP-008 Persistent DB Cart, Order History, Mixed Checkout & Cross-User Isolation
+[PASS] E2E-33..E2E-34 GAP-007 Password Policy Consistency (Signup, Settings, Forgot/Reset)
+[PASS] E2E-35..E2E-38 GAP-002 Instructor Approval Enforcement & Admin User Management
+[PASS] E2E-39 F-INS-11 Instructor Student Roster, Search, Mobile 375px & Live Progress Sync: initialOk=true, searchCount=1, mobileOverflow=false, completeStatus=200, updatedOk=true
+[PASS] E2E-40 F-INS-11 Roster Cross-Instructor Ownership, Student & Rejected Instructor Isolation: otherInstUi=true, otherInstApi403=true, studentApi403=true, rejectedUi=true, rejectedApi403=true
+[PASS] REG-01..REG-03 Footer, Error Page & Mobile 375px Regressions
+
+PAGE ERRORS: 0 [] | SWIPER WARNINGS: 0 | TOTAL: 28 PASSED: 28 FAILED: 0
+
+Public Catalog & Console/Network Regression:
+[PASS] PUB-01..PUB-04 | CONSOLE_ERRORS: 0 [] | PAGE_ERRORS: 0 [] | FAILED_REQUESTS: 0 []
+```
+
+#### C. Strict ESLint & Production Build
+```text
+$ npx eslint src --max-warnings=0 -> Exit 0 (0 errors, 0 warnings)
+$ npm run build -> Exit 0 (0 [eslint] warnings; only 2 pre-existing third-party swiper PostCSS CSS-nesting notices)
+```
 
 ---
 

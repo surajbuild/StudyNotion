@@ -5,6 +5,10 @@ const CourseProgress = require("../models/CourseProgress");
 const Course = require("../models/Course");
 const { imageUploadToCloudinary } = require("../utils/imageUploader");
 const { sanitizeUserForClient } = require("../utils/instructorApproval");
+const {
+    extractCourseLectureIds,
+    calculateCourseProgress,
+} = require("../utils/courseProgressHelper");
 
 // Helper: convert total seconds 
 const convertSecondsToDuration = (totalSeconds) => {
@@ -243,40 +247,44 @@ exports.getEnrolledCourses = async (req, res) => {
         
         userDetails = userDetails.toObject();
 
-        // Batch-fetch ALL progress docs for this user in ONE query (was N+1)
+        // Batch-fetch ALL progress docs for this user in ONE query (grouping duplicates safely)
         const allProgressDocs = await CourseProgress.find({ userId: userId });
-        const progressMap = new Map(allProgressDocs.map((doc) => [doc.courseID.toString(), doc]));
+        const progressMap = new Map();
+        for (const doc of allProgressDocs || []) {
+            const key = doc?.courseID?.toString();
+            if (!key) continue;
+            if (!progressMap.has(key)) {
+                progressMap.set(key, []);
+            }
+            progressMap.get(key).push(doc);
+        }
 
         for (let i = 0; i < userDetails.courses.length; i++) {
+            const courseObj = userDetails.courses[i];
             let totalDurationInSeconds = 0;
-            let totalSubSections = 0;
 
-            for (let j = 0; j < userDetails.courses[i].courseContent.length; j++) {
-                // Sum up all subsection durations
-                totalDurationInSeconds += userDetails.courses[i].courseContent[j].subSection.reduce(
-                    (acc, curr) => acc + parseInt(curr.timeDuration || 0),
+            const sections = Array.isArray(courseObj.courseContent) ? courseObj.courseContent : [];
+            for (let j = 0; j < sections.length; j++) {
+                const subSections = Array.isArray(sections[j]?.subSection)
+                    ? sections[j].subSection
+                    : [];
+                totalDurationInSeconds += subSections.reduce(
+                    (acc, curr) => acc + (parseInt(curr?.timeDuration || 0, 10) || 0),
                     0
                 );
-                totalSubSections += userDetails.courses[i].courseContent[j].subSection.length;
             }
 
             // Attach human-readable total duration to each course
-            userDetails.courses[i].totalDuration = convertSecondsToDuration(totalDurationInSeconds);
+            courseObj.totalDuration = convertSecondsToDuration(totalDurationInSeconds);
 
-            // Look up how many videos this user has completed in this course
-            const courseProgressDoc = progressMap.get(userDetails.courses[i]._id.toString());
+            // Calculate progress using the shared helper so student & instructor views always match
+            const validLectureIds = extractCourseLectureIds(courseObj);
+            const courseProgressDocs = progressMap.get(courseObj._id.toString()) || [];
+            const progressStats = calculateCourseProgress(validLectureIds, courseProgressDocs);
 
-            const completedCount = courseProgressDoc?.completedVideos?.length || 0;
-
-            // Avoid division by zero; treat courses with no content as 100% complete
-            if (totalSubSections === 0) {
-                userDetails.courses[i].progressPercentage = 100;
-            } else {
-                // Round to 2 decimal places
-                const multiplier = Math.pow(10, 2);
-                userDetails.courses[i].progressPercentage =
-                    Math.round((completedCount / totalSubSections) * 100 * multiplier) / multiplier;
-            }
+            courseObj.progressPercentage = progressStats.completionPercentage;
+            courseObj.totalLectures = progressStats.totalLectures;
+            courseObj.completedLectures = progressStats.completedLectures;
         }
 
         return res.status(200).json({
