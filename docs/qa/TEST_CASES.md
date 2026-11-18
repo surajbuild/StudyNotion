@@ -1,0 +1,71 @@
+# StudyNotion — Master Test Cases Registry
+
+> **Last Updated:** 2026-11-18  
+> **Statuses:** `PASS` | `FAIL` | `BLOCKED` | `NOT RUN`  
+> **Totals:** **155 Test Cases** (86 Backend Automated + 45 Frontend Automated + 18 Live Playwright E2E + 6 Blocked Authenticated E2E)
+
+---
+
+## 1. Backend Automated Test Suites (86 Test Cases — 86 PASS, 0 FAIL)
+
+| Suite File | Case IDs | Module / Feature | Scenarios Covered | Status | Related Bugs |
+|------------|----------|------------------|-------------------|--------|--------------|
+| [`server/__tests__/authMiddleware.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/authMiddleware.test.js) | `BE-MW-01` – `BE-MW-10` | Auth & Role Middleware | Missing token (401), invalid/expired token (401), valid Bearer header, valid cookie token, `isStudent` allow/403, `isInstructor` allow/403, `isAdmin` allow/403 | `PASS` (10/10) | — |
+| [`server/__tests__/cache.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/cache.test.js) | `BE-CH-01` – `BE-CH-05` | In-Memory TTL Cache | Cache miss, set/get before TTL, `del`, `clear`, TTL expiration eviction | `PASS` (5/5) | — |
+| [`server/__tests__/auth.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/auth.test.js) | `BE-AU-01` – `BE-AU-20` | Auth & Reset Password | `sendOTP` (duplicate 401, create 200); `signup` (missing fields 403, mismatch 400, duplicate 400, missing/expired/wrong OTP 400, success 200); `login` (missing 400, unknown 401, wrong pass 401, success 200 + JWT + cookie); `changePassword` (unauth 401, mismatch 400, same pass 400); `resetPasswordToken` (unknown 401, HashRouter `/#/update-password/` origin URL 200); `resetPassword` (mismatch 401, expired 401) | `PASS` (20/20) | `BUG-002`, `BUG-028` |
+| [`server/__tests__/course.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/course.test.js) | `BE-CR-01` – `BE-CR-13` | Course CRUD & Access Control | `getAllCourses` (200); `getCourseDetails` (missing ID 400, not found 400, duration calc 200); `createCourse` (student 403, missing fields 400, JSON.parse `tag`/`instructions` 200); `editCourse` (non-owner IDOR 403, owner 200); `deleteCourse` (non-owner 403, cascade cleanup sections/subsections/user/category 200); `getFullCourseDetails` (unenrolled student 403, enrolled student 200) | `PASS` (13/13) | `BUG-003`, `BUG-004`, `BUG-010` |
+| [`server/__tests__/section.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/section.test.js) | `BE-SC-01` – `BE-SC-06` | Sections & SubSections | `addSection`, `updateSection`, `deleteSection` (cascade subsections + pull from course), `addSubSection` (missing 400), `updateSubSection` (returns updated section), `deleteSubSection` (deletes & returns updated section) | `PASS` (6/6) | `BUG-008` |
+| [`server/__tests__/category.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/category.test.js) | `BE-CT-01` – `BE-CT-06` | Categories & Catalog API | `createCategory` (non-admin 403, missing name 400, admin 200); `showAllCategories` (200); `categoryPageDetails` (not found 404, 0-course category returns 200 cleanly) | `PASS` (6/6) | `BUG-005` |
+| [`server/__tests__/payment.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/payment.test.js) | `BE-PM-01` – `BE-PM-06` | Razorpay Payment & Enrollment | `capturePayment` (empty 400, not found 404, already enrolled 400, order created 200); `verifyPayment` (tampered signature 400, valid HMAC-SHA256 enrolls student & creates progress 200) | `PASS` (6/6) | `BUG-002` |
+| [`server/__tests__/profile.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/profile.test.js) | `BE-PR-01` – `BE-PR-05` | Profile & Instructor Analytics | `getUserDetails` (unauth 401, success 200); `updateProfile` (200); `deleteProfile` (cascade profile + progress + course pull 200); `instructorDashboard` (enrolled count & earnings calc 200) | `PASS` (5/5) | — |
+| [`server/__tests__/ratingReview.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/ratingReview.test.js) | `BE-RR-01` – `BE-RR-08` | Ratings & Reviews | `createRating` (0-star & 6-star rejected 400, unenrolled 404, duplicate 403, valid 200); `getAverageRating` (missing ID 400, 0 reviews -> 0, aggregated avg via GET query param 200); `getReviews` (200) | `PASS` (8/8) | `BUG-006`, `BUG-020` |
+| [`server/__tests__/courseProgress.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/courseProgress.test.js) | `BE-CP-01` – `BE-CP-05` | Course Progress Tracking | Missing fields (400), invalid subsection (404), first video creates doc (200), re-watch idempotency (200), appends subsequent lecture (200) | `PASS` (5/5) | `BUG-001`, `BUG-007` |
+| [`server/__tests__/contact.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/contact.test.js) | `BE-CO-01` – `BE-CO-02` | Contact Us API | Missing email/message (400), valid submission sends confirmation email (200) | `PASS` (2/2) | — |
+
+---
+
+## 2. Frontend Automated Test Suites (45 Test Cases — 45 PASS, 0 FAIL)
+
+| Suite File | Case IDs | Module / Feature | Scenarios Covered | Status |
+|------------|----------|------------------|-------------------|--------|
+| [`src/utils/__tests__/avgRating.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/utils/__tests__/avgRating.test.js) | `FE-UT-01` – `FE-UT-05` | `GetAvgRating` | Empty/null/non-array, whole avg, 1-decimal rounding, ignores invalid/0/negative values, all-invalid returns 0 | `PASS` (5/5) |
+| [`src/utils/__tests__/courseDuration.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/utils/__tests__/courseDuration.test.js) | `FE-UT-06` – `FE-UT-12` | `courseDuration` | Null/empty course (`0min`), sub-hour mins, hours+mins, exact hours, invalid duration skipping, `getTotalLectures` empty & multi-section sum | `PASS` (7/7) |
+| [`src/utils/__tests__/dateFormatter.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/utils/__tests__/dateFormatter.test.js) | `FE-UT-13` – `FE-UT-14` | `formattedDate` | Falsy inputs (`""`), valid ISO formatting | `PASS` (2/2) |
+| [`src/services/__tests__/formatDate.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/services/__tests__/formatDate.test.js) | `FE-UT-15` – `FE-UT-17` | `formatDate` | Falsy (`N/A`), malformed (`Invalid Date`), valid date+time formatting | `PASS` (3/3) |
+| [`src/slices/__tests__/authSlice.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/slices/__tests__/authSlice.test.js) | `FE-RD-01` – `FE-RD-04` | `authSlice` | Initial state, `setToken`, `setLoading`, `setSignupData` | `PASS` (4/4) |
+| [`src/slices/__tests__/cartSlice.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/slices/__tests__/cartSlice.test.js) | `FE-RD-05` – `FE-RD-09` | `cartSlice` | Add course + totals, duplicate prevention, remove course + totals, remove non-existent ID, `resetCart` | `PASS` (5/5) |
+| [`src/slices/__tests__/courseSlice.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/slices/__tests__/courseSlice.test.js) | `FE-RD-10` – `FE-RD-15` | `courseSlice` | Initial state, `setStep`, `setCourse`, `setEditCourse`, `setPaymentLoading`, `resetCourseState` | `PASS` (6/6) |
+| [`src/slices/__tests__/profileSlice.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/slices/__tests__/profileSlice.test.js) | `FE-RD-16` – `FE-RD-18` | `profileSlice` | Corrupted `localStorage` JSON resilience, `setUser`, `setLoading` | `PASS` (3/3) |
+| [`src/slices/__tests__/viewCourseSlice.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/slices/__tests__/viewCourseSlice.test.js) | `FE-RD-19` – `FE-RD-24` | `viewCourseSlice` | Initial state, `setCourseSectionData`, `setEntireCourseData`, `setTotalNoOfLectures`, `setCompletedLectures`, `updateCompletedLectures` | `PASS` (6/6) |
+| [`src/components/core/Auth/__tests__/RouteGuards.test.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/components/core/Auth/__tests__/RouteGuards.test.jsx) | `FE-RG-01` – `FE-RG-04` | `PrivateRoute` & `OpenRoute` | Auth renders protected child, unauth redirects `/login`, unauth renders open route, auth redirects `/dashboard/my-profile` | `PASS` (4/4) |
+
+---
+
+## 3. Live Playwright Browser E2E Tests (18 Executed — 18 PASS; 6 Blocked)
+
+| Case ID | Module | Test Description | Expected Result | Actual Result (Live `http://localhost:3000`) | Status | Related Bugs |
+|---------|--------|------------------|-----------------|----------------------------------------------|--------|--------------|
+| `E2E-01` | Homepage | Load `/#/` | Hero banner, video, CTAs render with 0 page errors | Title `"StudyNotion - Online Education Platform"`, Hero visible, 0 page errors | `PASS` | — |
+| `E2E-02` | Navbar | Hover Catalog dropdown | Categories fetched from `/api/v1/course/showAllCategories` | 3 live categories loaded: `Data Science`, `Devops`, `Web Dev` | `PASS` | `BUG-017` |
+| `E2E-03` | Homepage | Click all 5 ExploreMore tabs | Each tab switches card list cleanly | All 5 tabs switched without errors | `PASS` | — |
+| `E2E-04` | Homepage | ReviewSlider rendering & console check | Reviews load from `/api/v1/course/getReviews` with 0 Swiper warnings | 8 Swiper slides rendered; `0` Swiper console warnings (after `BUG-021` fix) | `PASS` | `BUG-021` |
+| `E2E-05a` | Catalog | Visit `/#/catalog/data-science` | Category header + courses render | Loaded 12 course cards cleanly | `PASS` | `BUG-005` |
+| `E2E-05b` | Catalog | Visit `/#/catalog/devops` | Category header + courses render | Loaded 12 course cards cleanly | `PASS` | `BUG-005` |
+| `E2E-05c` | Catalog | Visit `/#/catalog/web-dev` | Category header + courses render | Loaded 12 course cards cleanly | `PASS` | `BUG-005` |
+| `E2E-05d` | Catalog | Click `New` vs `Most Popular` tab | Course order updates based on sort criterion | Confirmed card order changed (`true`) after `BUG-017a` fix | `PASS` | `BUG-017` |
+| `E2E-06` | Course Details | Load valid course, expand sections, click Buy Now (logged out) | Clean instructions (no JSON brackets), accordion toggles, login modal appears | `rawJsonBrackets=false`, `loggedOutModal=true`, `accordionToggled=true` | `PASS` | `BUG-010` |
+| `E2E-07` | Course Details | Visit invalid course ID `/#/courses/000000000000000000000000` | Stops loading spinner and renders 404 Error page + toast | `stuckSpinner=false`, 404 Error page rendered + toast shown | `PASS` | `BUG-011` |
+| `E2E-08` | About | Load `/#/about` | Hero, Founding Story, Vision, Mission, Stats, LearningGrid render | All sections rendered cleanly | `PASS` | — |
+| `E2E-09` | Contact | Submit empty Contact form | All 4 required validation messages display | Displayed `"Please enter your name."`, `"Please enter your email address."`, `"Please enter Phone Number"`, `"Please enter your message."` | `PASS` | `BUG-018` |
+| `E2E-10` | Auth | Login with unregistered email | 401 response + error toast, remains on `/#/login` | Error toast displayed, URL stayed `/#/login` | `PASS` | — |
+| `E2E-11` | Auth | Signup with Instructor tab + mismatched passwords | Mismatch toast shown & form inputs preserved | `mismatchToast=true`, `firstName` preserved as `"QA"` | `PASS` | `BUG-019` |
+| `E2E-12` | Auth | Direct visit to `/#/verify-email` without `signupData` | Redirects to `/#/signup` | Redirected to `http://localhost:3000/#/signup` | `PASS` | — |
+| `E2E-13` | Auth | Direct visit to `/#/dashboard/my-profile` logged out | Redirects to `/#/login` | Redirected to `http://localhost:3000/#/login` | `PASS` | — |
+| `E2E-14` | Footer/404 | Visit `/#/careers` from Footer | Verifies 404 page renders & confirms dead-link gap | Rendered 404 page; logged under `BUG-023` | `PASS` | `BUG-023` |
+| `E2E-15` | Responsive | Mobile viewport `375x812` + hamburger menu | No horizontal overflow; drawer shows Catalog, Log in, Sign up | `overflow=false`, `drawerOk=true` | `PASS` | — |
+| `E2E-16` | Student Auth | Live Signup → OTP → Login → Profile Edit → Refresh | Full student onboarding & session persistence | Requires dedicated non-prod test DB/inbox (production Atlas DB protected) | `BLOCKED` | `GAP-009` |
+| `E2E-17` | Student Auth | Live Cart → Razorpay Checkout Modal → Enrollment | End-to-end sandbox payment | Requires Razorpay sandbox UI interaction + non-prod test DB | `BLOCKED` | `BUG-009`, `GAP-009` |
+| `E2E-18` | Student Auth | Live ViewCourse Video Playback + Mark Complete + Add Review | Video plays, progress updates, review saved | Requires enrolled test student account in isolated DB | `BLOCKED` | `BUG-024`, `GAP-009` |
+| `E2E-19` | Instructor Auth | Live Create Course (3 steps) + Upload Thumbnail & Video + Publish | Full instructor course wizard | Requires test instructor account + isolated Cloudinary folder | `BLOCKED` | `GAP-009` |
+| `E2E-20` | Instructor Auth | Live Edit Course + Delete Course + Instructor Dashboard Chart | Full instructor management flow | Requires test instructor account in isolated DB | `BLOCKED` | `GAP-009` |
+| `E2E-21` | Settings Auth | Live Update Password + Delete Account Confirmation Modal | Password updates, delete prompts confirmation modal | Requires disposable test user in isolated DB | `BLOCKED` | `GAP-009` |

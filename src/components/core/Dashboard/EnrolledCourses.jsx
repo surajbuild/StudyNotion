@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
+import { toast } from 'react-hot-toast'
 import { getUserEnrolledCourses } from '../../../services/operations/profileAPI'
 import ProgressBar from '@ramonak/react-progress-bar'
 import { useNavigate } from 'react-router-dom'
@@ -64,8 +65,14 @@ const EnrolledCourses = () => {
                                 <div
                                     className="flex cursor-pointer items-start gap-4 lg:w-[45%] lg:items-center lg:px-5 lg:py-3"
                                     onClick={() => {
+                                        const firstSectionId = course.courseContent?.[0]?._id
+                                        const firstSubSectionId = course.courseContent?.[0]?.subSection?.[0]?._id
+                                        if (!firstSectionId || !firstSubSectionId) {
+                                            toast.error('This course does not have any lectures uploaded yet.')
+                                            return
+                                        }
                                         navigate(
-                                            `/view-course/${course?._id}/section/${course.courseContent?.[0]?._id}/sub-section/${course.courseContent?.[0]?.subSection?.[0]?._id}`
+                                            `/view-course/${course?._id}/section/${firstSectionId}/sub-section/${firstSubSectionId}`
                                         )
                                     }}
                                 >
@@ -79,9 +86,9 @@ const EnrolledCourses = () => {
                                             {course.courseName}
                                         </p>
                                         <p className="text-xs text-richblack-300">
-                                            {course.courseDescription.length > 50
+                                            {(course.courseDescription || '').length > 50
                                                 ? `${course.courseDescription.slice(0, 50)}...`
-                                                : course.courseDescription}
+                                                : course.courseDescription || ''}
                                         </p>
                                     </div>
                                 </div>

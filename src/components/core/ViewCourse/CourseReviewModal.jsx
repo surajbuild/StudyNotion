@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { useSelector } from 'react-redux'
+import { toast } from 'react-hot-toast'
 import ReactStars from 'react-stars'
 import { RxCross2 } from 'react-icons/rx'
 import IconBtn from '../../common/IconBtn'
@@ -28,6 +29,10 @@ const CourseReviewModal = ({ setReviewModal }) => {
   }
 
   const onSubmit = async (data) => {
+    if (!data.courseRating || data.courseRating < 1) {
+      toast.error('Please select a star rating between 1 and 5')
+      return
+    }
     const success = await createRating(
       {
         courseId: courseEntireData._id,
@@ -132,7 +137,7 @@ const CourseReviewModal = ({ setReviewModal }) => {
               </button>
               <IconBtn
                 type="submit"
-                text="Save Edits"
+                text="Submit Review"
                 customClasses="px-5 py-2.5 text-sm"
               />
             </div>

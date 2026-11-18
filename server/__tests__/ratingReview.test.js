@@ -20,6 +20,24 @@ describe("Rating and Review Endpoints (server/controllers/RatingAndReview.js)", 
   });
 
   describe("POST /api/v1/course/createRating", () => {
+    it("should return 400 if rating is 0 or out of 1-5 bounds", async () => {
+      const resZero = await request(app)
+        .post("/api/v1/course/createRating")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({ courseId: "c1", rating: 0, review: "Zero star attempt" });
+
+      expect(resZero.status).toBe(400);
+      expect(resZero.body.success).toBe(false);
+
+      const resSix = await request(app)
+        .post("/api/v1/course/createRating")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({ courseId: "c1", rating: 6, review: "Out of bounds" });
+
+      expect(resSix.status).toBe(400);
+      expect(resSix.body.success).toBe(false);
+    });
+
     it("should return 404 if student is not enrolled in the course", async () => {
       Course.findOne.mockResolvedValue(null);
 

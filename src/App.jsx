@@ -73,15 +73,22 @@ function App() {
             <Route path="settings" element={<Settings />} />
 
             {/* Student routes */}
-            <Route path="cart" element={<Cart />} />
-            <Route path="enrolled-courses" element={<EnrolledCourses />} />
+            {user?.accountType === ACCOUNT_TYPE.STUDENT && (
+              <>
+                <Route path="cart" element={<Cart />} />
+                <Route path="enrolled-courses" element={<EnrolledCourses />} />
+              </>
+            )}
 
             {/* Instructor routes */}
-            <Route path="my-courses" element={<MyCourses />} />
-            <Route path="add-course" element={<AddCourse />} />
-            <Route path="edit-course/:courseId" element={<EditCourse />} />
-
-            <Route path="instructor" element={<Instructor />} />
+            {user?.accountType === ACCOUNT_TYPE.INSTRUCTOR && (
+              <>
+                <Route path="my-courses" element={<MyCourses />} />
+                <Route path="add-course" element={<AddCourse />} />
+                <Route path="edit-course/:courseId" element={<EditCourse />} />
+                <Route path="instructor" element={<Instructor />} />
+              </>
+            )}
           </Route>
 
           <Route element={

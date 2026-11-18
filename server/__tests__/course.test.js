@@ -158,12 +158,19 @@ describe("Course Endpoints (server/controllers/Course.js)", () => {
           whatYouWillLearn: "Everything",
           price: 999,
           category: "cat_1",
+          tag: JSON.stringify(["React", "Node"]),
+          instructions: JSON.stringify(["Basic JS", "Laptop"]),
         });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data._id).toBe("new_course_id");
-      expect(Course.create).toHaveBeenCalled();
+      expect(Course.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tag: ["React", "Node"],
+          instructions: ["Basic JS", "Laptop"],
+        })
+      );
     });
   });
 

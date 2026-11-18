@@ -27,15 +27,12 @@ export default function UpdatePassword() {
 
     const submitPasswordForm = async (data) => {
         try {
-            await changePassword(token, data)
-            // ✅ FIX: After a successful password change the form just sat there
-            // with no feedback beyond the toast inside `changePassword`.
-            // Now we reset the form fields and navigate back to the profile page
-            // so the user knows the action is complete.
-            reset()
-            navigate("/dashboard/my-profile")
+            const success = await changePassword(token, data)
+            if (success) {
+                reset()
+                navigate("/dashboard/my-profile")
+            }
         } catch (error) {
-            // changePassword already shows a toast — just log for debugging
             console.error("UpdatePassword error:", error.message)
         }
     }

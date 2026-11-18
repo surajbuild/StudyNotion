@@ -32,6 +32,7 @@ const CourseDetails = () => {
   // fetchCourseDetails returns response.data.data which has shape:
   //   { courseDetails: {...}, totalDuration: "Xh Ym" }
   const [courseData, setCourseData] = useState(null)
+  const [isLoadingCourse, setIsLoadingCourse] = useState(true)
   const [confirmationModal, setConfirmationModal] = useState(null)
   const [avgReviewCount, setAvgReviewCount] = useState(0)
   const [totalNoOfLectures, setTotalNoOfLectures] = useState(0)
@@ -40,12 +41,16 @@ const CourseDetails = () => {
   // ─── Fetch ────────────────────────────────────────────────────────────────
   useEffect(() => {
     const getCourseFullDetails = async () => {
+      setIsLoadingCourse(true)
       try {
         // fetchCourseDetails already extracts response.data.data
         const result = await fetchCourseDetails(courseId)
         setCourseData(result)
       } catch (error) {
         console.error("Could not fetch course details:", error)
+        setCourseData(null)
+      } finally {
+        setIsLoadingCourse(false)
       }
     }
     getCourseFullDetails()
@@ -93,7 +98,7 @@ const CourseDetails = () => {
   }
 
   // ─── Loading / error states ───────────────────────────────────────────────
-  if (loading || paymentLoading || !courseData) {
+  if (loading || paymentLoading || isLoadingCourse) {
     return (
       <div className="grid min-h-[calc(100vh-3.5rem)] place-items-center">
         <div className="spinner" />

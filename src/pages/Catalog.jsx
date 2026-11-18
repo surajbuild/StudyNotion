@@ -18,6 +18,7 @@ const Catalog = () => {
     const [categoryId, setCategoryId] = useState("")
     const [loading, setLoading] = useState(false)
     const [notFound, setNotFound] = useState(false)
+    const [fetchError, setFetchError] = useState(false)
 
     const slugify = (str) =>
         str
@@ -55,6 +56,7 @@ const Catalog = () => {
     useEffect(() => {
         const getCategoryDetails = async () => {
             setLoading(true)
+            setFetchError(false)
             try {
                 const res = await apiConnector("POST", catalogData.CATALOGPAGEDATA_API, {
                     categoryId: categoryId,
@@ -62,6 +64,7 @@ const Catalog = () => {
                 setCatalogPageData(res?.data)
             } catch (error) {
                 console.error(error)
+                setFetchError(true)
             }
             setLoading(false)
         }
@@ -86,6 +89,15 @@ const Catalog = () => {
         )
     }
 
+    if (fetchError) {
+        return (
+            <div className='min-h-screen bg-richblack-900 flex flex-col gap-4 items-center justify-center px-4 text-center'>
+                <div className='text-2xl text-richblack-5'>Could not load courses for this category.</div>
+                <p className='text-richblack-300'>Please refresh the page or try again later.</p>
+            </div>
+        )
+    }
+
     if (!catalogPageData) {
         return (
             <div className='grid min-h-[calc(100vh-3.5rem)] place-items-center bg-richblack-900'>
@@ -93,6 +105,15 @@ const Catalog = () => {
             </div>
         )
     }
+
+    const sortedCategoryCourses = [
+        ...(catalogPageData?.data?.selectedCategory?.courses || []),
+    ].sort((a, b) => {
+        if (active === 1) {
+            return (b?.studentEnrolled?.length || 0) - (a?.studentEnrolled?.length || 0)
+        }
+        return new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime()
+    })
 
     return (
         <div className='bg-richblack-900'>
@@ -142,10 +163,10 @@ const Catalog = () => {
                     </p>
                 </div>
                 <div>
-                    {catalogPageData?.data?.selectedCategory?.courses?.length > 0 ? (
+                    {sortedCategoryCourses.length > 0 ? (
                         <div className='grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3'>
-                            {catalogPageData?.data?.selectedCategory?.courses.map((course, i) => (
-                                <CourseCard course={course} key={i} Height={"h-[250px]"} />
+                            {sortedCategoryCourses.map((course, i) => (
+                                <CourseCard course={course} key={course._id || i} Height={"h-[250px]"} />
                             ))}
                         </div>
                     ) : (

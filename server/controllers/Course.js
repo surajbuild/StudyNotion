@@ -82,17 +82,46 @@ exports.createCourse = async (req, res) => {
       thumbnailUrl = uploaded.secure_url;
     }
 
+    // Parse tag and instructions arrays when sent as JSON strings via multipart/form-data
+    let parsedTag = ["general"];
+    if (tag !== undefined && tag !== null && tag !== "") {
+      if (typeof tag === "string") {
+        try {
+          const parsed = JSON.parse(tag);
+          parsedTag = Array.isArray(parsed) ? parsed : [String(parsed)];
+        } catch {
+          parsedTag = [tag];
+        }
+      } else if (Array.isArray(tag)) {
+        parsedTag = tag;
+      }
+    }
+
+    let parsedInstructions = [];
+    if (instructions !== undefined && instructions !== null && instructions !== "") {
+      if (typeof instructions === "string") {
+        try {
+          const parsed = JSON.parse(instructions);
+          parsedInstructions = Array.isArray(parsed) ? parsed : [String(parsed)];
+        } catch {
+          parsedInstructions = [instructions];
+        }
+      } else if (Array.isArray(instructions)) {
+        parsedInstructions = instructions;
+      }
+    }
+
     const newCourse = await Course.create({
       courseName,
       courseDescription,
       instructor: instructorDetails._id,
       whatYouWillLearn,
       price,
-      tag: tag || "general",
+      tag: parsedTag,
       category: categoryId,
       thumbnail: thumbnailUrl || null,
       status,
-      instructions,
+      instructions: parsedInstructions,
     });
 
     // Add the new course to the instructor's course list

@@ -26,13 +26,18 @@ export function getUserDetails(token, navigate) {
                 throw new Error(response.data.message);
             }
 
-            // Generate a DiceBear avatar if the user has no profile picture
-            const userData = response.data.data;
+            // Backend returns user object under `userDetails` (fallback to `data`)
+            const userData = response.data.userDetails || response.data.data;
+            if (!userData) {
+                throw new Error("User details payload missing");
+            }
             const userImage = userData.image
                 ? userData.image
                 : `https://api.dicebear.com/6.x/initials/svg?seed=${userData.firstName} ${userData.lastName}`;
 
-            dispatch(setUser({ ...userData, image: userImage }));
+            const hydratedUser = { ...userData, image: userImage };
+            dispatch(setUser(hydratedUser));
+            localStorage.setItem("user", JSON.stringify(hydratedUser));
         } catch (error) {
             // If fetching user details fails (e.g. expired token), log the user out
             dispatch(logout(navigate));

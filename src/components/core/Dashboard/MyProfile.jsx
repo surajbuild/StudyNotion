@@ -81,6 +81,17 @@ const MyProfile = () => {
                         {user?.email}
                      </p>
                   </div>
+
+                  <div>
+                     <p className='mb-1 text-xs uppercase tracking-wide text-richblack-500'>
+                        Gender
+                     </p>
+                     <p className='text-sm font-medium text-richblack-5'>
+                        {user?.additionalDetails?.gender || (
+                           <span className="text-richblack-400 italic">Add Gender</span>
+                        )}
+                     </p>
+                  </div>
                </div>
 
                {/* Right Column */}
@@ -99,14 +110,36 @@ const MyProfile = () => {
                         Phone Number
                      </p>
                      <p className='text-sm font-medium text-richblack-5'>
-                        {user?.additionalDetails?.contactNumber ?? (
+                        {user?.additionalDetails?.contactNumber || (
                            <span className="text-richblack-400 italic">
                               Add Contact Number
                            </span>
                         )}
                      </p>
                   </div>
+
+                  <div>
+                     <p className='mb-1 text-xs uppercase tracking-wide text-richblack-500'>
+                        Date Of Birth
+                     </p>
+                     <p className='text-sm font-medium text-richblack-5'>
+                        {user?.additionalDetails?.dateOfBirth || (
+                           <span className="text-richblack-400 italic">Add Date of Birth</span>
+                        )}
+                     </p>
+                  </div>
                </div>
+            </div>
+
+            <div>
+               <p className='mb-1 text-xs uppercase tracking-wide text-richblack-500'>
+                  About
+               </p>
+               <p className='text-sm font-medium text-richblack-5'>
+                  {user?.additionalDetails?.about || (
+                     <span className="text-richblack-400 italic">Write something about yourself</span>
+                  )}
+               </p>
             </div>
          </div>
       </div>

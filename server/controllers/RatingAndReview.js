@@ -10,6 +10,13 @@ exports.createRating = async (req, res) => {
         const userId = req.user.id;
         //fetch data from req.body
         const { rating, review, courseId } = req.body;
+        const numericRating = Number(rating);
+        if (!courseId || !review || !review.trim() || Number.isNaN(numericRating) || numericRating < 1 || numericRating > 5) {
+            return res.status(400).json({
+                success: false,
+                message: "Course ID, review text, and a rating between 1 and 5 are required",
+            });
+        }
         //check if user is enrolled or not
         const courseDetails = await Course.findOne({
             _id: courseId,

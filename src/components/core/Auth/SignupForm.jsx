@@ -55,17 +55,8 @@ const SignupForm = () => {
     dispatch(setSignupData(signupData));
 
     // Request OTP — on success the thunk navigates to /verify-email
+    // Preserve typed form inputs in case OTP request fails (e.g. email already exists)
     dispatch(sendOtp(formData.email, navigate));
-
-    // Clear the form so it's fresh if the user comes back
-    setFormData({
-      firstName: "",
-      lastName: "",
-      email: "",
-      password: "",
-      confirmPassword: "",
-    });
-    setAccountType(ACCOUNT_TYPE.STUDENT);
   };
 
   // Tab configuration for the Student / Instructor switcher

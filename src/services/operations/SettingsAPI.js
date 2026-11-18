@@ -44,6 +44,7 @@ export function updateDisplayPicture(token, formData) {
             };
 
             dispatch(setUser(updatedUserData));
+            localStorage.setItem("user", JSON.stringify(updatedUserData));
             toast.success("Profile picture updated successfully", { id: toastId });
         } catch (error) {
             console.error("updateDisplayPicture error:", error);
@@ -76,7 +77,9 @@ export function updateProfile(token, formData) {
                 ? updatedUser.image
                 : `https://api.dicebear.com/6.x/initials/svg?seed=${updatedUser?.firstName || "User"} ${updatedUser?.lastName || ""}`;
 
-            dispatch(setUser({ ...updatedUser, image: userImage }));
+            const hydratedUser = { ...updatedUser, image: userImage };
+            dispatch(setUser(hydratedUser));
+            localStorage.setItem("user", JSON.stringify(hydratedUser));
             toast.success("Profile updated successfully", { id: toastId });
         } catch (error) {
             console.error("updateProfile error:", error);
@@ -100,19 +103,17 @@ export async function changePassword(token, formData) {
         }
 
         toast.success("Password changed successfully", { id: toastId });
+        return true;
     } catch (error) {
         console.error("changePassword error:", error);
 
-        // ✅ FIX: Was `error.response.data.message` without null-checking.
-        // On a network failure (server down, timeout) `error.response` is undefined,
-        // so accessing `.data.message` on it throws a TypeError that crashes the
-        // entire catch block and shows no error toast to the user.
         const message =
             error?.response?.data?.message ||
             error?.message ||
             "Could not change password";
 
         toast.error(message, { id: toastId });
+        return false;
     }
 }
 

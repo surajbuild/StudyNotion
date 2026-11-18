@@ -48,6 +48,8 @@ const Navbar = () => {
   }, [fetchSubLinks]);
 
   const matchRoute = (route) => matchPath({ path: route }, location.pathname);
+  const slugifyCategory = (name) =>
+    name?.toString().trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "";
 
   return (
     <div
@@ -83,7 +85,7 @@ const Navbar = () => {
                           .map((subLink, i) => (
                             <Link
                               key={i}
-                              to={`/catalog/${subLink.name.split(" ").join("-").toLowerCase()}`}
+                              to={`/catalog/${slugifyCategory(subLink.name)}`}
                               className="rounded-lg py-4 pl-4 hover:bg-richblack-50"
                             >
                               {subLink.name}
@@ -167,7 +169,7 @@ const Navbar = () => {
                       subLinks.filter((s) => s?.name?.trim()).map((subLink, i) => (
                         <Link
                           key={i}
-                          to={`/catalog/${subLink.name.split(" ").join("-").toLowerCase()}`}
+                          to={`/catalog/${slugifyCategory(subLink.name)}`}
                           className="py-1.5 text-sm text-richblack-300 hover:text-yellow-50 transition-colors"
                         >
                           {subLink.name}

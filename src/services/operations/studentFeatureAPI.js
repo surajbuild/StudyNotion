@@ -48,11 +48,12 @@ export async function buyCourse(token, courses, userDetails, navigate, dispatch)
         } 
 
         //options
+        const orderData = orderResponse.data.message || orderResponse.data;
         const options = {
             key: process.env.REACT_APP_RAZORPAY_KEY,
-            currency: orderResponse.data.currency,
-            amount: `${orderResponse.data.amount}`,
-            order_id: orderResponse.data.message.id,
+            currency: orderData.currency || "INR",
+            amount: `${orderData.amount}`,
+            order_id: orderData.id,
             name: "Studynotion",
             description: "Thank You for Purchasing the Course",
             image: rzpLogo,

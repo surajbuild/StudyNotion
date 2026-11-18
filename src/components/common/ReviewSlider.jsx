@@ -40,10 +40,15 @@ const ReviewSlider = () => {
     <div className="flex w-full items-center justify-center bg-richblack-900 py-12">
       {/* Outer Card Container */}
       <div className="w-full max-w-6xl rounded-xl bg-richblack-800 p-6 shadow-2xl">
+        {reviews.length === 0 ? (
+          <p className="py-8 text-center text-sm text-richblack-300">
+            No learner reviews yet.
+          </p>
+        ) : (
         <Swiper
           slidesPerView={1}
           spaceBetween={25}
-          loop={true}
+          loop={reviews.length > 3}
           freeMode={true}
           autoplay={{
             delay: 2500,
@@ -106,6 +111,7 @@ const ReviewSlider = () => {
             </SwiperSlide>
           ))}
         </Swiper>
+        )}
       </div>
 
       {/* Custom styles to enforce equal height cards */}
