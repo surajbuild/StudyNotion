@@ -658,10 +658,14 @@ describe("Auth Endpoints (server/controllers/Auth.js & ResetPassword.js)", () =>
         expect(res.body.message).toMatch(/invalid/i);
       });
 
-      it("should accept an exact 8-character password with valid token and clear token fields (200)", async () => {
+      it("should accept an exact 8-character password with valid token, look up by SHA-256 hash, clear token fields, and increment tokenVersion (200)", async () => {
+        const { hashToken } = require("../utils/tokenSecurity");
+        const rawToken = "valid-token-uuid";
+        const expectedHash = hashToken(rawToken);
+
         User.findOne.mockResolvedValue({
           _id: "user_reset_ok",
-          token: "valid-token-uuid",
+          resetPasswordTokenHash: expectedHash,
           resetPasswordExpires: Date.now() + 60_000,
         });
         User.findOneAndUpdate.mockResolvedValue({ _id: "user_reset_ok" });
@@ -671,17 +675,20 @@ describe("Auth Endpoints (server/controllers/Auth.js & ResetPassword.js)", () =>
           .send({
             password: "exact8ch",
             confirmPassword: "exact8ch",
-            token: "valid-token-uuid",
+            token: rawToken,
           });
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
+        expect(User.findOne).toHaveBeenCalledWith({ resetPasswordTokenHash: expectedHash });
         expect(User.findOneAndUpdate).toHaveBeenCalledWith(
-          { _id: "user_reset_ok", token: "valid-token-uuid" },
+          { _id: "user_reset_ok", resetPasswordTokenHash: expectedHash },
           expect.objectContaining({
             password: expect.any(String),
+            resetPasswordTokenHash: null,
             token: null,
             resetPasswordExpires: null,
+            $inc: { tokenVersion: 1 },
           }),
           { new: true }
         );

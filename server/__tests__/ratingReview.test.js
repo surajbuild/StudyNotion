@@ -119,17 +119,20 @@ describe("Rating and Review Endpoints (server/controllers/RatingAndReview.js)", 
   });
 
   describe("GET /api/v1/course/getReviews", () => {
-    it("should fetch all reviews populated with user and course", async () => {
+    it("should fetch all reviews populated with user (excluding email - SEC-004) and course", async () => {
+      const mockPopulate2 = jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue([
+          { _id: "r1", rating: 5, review: "Super", user: { firstName: "John", lastName: "Doe" } },
+        ]),
+      });
+      const mockPopulate1 = jest.fn().mockReturnValue({
+        populate: mockPopulate2,
+      });
+
       RatingAndReview.find.mockReturnValue({
         sort: jest.fn().mockReturnValue({
           limit: jest.fn().mockReturnValue({
-            populate: jest.fn().mockReturnValue({
-              populate: jest.fn().mockReturnValue({
-                exec: jest.fn().mockResolvedValue([
-                  { _id: "r1", rating: 5, review: "Super" },
-                ]),
-              }),
-            }),
+            populate: mockPopulate1,
           }),
         }),
       });
@@ -139,6 +142,13 @@ describe("Rating and Review Endpoints (server/controllers/RatingAndReview.js)", 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data).toHaveLength(1);
+      // Verify SEC-004: user projection must NOT include student email
+      expect(mockPopulate1).toHaveBeenCalledWith({
+        path: "user",
+        select: "firstName lastName image",
+      });
+      const selectedFields = mockPopulate1.mock.calls[0][0].select;
+      expect(selectedFields).not.toContain("email");
     });
   });
 });

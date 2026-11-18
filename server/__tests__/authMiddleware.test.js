@@ -99,6 +99,142 @@ describe("Auth Middleware (server/middlewares/auth.js)", () => {
       expect(next).toHaveBeenCalled();
       expect(req.user.id).toBe("cookieUser");
     });
+
+    it("should reject token if only supplied in request body (SEC-006)", async () => {
+      const payload = { id: "bodyUser", accountType: "Student" };
+      const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "1h" });
+
+      const req = {
+        header: jest.fn().mockReturnValue(null),
+        cookies: {},
+        body: { token },
+      };
+      const res = mockResponse();
+      const next = jest.fn();
+
+      await auth(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          message: "Authentication token is missing",
+        })
+      );
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it("should reject request with 401 and TOKEN_REVOKED if tokenVersion is stale (SEC-003)", async () => {
+      const payload = { id: "revokedUser", accountType: "Student", tokenVersion: 0 };
+      const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "1h" });
+
+      User.findById.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({ _id: "revokedUser", tokenVersion: 1 }),
+        }),
+      });
+
+      const req = {
+        header: jest.fn().mockReturnValue(`Bearer ${token}`),
+        cookies: {},
+        body: {},
+        __testRevocation: true,
+      };
+      const res = mockResponse();
+      const next = jest.fn();
+
+      await auth(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          code: "TOKEN_REVOKED",
+        })
+      );
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it("should reject legacy token without tokenVersion if DB user tokenVersion > 0 (SEC-003)", async () => {
+      const payload = { id: "legacyUser", accountType: "Student" }; // no tokenVersion in payload
+      const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "1h" });
+
+      User.findById.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({ _id: "legacyUser", tokenVersion: 1 }),
+        }),
+      });
+
+      const req = {
+        header: jest.fn().mockReturnValue(`Bearer ${token}`),
+        cookies: {},
+        body: {},
+        __testRevocation: true,
+      };
+      const res = mockResponse();
+      const next = jest.fn();
+
+      await auth(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          code: "TOKEN_REVOKED",
+        })
+      );
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it("should allow legacy token without tokenVersion if DB user tokenVersion is 0 (SEC-003)", async () => {
+      const payload = { id: "legacyUserZero", accountType: "Student" };
+      const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "1h" });
+
+      User.findById.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({ _id: "legacyUserZero", tokenVersion: 0 }),
+        }),
+      });
+
+      const req = {
+        header: jest.fn().mockReturnValue(`Bearer ${token}`),
+        cookies: {},
+        body: {},
+        __testRevocation: true,
+      };
+      const res = mockResponse();
+      const next = jest.fn();
+
+      await auth(req, res, next);
+
+      expect(next).toHaveBeenCalled();
+      expect(req.user.id).toBe("legacyUserZero");
+    });
+
+    it("should allow token with matching tokenVersion (SEC-003)", async () => {
+      const payload = { id: "freshUser", accountType: "Student", tokenVersion: 3 };
+      const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "1h" });
+
+      User.findById.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockResolvedValue({ _id: "freshUser", tokenVersion: 3 }),
+        }),
+      });
+
+      const req = {
+        header: jest.fn().mockReturnValue(`Bearer ${token}`),
+        cookies: {},
+        body: {},
+        __testRevocation: true,
+      };
+      const res = mockResponse();
+      const next = jest.fn();
+
+      await auth(req, res, next);
+
+      expect(next).toHaveBeenCalled();
+      expect(req.user.id).toBe("freshUser");
+    });
   });
 
   describe("Role Verification Middlewares", () => {
