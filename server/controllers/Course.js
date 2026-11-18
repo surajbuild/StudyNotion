@@ -310,6 +310,14 @@ exports.editCourse = async (req, res) => {
       });
     }
 
+    // Only the instructor who owns the course can edit it
+    if (course.instructor.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not have permission to edit this course",
+      });
+    }
+
     // Upload a new thumbnail if one was attached
     if (req.files?.thumbnailImage) {
       const uploaded = await imageUploadToCloudinary(
@@ -403,6 +411,7 @@ exports.deleteCourse = async (req, res) => {
       });
     }
 
+    // Only the instructor who owns the course can edit it
     // Only the instructor who owns the course can delete it
     if (course.instructor.toString() !== req.user.id) {
       return res.status(403).json({
@@ -419,6 +428,17 @@ exports.deleteCourse = async (req, res) => {
         await SubSection.deleteMany({ _id: { $in: allSubSectionIds } });
     }
     await Section.deleteMany({ _id: { $in: course.courseContent } });
+
+    // Remove course from instructor's courses list
+    await User.findByIdAndUpdate(course.instructor, { $pull: { courses: courseId } });
+
+    // Remove course from category
+    if (course.category) {
+      await Category.findByIdAndUpdate(course.category, { $pull: { courses: courseId } });
+    }
+
+    // Remove course from enrolled students
+    await User.updateMany({ courses: courseId }, { $pull: { courses: courseId } });
 
     await Course.findByIdAndDelete(courseId);
 
