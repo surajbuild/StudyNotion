@@ -7,6 +7,7 @@ const {
     COURSE_DETAILS_API,
     COURSE_CATEGORIES_API,
     GET_ALL_COURSE_API,
+    SEARCH_COURSES_API,
     CREATE_COURSE_API,
     EDIT_COURSE_API,
     CREATE_SECTION_API,
@@ -40,6 +41,29 @@ export const getAllCourses = async () => {
         toast.dismiss(toastId);
     }
     return result;
+};
+
+export const searchCourses = async (params = {}) => {
+    const cleanParams = {};
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && String(value).trim() !== "") {
+            cleanParams[key] = String(value).trim();
+        }
+    });
+
+    try {
+        const response = await apiConnector("GET", SEARCH_COURSES_API, null, null, cleanParams);
+        if (!response?.data?.success) {
+            throw new Error(response?.data?.message || "Could not search courses");
+        }
+        return response.data.data;
+    } catch (error) {
+        const message =
+            error?.response?.data?.message ||
+            error?.message ||
+            "Unable to load courses. Please try again.";
+        throw new Error(message);
+    }
 };
 
 export const fetchCourseDetails = async (courseId) => {

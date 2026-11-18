@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { apiConnector } from '../services/apiconnector'
 import { categories, catalogData } from '../services/apis'
 import Footer from '../components/common/Footer'
@@ -132,6 +132,16 @@ const Catalog = () => {
                     <p className='max-w-[870px] text-richblack-200'>
                         {catalogPageData?.data?.selectedCategory?.description}
                     </p>
+                    {categoryId && (
+                        <div className='pt-2'>
+                            <Link
+                                to={`/courses?category=${categoryId}`}
+                                className='inline-flex items-center rounded-lg border border-richblack-600 bg-richblack-900 px-4 py-2 text-sm font-medium text-yellow-50 transition-colors hover:border-yellow-50 hover:bg-richblack-700'
+                            >
+                                Search &amp; Filter in {catalogPageData?.data?.selectedCategory?.name}
+                            </Link>
+                        </div>
+                    )}
                 </div>
             </div>
 

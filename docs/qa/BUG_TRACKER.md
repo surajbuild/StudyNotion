@@ -1,7 +1,7 @@
 # StudyNotion — Bug Tracker & Root Cause Analysis
 
 > **Last Updated:** 2026-11-18  
-> **Audit Cycle:** Cycle #5 (`GAP-005`)  
+> **Audit Cycle:** Cycle #6 (`GAP-004`)  
 > **Severity Levels:** `CRITICAL` | `HIGH` | `MEDIUM` | `LOW`  
 > **Total Logged:** 27 (`BUG-001`–`BUG-029`, excluding unused gap) | **Fixed & Verified:** 27 | **Open:** 0
 
@@ -9,7 +9,19 @@
 
 ## Open Bugs
 
-*None — all tracked bugs across Cycles #1–#5 have been fixed and verified.*
+*None — all tracked bugs across Cycles #1–#6 have been fixed and verified.*
+
+---
+
+## Cycle #6 — Feature Delivery & Hardening (`GAP-004`, Tracked Separately)
+
+### `GAP-004` *(Tracked Separately)* — Global Course Search, Filtering, Sorting & Server-Side Pagination
+- **Module:** Student Discovery, Navbar Search & Course Catalog
+- **Status:** `RESOLVED & VERIFIED`
+- **Hardening & Quality Findings Caught & Resolved During Implementation:**
+  1. **Express 5 Query Parser Operator Injection Hardening:** Express 5 defaults to `simple` (`querystring`) query parsing, turning `?q[$ne]=1` into literal key `"q[$ne]"` instead of nested objects. Added explicit key regex rejection (`/[$[\]]/`) alongside scalar string checks in `parseSearchParams` (`server/controllers/Course.js`) to reject operator injection under both Express 5 and `qs` parsers with `400 Bad Request`.
+  2. **React 18.2 `<search>` DOM Warning Prevention:** React 18.2's DOM tag whitelist emits a console warning for `<search>`. Used `<form role="search">` directly in `NavbarSearch.jsx` and `Courses.jsx` to preserve the ARIA search landmark with zero React/browser console warnings.
+- **Verification:** `course.test.js` (+6), `integration.realdb.test.js` (+1 real-DB suite verifying indexes, filters, sorts, pagination & draft exclusion), `courseDetailsAPI.search.test.js` (2/2), `NavbarSearch.test.jsx` (2/2), `Courses.test.jsx` (2/2), Playwright `E2E-24`–`E2E-26` (3/3), and `PUB-01`–`PUB-04` (4/4).
 
 ---
 

@@ -1,21 +1,21 @@
 # StudyNotion — Master Test Cases Registry
 
-> **Last Updated:** 2026-11-18 (Cycle #5 — `GAP-005`)  
+> **Last Updated:** 2026-11-18 (Cycle #6 — `GAP-004`)  
 > **Statuses:** `PASS` | `FAIL` | `BLOCKED` | `NOT RUN`  
-> **Totals:** **218 Test Cases** (108 Backend Unit/API/Safety + 7 Backend Real-MongoDB Integration + 67 Frontend Automated + 36 Live Playwright E2E — **218 PASS, 0 FAIL, 0 BLOCKED**)
+> **Totals:** **238 Test Cases** (114 Backend Unit/API/Safety + 8 Backend Real-MongoDB Integration + 73 Frontend Automated + 43 Live Playwright E2E — **238 PASS, 0 FAIL, 0 BLOCKED**)
 
 ---
 
-## 1. Backend Automated Test Suites (115 Test Cases — 115 PASS, 0 FAIL)
+## 1. Backend Automated Test Suites (122 Test Cases — 122 PASS, 0 FAIL)
 
 | Suite File | Case IDs | Module / Feature | Scenarios Covered | Status | Related Bugs / Gaps |
 |------------|----------|------------------|-------------------|--------|---------------------|
 | [`server/__tests__/testSafety.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/testSafety.test.js) | `BE-SF-01` – `BE-SF-10` | Test DB Safety Guardrails (**Cycle #4**) | Requires explicit test mode, rejects missing `MONGODB_TEST_URL`, rejects Atlas/SRV URIs & masks credentials, rejects remote hosts, rejects non-`test`/system DB names, rejects matching `MONGODB_URL`, validates `assertSafeForDestructiveOp` | `PASS` (10/10) | `GAP-009` |
-| [`server/__tests__/integration.realdb.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/integration.realdb.test.js) | `BE-DB-01` – `BE-DB-07` | Real Isolated MongoDB Full-Stack Integration (**Cycles #4–#5**) | Real MongoDB 8.0 (`127.0.0.1:27018/studynotion_integration_test`): (1) `sendOTP` -> DB OTP -> `signup` -> `login` -> cookie auth -> `logout` -> 401; (2) `updateProfile` & `changePassword` persistence; (3) enrollment check 403 -> `capturePayment` -> HMAC-SHA256 `verifyPayment` -> `CourseProgress` -> `createRating` -> real `$avg` aggregation; (4) Instructor course/section/subsection CRUD + cascade delete consistency; (5) Student/Instructor/Admin RBAC + cross-instructor IDOR 403; (6) `deleteProfile` cascade across User/Profile; **(7) Cycle #5 `GAP-005`: ₹0 course creation, negative price rejection, draft rejection, unauth/instructor/paid-bypass rejection, direct free enrollment + `CourseProgress` init + My Courses + content access, 409 duplicate protection, cross-user 403** | `PASS` (7/7) | `GAP-009`, `GAP-005`, `BUG-003`, `BUG-004` |
+| [`server/__tests__/integration.realdb.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/integration.realdb.test.js) | `BE-DB-01` – `BE-DB-08` | Real Isolated MongoDB Full-Stack Integration (**Cycles #4–#6**) | Real MongoDB 8.0 (`127.0.0.1:27018/studynotion_integration_test`): (1) `sendOTP` -> DB OTP -> `signup` -> `login` -> cookie auth -> `logout` -> 401; (2) `updateProfile` & `changePassword` persistence; (3) enrollment check 403 -> `capturePayment` -> HMAC-SHA256 `verifyPayment` -> `CourseProgress` -> `createRating` -> real `$avg` aggregation; (4) Instructor course/section/subsection CRUD + cascade delete consistency; (5) Student/Instructor/Admin RBAC + cross-instructor IDOR 403; (6) `deleteProfile` cascade across User/Profile; (7) Cycle #5 `GAP-005`: ₹0 free enrollment & security checks; **(8) Cycle #6 `GAP-004`: MongoDB index verification, exact/partial/case-insensitive/special-char (`C++`) search, draft exclusion, category/free/paid/price-range/rating/combined filters, all 5 DB-backed sorts, multi-page pagination (10+ courses), out-of-range page, `limit=500 -> 50` clamping & invalid param 400** | `PASS` (8/8) | `GAP-009`, `GAP-005`, `GAP-004`, `BUG-003`, `BUG-004` |
 | [`server/__tests__/authMiddleware.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/authMiddleware.test.js) | `BE-MW-01` – `BE-MW-10` | Auth & Role Middleware | Missing token (401), invalid/expired token (401), valid Bearer header, valid cookie token, `isStudent` allow/403, `isInstructor` allow/403, `isAdmin` allow/403 | `PASS` (10/10) | — |
 | [`server/__tests__/cache.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/cache.test.js) | `BE-CH-01` – `BE-CH-05` | In-Memory TTL Cache | Cache miss, set/get before TTL, `del`, `clear`, TTL expiration eviction | `PASS` (5/5) | — |
 | [`server/__tests__/auth.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/auth.test.js) | `BE-AU-01` – `BE-AU-22` | Auth, Logout & Reset Password | `sendOTP`, `signup`, `login`, `logout` (clears `httpOnly` cookie & blocks subsequent protected Student/Instructor calls with 401), `changePassword`, `resetPasswordToken` (HashRouter `/#/update-password/`), `resetPassword` | `PASS` (22/22) | `BUG-002`, `BUG-028`, `GAP-006` |
-| [`server/__tests__/course.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/course.test.js) | `BE-CR-01` – `BE-CR-15` | Course CRUD, Pricing & Access Control | `getAllCourses`, `getCourseDetails`, `createCourse` (incl. `price: 0` allowed & negative price rejected 400 in Cycle #5), `editCourse` (IDOR 403), `deleteCourse` (cascade), `getFullCourseDetails` | `PASS` (15/15) | `BUG-003`, `BUG-004`, `BUG-010`, `GAP-005` |
+| [`server/__tests__/course.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/course.test.js) | `BE-CR-01` – `BE-CR-21` | Course CRUD, Pricing, Search & Access Control | `getAllCourses`, `getCourseDetails`, `createCourse` (incl. `price: 0` & negative rejection), `editCourse` (IDOR 403), `deleteCourse` (cascade), `getFullCourseDetails`, **`GET /course/search` (Cycle #6: published filter, regex escaping, 400 validation incl. operator injection & duplicate array params, `limit=500 -> 50` clamping, combined rating pipeline, 500 error handling)** | `PASS` (21/21) | `BUG-003`, `BUG-004`, `BUG-010`, `GAP-005`, `GAP-004` |
 | [`server/__tests__/section.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/section.test.js) | `BE-SC-01` – `BE-SC-06` | Sections & SubSections | `addSection`, `updateSection`, `deleteSection`, `addSubSection`, `updateSubSection`, `deleteSubSection` | `PASS` (6/6) | `BUG-008` |
 | [`server/__tests__/category.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/category.test.js) | `BE-CT-01` – `BE-CT-06` | Categories & Catalog API | `createCategory`, `showAllCategories`, `categoryPageDetails` (0-course category 200) | `PASS` (6/6) | `BUG-005` |
 | [`server/__tests__/payment.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/payment.test.js) | `BE-PM-01` – `BE-PM-14` | Razorpay Payment & Free Course Enrollment | `capturePayment` (incl. rejects ₹0 orders 400), `verifyPayment` (HMAC-SHA256), `enrollFreeCourse` (**Cycle #5:** unauth 401, instructor 403, invalid ID 400, paid-course price-tamper bypass 400, negative/draft 400, duplicate 409, valid ₹0 enrollment ignoring spoofed `userId` 200) | `PASS` (14/14) | `BUG-002`, `GAP-005` |
@@ -26,7 +26,7 @@
 
 ---
 
-## 2. Frontend Automated Test Suites (67 Test Cases — 67 PASS, 0 FAIL)
+## 2. Frontend Automated Test Suites (73 Test Cases — 73 PASS, 0 FAIL)
 
 | Suite File | Case IDs | Module / Feature | Scenarios Covered | Status | Related Bugs |
 |------------|----------|------------------|-------------------|--------|--------------|
@@ -47,12 +47,15 @@
 | [`src/pages/__tests__/Error.test.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/pages/__tests__/Error.test.jsx) | `FE-UI-03` | `Error` Page | Direct 404 CTA -> `/`, no global CSS mutation | `PASS` (1/1) | `BUG-026` |
 | [`src/components/core/Course/__tests__/CourseDetailsCard.test.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/components/core/Course/__tests__/CourseDetailsCard.test.jsx) | `FE-UI-04` – `FE-UI-07` | `CourseDetailsCard` Free vs Paid (**Cycle #5**) | Free pricing & Enroll Now CTA (no Cart/Buy Now), Paid UI preserved, `isEnrolling` disabled state, `Go To Course` when enrolled | `PASS` (4/4) | `GAP-005` |
 | [`src/services/__tests__/studentFeatureAPI.freeEnroll.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/services/__tests__/studentFeatureAPI.freeEnroll.test.js) | `FE-SV-09` – `FE-SV-10` | `enrollFreeCourse` Service (**Cycle #5**) | Posts `{ courses }` without client price, updates Redux/`localStorage` & navigates `/dashboard/enrolled-courses`; surfaces error toast without navigating on failure | `PASS` (2/2) | `GAP-005` |
+| [`src/services/__tests__/courseDetailsAPI.search.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/services/__tests__/courseDetailsAPI.search.test.js) | `FE-SV-11` – `FE-SV-12` | `searchCourses` Service (**Cycle #6**) | Strips blank/null params, forwards clean query params to `GET /course/search`, returns payload, and throws server error message on failure | `PASS` (2/2) | `GAP-004` |
+| [`src/components/common/__tests__/NavbarSearch.test.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/components/common/__tests__/NavbarSearch.test.jsx) | `FE-UI-08` – `FE-UI-09` | `NavbarSearch` Component (**Cycle #6**) | 300ms debounce (single request on rapid typing), renders Free/Paid preview & navigates to `/courses/:id`, error retry, empty state, Clear button, and Enter submit to `/courses?q=...` | `PASS` (2/2) | `GAP-004` |
+| [`src/pages/__tests__/Courses.test.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/pages/__tests__/Courses.test.jsx) | `FE-UI-10` – `FE-UI-11` | `Courses` Search/Filter/Pagination Page (**Cycle #6**) | Hydrates filters from URL params, preserves filters across Next page, resets page on Free toggle, validates `minPrice > maxPrice` inline without firing API, handles API failure + Retry + empty state | `PASS` (2/2) | `GAP-004` |
 
 ---
 
-## 3. Live Playwright Browser E2E Tests (36 Executed — 36 PASS, 0 FAIL, 0 BLOCKED)
+## 3. Live Playwright Browser E2E Tests (43 Executed — 43 PASS, 0 FAIL, 0 BLOCKED)
 
-### Cycles #4 & #5 Isolated Authenticated E2E & Regression Suite (`e2e/authenticated.e2e.js` — 11 PASS, 0 FAIL)
+### Cycles #4–#6 Isolated Authenticated & Feature E2E Suite (`e2e/authenticated.e2e.js` — 14 PASS, 0 FAIL)
 
 | Case ID | Module | Test Description | Expected Result | Actual Result (Isolated `localhost:3001` + `localhost:4001` + `127.0.0.1:27018`) | Status | Related Bugs / Gaps |
 |---------|--------|------------------|-----------------|------------------------------------------------------------------------------------|--------|---------------------|
@@ -64,9 +67,21 @@
 | `E2E-21` | Settings Auth | Live Update Password + Delete Account Confirmation Modal | Password updated, re-login succeeds with new password, Cancel keeps account, Confirm deletes account & post-delete login returns 401 | `pwUpdate=200`, `newLogin=200`, `cancelWorked=true`, `deleteStatus=200`, `tokenCleared=true`, `postDeleteLogin=401` | `PASS` | `GAP-009`, `BUG-015` |
 | `E2E-22` | Student Free Course (**Cycle #5**) | Free (₹0) Course Direct Enrollment & Content Access | Catalog & Course Details show `"Free"` & `"Enroll Now"` (no `"Add to Cart"` / `"Buy Now"`), 0 Razorpay hits, redirects to Enrolled Courses, lecture accessible, Course Details switches to `"Go To Course"` | `enrollStatus=200`, `razorpayHits=0`, `catalogFree=true`, `noCartBtn=true`, `canAccessLesson=true`, `showsGoToCourse=true` | `PASS` | `GAP-005` |
 | `E2E-23` | Instructor Free Course (**Cycle #5**) | Instructor Creates & Publishes ₹0 Course via `CoursesTable` | Instructor creates ₹0 Draft course, My Courses shows `"Free"`, status pill publishes without price error | `create=200`, `displaysFree=true`, `publishToggle=200`, `publishedNow=true` | `PASS` | `GAP-005` |
+| `E2E-24` | Global Navbar Search (**Cycle #6**) | Debounced Preview, Clear, Navigation & Draft Exclusion | Partial case-insensitive search navigates to details, unpublished Draft never appears, Clear resets input, Enter submits to `/courses?q=...` | `draftCreated=true`, `preview=200`, `navDetails=true`, `draftExcluded=true`, `cleared=true` | `PASS` | `GAP-004` |
+| `E2E-25` | Search Filters & Sorting (**Cycle #6**) | Free/Paid/Category/Price-Range/Rating/Combined Filters, All 5 Sorts, URL Persistence & API Failure Retry | Free & Paid both visible by default, filters & combined queries narrow accurately, reload restores URL params, all 5 DB sorts work, simulated 500 recovers on Retry | `freeAndPaid=true`, `free=true`, `paid=true`, `combined=true`, `urlSync=true`, `sorts=true/true/true/true`, `errorRetry=true` | `PASS` | `GAP-004` |
+| `E2E-26` | Pagination & Mobile Search (**Cycle #6**) | Server-Side Pagination, Out-of-Range Recovery & Mobile `375px` Search | Next/Prev preserve filters & sort with distinct page results, `?page=99` offers `"Go to Page 1"`, mobile `375x812` search & filters work with 0 horizontal overflow | `paginationPreserved=true`, `prevWorked=true`, `oobRecovered=true`, `mobileOverflow=false` | `PASS` | `GAP-004` |
 | `REG-01` | Footer | All unique internal footer routes in isolated env | 0 broken links | `checked=8`, `broken=[]` | `PASS` | `BUG-023` |
 | `REG-02` | Error Page | Direct 404 landing in isolated env | No body overflow lock, CTA -> Home | `bodyOverflow=hidden auto`, `ctaNavigatedHome=true` | `PASS` | `BUG-026` |
 | `REG-03` | Responsive | Mobile `375x812` layout in isolated env | No horizontal overflow, 0 page errors, 0 Swiper warnings | `horizontalOverflow=false`, `PAGE ERRORS: 0`, `SWIPER WARNINGS: 0` | `PASS` | `BUG-021` |
+
+### Cycle #6 Live Public Catalog & Console/Network Regression Suite (4 Executed — 4 PASS, 0 FAIL)
+
+| Case ID | Module | Test Description | Actual Result | Status | Related Bugs / Gaps |
+|---------|--------|------------------|---------------|--------|---------------------|
+| `PUB-01` | Homepage | Load `/#/` & verify hero, console, network | `heroOk=true`, 0 console/page/network errors | `PASS` | — |
+| `PUB-02` | Catalog Integration | Visit `/#/catalog/web-dev`, toggle `New` tab, click `"Search & Filter in Web Dev"` | `hasFilterLink=true`, navigated to `/#/courses?category=...` & rendered filtered grid | `PASS` | `GAP-004` |
+| `PUB-03` | Catalog Categories | Verify all 3 category routes (`web-dev`, `data-science`, `devops`) | All 3 categories loaded cleanly | `PASS` | `BUG-017` |
+| `PUB-04` | Public Routes & Alias | Visit `/#/about`, `/#/contact`, `/#/login`, `/#/signup`, `/#/search` | `searchAliasOk=true`, `CONSOLE_ERRORS: 0`, `PAGE_ERRORS: 0`, `FAILED_REQUESTS: 0` | `PASS` | `GAP-004` |
 
 ### Cycle #3 Live Verification & Regression Cases (7 Executed — 7 PASS, 0 FAIL)
 

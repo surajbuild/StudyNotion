@@ -28,6 +28,7 @@ const Course = require("../models/Course");
 const Section = require("../models/Section");
 const SubSection = require("../models/SubSection");
 const CourseProgress = require("../models/CourseProgress");
+const RatingAndReview = require("../models/RatingAndReview");
 const OTP = require("../models/OTP");
 const mailSender = require("../utils/mailSender");
 
@@ -603,6 +604,313 @@ describe("Isolated Real-MongoDB Full-Stack Integration Suite (GAP-009)", () => {
                 .set("Authorization", `Bearer ${secondLogin.token}`)
                 .send({ courseId: seeded.courses.freeCourseId });
             expect(crossUserRes.status).toBe(403);
+        });
+    });
+
+    describe("7. Global Course Search, Filtering, Sorting & Pagination (GAP-004 Real MongoDB)", () => {
+        test("verifies search, filters, sorting, pagination, draft exclusion, and indexes against real MongoDB", async () => {
+            // Verify MongoDB indexes created on Course collection
+            await Course.init();
+            const indexes = await Course.collection.indexes();
+            const indexNames = indexes.map((idx) => idx.name);
+            expect(indexNames).toContain("course_search_text_idx");
+            expect(indexNames).toContain("status_1_createdAt_-1");
+            expect(indexNames).toContain("status_1_category_1_price_1");
+
+            const baseTime = new Date("2026-01-01T00:00:00.000Z").getTime();
+            const studentObjId = new mongoose.Types.ObjectId(seeded.users.studentId);
+            const extraUser1 = new mongoose.Types.ObjectId();
+            const extraUser2 = new mongoose.Types.ObjectId();
+            const extraUser3 = new mongoose.Types.ObjectId();
+
+            // Create controlled real documents for search, rating, popularity, price, draft, and pagination tests
+            const draftCourse = await Course.create({
+                courseName: "Secret Unpublished Quantum Draft",
+                courseDescription: "Draft course that must never appear in public search.",
+                instructor: seeded.users.instructorId,
+                whatYouWillLearn: "Hidden draft content",
+                price: 0,
+                tag: ["SecretDraft", "Quantum"],
+                category: seeded.categories.webDevId,
+                status: "Draft",
+                createdAt: new Date(baseTime + 100000),
+            });
+
+            const cppCourse = await Course.create({
+                courseName: "Modern C++ Systems Guide",
+                courseDescription: "Memory safety and low-level C++ concurrency patterns.",
+                instructor: seeded.users.instructorId,
+                whatYouWillLearn: "Write high-performance C++ services.",
+                price: 499,
+                tag: ["C++", "Systems"],
+                category: seeded.categories.devopsId,
+                studentEnrolled: [studentObjId, extraUser1, extraUser2, extraUser3], // 4 enrolled (most popular)
+                status: "Published",
+                createdAt: new Date(baseTime + 20000),
+            });
+
+            const highRatedPaid = await Course.create({
+                courseName: "GraphQL API Architecture",
+                courseDescription: "Design resilient GraphQL federated schemas.",
+                instructor: seeded.users.instructorId,
+                whatYouWillLearn: "Build scalable GraphQL APIs.",
+                price: 1999,
+                tag: ["GraphQL", "API"],
+                category: seeded.categories.webDevId,
+                studentEnrolled: [studentObjId, extraUser1], // 2 enrolled
+                status: "Published",
+                createdAt: new Date(baseTime + 40000),
+            });
+
+            const lowRatedFree = await Course.create({
+                courseName: "Free Git Workflow Basics",
+                courseDescription: "Branching and pull requests for beginners.",
+                instructor: seeded.users.instructorId,
+                whatYouWillLearn: "Collaborate using Git cleanly.",
+                price: 0,
+                tag: ["Git", "Free"],
+                category: seeded.categories.devopsId,
+                studentEnrolled: [],
+                status: "Published",
+                createdAt: new Date(baseTime + 60000),
+            });
+
+            // Add 10 more published courses to verify multi-page pagination & large result sets
+            const bulkCourses = Array.from({ length: 10 }, (_, idx) => ({
+                courseName: `Pagination Course ${String(idx + 1).padStart(2, "0")}`,
+                courseDescription: `Structured catalog entry #${idx + 1} for pagination validation.`,
+                instructor: seeded.users.instructorId,
+                whatYouWillLearn: "Server-side pagination mastery",
+                price: idx % 2 === 0 ? 0 : 250 + idx * 50,
+                tag: ["Pagination", "Catalog"],
+                category: seeded.categories.dataScienceId,
+                studentEnrolled: [],
+                status: "Published",
+                createdAt: new Date(baseTime + 70000 + idx * 1000),
+            }));
+            await Course.insertMany(bulkCourses);
+
+            // Real RatingAndReview documents (no fabricated ratings!)
+            const r1 = await RatingAndReview.create({
+                user: extraUser1,
+                course: highRatedPaid._id,
+                rating: 5,
+                review: "Outstanding GraphQL depth",
+            });
+            const r2 = await RatingAndReview.create({
+                user: extraUser2,
+                course: highRatedPaid._id,
+                rating: 4,
+                review: "Very thorough architecture patterns",
+            }); // avg = 4.5
+            await Course.findByIdAndUpdate(highRatedPaid._id, {
+                $push: { ratingAndReviews: { $each: [r1._id, r2._id] } },
+            });
+
+            const r3 = await RatingAndReview.create({
+                user: extraUser1,
+                course: lowRatedFree._id,
+                rating: 2,
+                review: "Too short",
+            }); // avg = 2.0
+            await Course.findByIdAndUpdate(lowRatedFree._id, {
+                $push: { ratingAndReviews: r3._id },
+            });
+
+            // 1. Draft course is NEVER exposed even when searched by exact title
+            const draftRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({ q: draftCourse.courseName });
+            expect(draftRes.status).toBe(200);
+            expect(draftRes.body.data.courses).toEqual([]);
+            expect(draftRes.body.data.pagination.totalCourses).toBe(0);
+
+            // 2. Exact title, partial title, case-insensitive, and regex-special-char ("C++") search
+            const exactRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({ q: "GraphQL API Architecture" });
+            expect(exactRes.status).toBe(200);
+            expect(exactRes.body.data.courses.map((c) => c.courseName)).toEqual([
+                "GraphQL API Architecture",
+            ]);
+
+            const partialRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({ q: "graphql" });
+            expect(partialRes.status).toBe(200);
+            expect(partialRes.body.data.courses[0].courseName).toBe("GraphQL API Architecture");
+
+            const specialCharRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({ q: "C++" });
+            expect(specialCharRes.status).toBe(200);
+            expect(specialCharRes.body.data.courses.map((c) => c.courseName)).toEqual([
+                "Modern C++ Systems Guide",
+            ]);
+
+            // 3. No matching results
+            const emptyMatchRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({ q: "NonExistentZebraTopic999" });
+            expect(emptyMatchRes.status).toBe(200);
+            expect(emptyMatchRes.body.data.courses).toEqual([]);
+            expect(emptyMatchRes.body.data.pagination.totalCourses).toBe(0);
+            expect(emptyMatchRes.body.data.pagination.totalPages).toBe(0);
+
+            // 4. Empty search returns both free and paid published courses (and zero drafts)
+            const allRes = await request(app).get("/api/v1/course/search").query({ limit: 50 });
+            expect(allRes.status).toBe(200);
+            const allIds = allRes.body.data.courses.map((c) => c._id.toString());
+            expect(allIds).not.toContain(draftCourse._id.toString());
+            expect(allRes.body.data.courses.some((c) => c.price === 0)).toBe(true);
+            expect(allRes.body.data.courses.some((c) => c.price > 0)).toBe(true);
+
+            // 5. Category, Free, Paid, Price-range, Rating & Combined filtering
+            const freeRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({ priceType: "free", limit: 50 });
+            expect(freeRes.status).toBe(200);
+            expect(freeRes.body.data.courses.length).toBeGreaterThanOrEqual(2);
+            expect(freeRes.body.data.courses.every((c) => c.price === 0)).toBe(true);
+
+            const paidRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({ priceType: "paid", limit: 50 });
+            expect(paidRes.status).toBe(200);
+            expect(paidRes.body.data.courses.length).toBeGreaterThanOrEqual(3);
+            expect(paidRes.body.data.courses.every((c) => c.price > 0)).toBe(true);
+
+            const rangeRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({ minPrice: 400, maxPrice: 1000, limit: 50 });
+            expect(rangeRes.status).toBe(200);
+            expect(rangeRes.body.data.courses.length).toBeGreaterThanOrEqual(2);
+            expect(
+                rangeRes.body.data.courses.every((c) => c.price >= 400 && c.price <= 1000)
+            ).toBe(true);
+
+            const ratingFilterRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({ minRating: 4, limit: 50 });
+            expect(ratingFilterRes.status).toBe(200);
+            const highRatedNames = ratingFilterRes.body.data.courses.map((c) => c.courseName);
+            expect(highRatedNames).toContain("GraphQL API Architecture");
+            expect(highRatedNames).not.toContain("Free Git Workflow Basics");
+            expect(ratingFilterRes.body.data.courses.every((c) => c.averageRating >= 4)).toBe(true);
+
+            const combinedRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({
+                    category: seeded.categories.webDevId,
+                    priceType: "paid",
+                    minPrice: 1500,
+                    maxPrice: 2500,
+                    minRating: 4,
+                    q: "GraphQL",
+                });
+            expect(combinedRes.status).toBe(200);
+            expect(combinedRes.body.data.courses.map((c) => c.courseName)).toEqual([
+                "GraphQL API Architecture",
+            ]);
+
+            // 6. All 5 sorting options verified against actual DB values
+            const newestRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({ sort: "newest", limit: 50 });
+            const newestDates = newestRes.body.data.courses.map((c) =>
+                new Date(c.createdAt).getTime()
+            );
+            for (let i = 1; i < newestDates.length; i += 1) {
+                expect(newestDates[i - 1]).toBeGreaterThanOrEqual(newestDates[i]);
+            }
+
+            const popularRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({ sort: "popular", limit: 50 });
+            expect(popularRes.body.data.courses[0].courseName).toBe("Modern C++ Systems Guide");
+            const popularCounts = popularRes.body.data.courses.map((c) => c.studentEnrolledCount);
+            for (let i = 1; i < popularCounts.length; i += 1) {
+                expect(popularCounts[i - 1]).toBeGreaterThanOrEqual(popularCounts[i]);
+            }
+
+            const priceAscRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({ sort: "price_asc", limit: 50 });
+            const ascPrices = priceAscRes.body.data.courses.map((c) => c.price);
+            expect(ascPrices[0]).toBe(0);
+            for (let i = 1; i < ascPrices.length; i += 1) {
+                expect(ascPrices[i - 1]).toBeLessThanOrEqual(ascPrices[i]);
+            }
+
+            const priceDescRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({ sort: "price_desc", limit: 50 });
+            const descPrices = priceDescRes.body.data.courses.map((c) => c.price);
+            expect(descPrices[0]).toBe(1999);
+            for (let i = 1; i < descPrices.length; i += 1) {
+                expect(descPrices[i - 1]).toBeGreaterThanOrEqual(descPrices[i]);
+            }
+
+            const ratingSortRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({ sort: "rating", limit: 50 });
+            const sortedRatings = ratingSortRes.body.data.courses.map((c) => c.averageRating);
+            for (let i = 1; i < sortedRatings.length; i += 1) {
+                expect(sortedRatings[i - 1]).toBeGreaterThanOrEqual(sortedRatings[i]);
+            }
+
+            // 7. Multi-page server-side pagination, large limit clamping & invalid params
+            const page1Res = await request(app)
+                .get("/api/v1/course/search")
+                .query({ q: "Pagination Course", sort: "newest", page: 1, limit: 4 });
+            const page2Res = await request(app)
+                .get("/api/v1/course/search")
+                .query({ q: "Pagination Course", sort: "newest", page: 2, limit: 4 });
+            const page3Res = await request(app)
+                .get("/api/v1/course/search")
+                .query({ q: "Pagination Course", sort: "newest", page: 3, limit: 4 });
+
+            expect(page1Res.body.data.pagination).toEqual({
+                page: 1,
+                limit: 4,
+                totalCourses: 10,
+                totalPages: 3,
+                hasNextPage: true,
+                hasPrevPage: false,
+            });
+            expect(page1Res.body.data.courses).toHaveLength(4);
+            expect(page2Res.body.data.courses).toHaveLength(4);
+            expect(page3Res.body.data.courses).toHaveLength(2);
+            expect(page3Res.body.data.pagination.hasNextPage).toBe(false);
+            expect(page3Res.body.data.pagination.hasPrevPage).toBe(true);
+
+            const pagedIds = [
+                ...page1Res.body.data.courses,
+                ...page2Res.body.data.courses,
+                ...page3Res.body.data.courses,
+            ].map((c) => c._id.toString());
+            expect(new Set(pagedIds).size).toBe(10);
+
+            // Out-of-range page returns empty array gracefully
+            const oobRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({ q: "Pagination Course", page: 99, limit: 4 });
+            expect(oobRes.status).toBe(200);
+            expect(oobRes.body.data.courses).toEqual([]);
+            expect(oobRes.body.data.pagination.totalCourses).toBe(10);
+
+            // Overly large limit clamped to 50
+            const largeLimitRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({ limit: 500 });
+            expect(largeLimitRes.status).toBe(200);
+            expect(largeLimitRes.body.data.pagination.limit).toBe(50);
+
+            // Invalid params return 400
+            const badParamRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({ minPrice: 500, maxPrice: 100 });
+            expect(badParamRes.status).toBe(400);
         });
     });
 });

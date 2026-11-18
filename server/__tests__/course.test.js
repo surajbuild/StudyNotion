@@ -356,4 +356,144 @@ describe("Course Endpoints (server/controllers/Course.js)", () => {
       expect(res.body.data.completedVideos).toEqual(["vid_1"]);
     });
   });
+
+  describe("GET /api/v1/course/search (GAP-004 Search, Filters, Sorting & Pagination)", () => {
+    it("should return published paginated courses with default params", async () => {
+      Course.aggregate.mockResolvedValue([
+        {
+          metadata: [{ totalCourses: 2 }],
+          courses: [
+            { _id: "c1", courseName: "React Mastery", price: 999, status: "Published" },
+            { _id: "c2", courseName: "Free JS Intro", price: 0, status: "Published" },
+          ],
+        },
+      ]);
+
+      const res = await request(app).get("/api/v1/course/search");
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.courses).toHaveLength(2);
+      expect(res.body.data.pagination).toEqual({
+        page: 1,
+        limit: 9,
+        totalCourses: 2,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPrevPage: false,
+      });
+
+      // Verify pipeline always restricts to Published courses
+      const pipeline = Course.aggregate.mock.calls[0][0];
+      expect(pipeline[0]).toEqual({ $match: { status: "Published" } });
+    });
+
+    it("should safely escape regex special characters in q and search multiple fields", async () => {
+      Course.aggregate.mockResolvedValue([{ metadata: [], courses: [] }]);
+
+      const res = await request(app)
+        .get("/api/v1/course/search")
+        .query({ q: "C++ (Node.js)" });
+
+      expect(res.status).toBe(200);
+      const matchStage = Course.aggregate.mock.calls[0][0][0].$match;
+      expect(matchStage.$and).toBeDefined();
+      expect(matchStage.$and[0]).toEqual({ status: "Published" });
+      // First token "C++" escaped to "C\\+\\+"
+      const firstTokenOr = matchStage.$and[1].$or;
+      expect(firstTokenOr[0].courseName).toBeInstanceOf(RegExp);
+      expect(firstTokenOr[0].courseName.source).toBe("C\\+\\+");
+      expect(firstTokenOr[0].courseName.flags).toContain("i");
+    });
+
+    it("should reject invalid query parameters with 400", async () => {
+      const invalidQueries = [
+        { category: "not-a-valid-objectid" },
+        { priceType: "discounted" },
+        { minPrice: "-10" },
+        { maxPrice: "abc" },
+        { minPrice: "1000", maxPrice: "500" },
+        { minRating: "6" },
+        { minRating: "-1" },
+        { sort: "random_sort" },
+        { page: "0" },
+        { page: "-3" },
+        { page: "abc" },
+        { limit: "0" },
+        { limit: "-5" },
+        { q: "a".repeat(101) },
+      ];
+
+      for (const query of invalidQueries) {
+        const res = await request(app).get("/api/v1/course/search").query(query);
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+      }
+
+      // Reject operator injection & duplicate array query params
+      const injectionRes = await request(app).get("/api/v1/course/search?q[$ne]=1");
+      expect(injectionRes.status).toBe(400);
+      const dupArrayRes = await request(app).get("/api/v1/course/search?q=a&q=b");
+      expect(dupArrayRes.status).toBe(400);
+      expect(Course.aggregate).not.toHaveBeenCalled();
+    });
+
+    it("should clamp overly large limit values to MAX_LIMIT (50)", async () => {
+      Course.aggregate.mockResolvedValue([{ metadata: [{ totalCourses: 120 }], courses: [] }]);
+
+      const res = await request(app)
+        .get("/api/v1/course/search")
+        .query({ limit: "500", page: "2" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.pagination.limit).toBe(50);
+      expect(res.body.data.pagination.totalPages).toBe(3);
+      expect(res.body.data.pagination.hasNextPage).toBe(true);
+      expect(res.body.data.pagination.hasPrevPage).toBe(true);
+
+      const pipeline = Course.aggregate.mock.calls[0][0];
+      const facetStage = pipeline.find((stage) => stage.$facet);
+      expect(facetStage.$facet.courses).toEqual(
+        expect.arrayContaining([{ $skip: 50 }, { $limit: 50 }])
+      );
+    });
+
+    it("should build combined filter and rating sort pipeline", async () => {
+      Course.aggregate.mockResolvedValue([{ metadata: [{ totalCourses: 1 }], courses: [] }]);
+      const validCatId = "507f1f77bcf86cd799439011";
+
+      const res = await request(app).get("/api/v1/course/search").query({
+        q: "mern",
+        category: validCatId,
+        priceType: "paid",
+        minPrice: "500",
+        maxPrice: "2000",
+        minRating: "4",
+        sort: "rating",
+        page: "1",
+        limit: "6",
+      });
+
+      expect(res.status).toBe(200);
+      const pipeline = Course.aggregate.mock.calls[0][0];
+      const hasRatingMatch = pipeline.some(
+        (stage) => stage.$match && stage.$match.averageRating?.$gte === 4
+      );
+      expect(hasRatingMatch).toBe(true);
+      const facetStage = pipeline.find((stage) => stage.$facet);
+      expect(facetStage.$facet.courses[0]).toEqual({
+        $sort: { averageRating: -1, reviewCount: -1, createdAt: -1, _id: -1 },
+      });
+    });
+
+    it("should return 500 when aggregation fails", async () => {
+      Course.aggregate.mockRejectedValue(new Error("DB aggregation timeout"));
+
+      const res = await request(app).get("/api/v1/course/search");
+
+      expect(res.status).toBe(500);
+      expect(res.body.success).toBe(false);
+      expect(res.body.message).toMatch(/Failed to search courses/i);
+    });
+  });
 });

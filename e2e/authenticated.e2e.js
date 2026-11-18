@@ -801,6 +801,385 @@ async function runAuthenticatedE2E() {
         }
 
         // =========================================================================
+        // E2E-24 (GAP-004): Global Navbar Search, Debounced Preview, Clear & Draft Exclusion
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                // Create an unpublished Draft course via isolated API to verify draft exclusion
+                const instLoginRes = await fetchJson(`${API_BASE_URL}/auth/login`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        email: FIXTURES.instructorEmail,
+                        password: TEST_PASSWORD,
+                    }),
+                });
+                const instToken = instLoginRes.data?.token;
+                const draftTitle = "E2E Hidden Draft Quantum Course";
+                const draftCreateRes = await fetchJson(`${API_BASE_URL}/course/createCourse`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${instToken}`,
+                    },
+                    body: JSON.stringify({
+                        courseName: draftTitle,
+                        courseDescription: "Draft course that must never appear in public search.",
+                        whatYouWillLearn: "Hidden content",
+                        price: 499,
+                        category: seeded.categories.webDevId,
+                        status: "Draft",
+                    }),
+                });
+                const draftCreated = draftCreateRes.status === 200;
+
+                // Public visitor searches from Navbar (case-insensitive partial title)
+                await page.goto(`${FRONTEND_URL}/#/`, { waitUntil: "networkidle" });
+                const navInput = page.locator("#navbar-course-search");
+                await navInput.waitFor({ state: "visible", timeout: 15000 });
+
+                const [previewResp] = await Promise.all([
+                    page.waitForResponse(
+                        (r) => r.url().includes("/course/search") && r.url().includes("bootcamp"),
+                        { timeout: 15000 }
+                    ),
+                    navInput.fill("bootcamp"),
+                ]);
+                const suggestionBtn = page
+                    .locator('div[role="region"][aria-label="Search suggestions"] button', {
+                        hasText: seeded.courses.purchasableCourseName,
+                    })
+                    .first();
+                await suggestionBtn.waitFor({ state: "visible", timeout: 10000 });
+                await suggestionBtn.click();
+                await waitForHash(page, `/courses/${seeded.courses.purchasableCourseId}`);
+                const navigatedToDetails = page.url().includes(seeded.courses.purchasableCourseId);
+
+                // Search for exact Draft title -> must NOT appear
+                await Promise.all([
+                    page.waitForResponse(
+                        (r) => r.url().includes("/course/search") && r.url().includes("Hidden"),
+                        { timeout: 15000 }
+                    ),
+                    navInput.fill(draftTitle),
+                ]);
+                await page.waitForSelector('text=No courses found', { timeout: 10000 });
+                const draftExcluded = !(await page
+                    .locator('div[role="region"][aria-label="Search suggestions"]')
+                    .innerText()).includes("₹499");
+
+                // Clear button resets input & closes dropdown
+                await page.locator('button[aria-label="Clear search"]').click();
+                const clearedValue = await navInput.inputValue();
+
+                // Submit with Enter navigates to /courses?q=Isolated
+                await navInput.fill("Isolated");
+                await Promise.all([
+                    page.waitForResponse(
+                        (r) => r.url().includes("/course/search") && r.url().includes("q=Isolated"),
+                        { timeout: 15000 }
+                    ),
+                    navInput.press("Enter"),
+                ]);
+                await waitForHash(page, "/courses?q=Isolated");
+                await page.waitForSelector('[data-testid="search-results-grid"]', { timeout: 15000 });
+
+                record(
+                    "E2E-24",
+                    "GAP-004 Navbar Search (Debounce Preview, Clear, Navigation & Draft Exclusion)",
+                    draftCreated &&
+                        previewResp.status() === 200 &&
+                        navigatedToDetails &&
+                        draftExcluded &&
+                        clearedValue === "",
+                    `draftCreated=${draftCreated}, preview=${previewResp.status()}, navDetails=${navigatedToDetails}, draftExcluded=${draftExcluded}, cleared=${clearedValue === ""}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-25 (GAP-004): Course Filtering, Combined Filters, All 5 Sorts, URL Sync & API Error Retry
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                await page.goto(`${FRONTEND_URL}/#/courses`, { waitUntil: "networkidle" });
+                await page.waitForSelector('[data-testid="search-results-grid"]', { timeout: 15000 });
+                const initialText = await page.locator('[data-testid="search-results-grid"]').innerText();
+                const hasFreeAndPaid =
+                    initialText.includes(seeded.courses.freeCourseName) &&
+                    initialText.includes(seeded.courses.purchasableCourseName);
+
+                // Filter Free only
+                await Promise.all([
+                    page.waitForResponse(
+                        (r) => r.url().includes("/course/search") && r.url().includes("priceType=free"),
+                        { timeout: 15000 }
+                    ),
+                    page.locator('input[name="priceType"][value="free"]').click(),
+                ]);
+                await page.waitForTimeout(300);
+                const freeGridText = await page.locator('[data-testid="search-results-grid"]').innerText();
+                const freeOnlyOk =
+                    freeGridText.includes(seeded.courses.freeCourseName) &&
+                    !freeGridText.includes(seeded.courses.purchasableCourseName);
+
+                // Filter Paid only
+                await Promise.all([
+                    page.waitForResponse(
+                        (r) => r.url().includes("/course/search") && r.url().includes("priceType=paid"),
+                        { timeout: 15000 }
+                    ),
+                    page.locator('input[name="priceType"][value="paid"]').click(),
+                ]);
+                await page.waitForTimeout(300);
+                const paidGridText = await page.locator('[data-testid="search-results-grid"]').innerText();
+                const paidOnlyOk =
+                    paidGridText.includes(seeded.courses.purchasableCourseName) &&
+                    !paidGridText.includes(seeded.courses.freeCourseName);
+
+                // Combined filter: Category (Web Dev) + Price Range (1000..1600) + Min Rating (4+)
+                await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/course/search"), { timeout: 15000 }),
+                    page.selectOption("#filter-category", seeded.categories.webDevId),
+                ]);
+                await page.fill("#filter-min-price", "1000");
+                await page.fill("#filter-max-price", "1600");
+                await Promise.all([
+                    page.waitForResponse(
+                        (r) => r.url().includes("/course/search") && r.url().includes("minPrice=1000"),
+                        { timeout: 15000 }
+                    ),
+                    page.getByRole("button", { name: /Apply Price/i }).click(),
+                ]);
+                await Promise.all([
+                    page.waitForResponse(
+                        (r) => r.url().includes("/course/search") && r.url().includes("minRating=4"),
+                        { timeout: 15000 }
+                    ),
+                    page.locator('input[name="minRating"][value="4"]').click(),
+                ]);
+                await page.waitForTimeout(300);
+                const combinedText = await page.locator('[data-testid="search-results-grid"]').innerText();
+                const combinedOk =
+                    combinedText.includes(seeded.courses.enrolledCourseName) &&
+                    !combinedText.includes(seeded.courses.freeCourseName);
+
+                // Reload page & verify URL query params restore exact combined filter state
+                await page.reload({ waitUntil: "networkidle" });
+                await page.waitForSelector('[data-testid="search-results-grid"]', { timeout: 15000 });
+                const reloadedText = await page.locator('[data-testid="search-results-grid"]').innerText();
+                const urlSyncOk =
+                    page.url().includes("minPrice=1000") &&
+                    page.url().includes("minRating=4") &&
+                    reloadedText.includes(seeded.courses.enrolledCourseName);
+
+                // Clear all filters & verify all 5 sort options
+                await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/course/search"), { timeout: 15000 }),
+                    page.locator("aside button", { hasText: /Clear all/i }).click(),
+                ]);
+                await page.waitForTimeout(300);
+
+                // Price Low to High -> first card is Free
+                await Promise.all([
+                    page.waitForResponse(
+                        (r) => r.url().includes("/course/search") && r.url().includes("sort=price_asc"),
+                        { timeout: 15000 }
+                    ),
+                    page.selectOption("#course-sort-select", "price_asc"),
+                ]);
+                await page.waitForTimeout(300);
+                const firstAscText = await page
+                    .locator('[data-testid="search-results-grid"] > a')
+                    .first()
+                    .innerText();
+                const priceAscOk = firstAscText.includes("Free");
+
+                // Price High to Low -> first card is ₹ 1499 (or higher)
+                await Promise.all([
+                    page.waitForResponse(
+                        (r) => r.url().includes("/course/search") && r.url().includes("sort=price_desc"),
+                        { timeout: 15000 }
+                    ),
+                    page.selectOption("#course-sort-select", "price_desc"),
+                ]);
+                await page.waitForTimeout(300);
+                const firstDescText = await page
+                    .locator('[data-testid="search-results-grid"] > a')
+                    .first()
+                    .innerText();
+                const priceDescOk = firstDescText.includes("₹") && !firstDescText.includes("Free");
+
+                // Highest Rated -> first card is Isolated MERN Mastery (rated 5★ in E2E-18)
+                await Promise.all([
+                    page.waitForResponse(
+                        (r) => r.url().includes("/course/search") && r.url().includes("sort=rating"),
+                        { timeout: 15000 }
+                    ),
+                    page.selectOption("#course-sort-select", "rating"),
+                ]);
+                await page.waitForTimeout(300);
+                const firstRatedText = await page
+                    .locator('[data-testid="search-results-grid"] > a')
+                    .first()
+                    .innerText();
+                const ratingSortOk = firstRatedText.includes(seeded.courses.enrolledCourseName);
+
+                // Most Popular -> HTTP 200
+                const [popResp] = await Promise.all([
+                    page.waitForResponse(
+                        (r) => r.url().includes("/course/search") && r.url().includes("sort=popular"),
+                        { timeout: 15000 }
+                    ),
+                    page.selectOption("#course-sort-select", "popular"),
+                ]);
+                const popularSortOk = popResp.status() === 200;
+
+                // API failure handling + Retry recovery
+                let failOnce = true;
+                await page.route("**/api/v1/course/search**", async (route) => {
+                    if (failOnce) {
+                        failOnce = false;
+                        await route.fulfill({
+                            status: 500,
+                            contentType: "application/json",
+                            body: JSON.stringify({ success: false, message: "Simulated search outage" }),
+                        });
+                    } else {
+                        await route.continue();
+                    }
+                });
+                await page.selectOption("#course-sort-select", "newest");
+                await page.waitForSelector("text=Could not load courses", { timeout: 10000 });
+                const errorDisplayed = (await page.locator("body").innerText()).includes(
+                    "Simulated search outage"
+                );
+                await page.getByRole("button", { name: /^Retry$/i }).click();
+                await page.waitForSelector('[data-testid="search-results-grid"]', { timeout: 15000 });
+                await page.unroute("**/api/v1/course/search**");
+                const retryRecovered =
+                    (await page.locator('[data-testid="search-results-grid"] > a').count()) > 0;
+
+                record(
+                    "E2E-25",
+                    "GAP-004 Filtering, Combined Filters, All 5 Sorts, URL Sync & API Error Retry",
+                    hasFreeAndPaid &&
+                        freeOnlyOk &&
+                        paidOnlyOk &&
+                        combinedOk &&
+                        urlSyncOk &&
+                        priceAscOk &&
+                        priceDescOk &&
+                        ratingSortOk &&
+                        popularSortOk &&
+                        errorDisplayed &&
+                        retryRecovered,
+                    `freeAndPaid=${hasFreeAndPaid}, free=${freeOnlyOk}, paid=${paidOnlyOk}, combined=${combinedOk}, urlSync=${urlSyncOk}, sorts=${priceAscOk}/${priceDescOk}/${ratingSortOk}/${popularSortOk}, errorRetry=${errorDisplayed && retryRecovered}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-26 (GAP-004): Server-Side Pagination, Out-of-Range Page & Mobile (375px) Search Usability
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                await page.goto(`${FRONTEND_URL}/#/courses?limit=2&sort=price_asc`, {
+                    waitUntil: "networkidle",
+                });
+                await page.waitForSelector('[data-testid="search-results-grid"]', { timeout: 15000 });
+
+                const page1Titles = await page
+                    .locator('[data-testid="search-results-grid"] > a')
+                    .evaluateAll((els) => els.map((el) => el.getAttribute("href")));
+
+                // Click Next -> Page 2 preserves sort & limit and loads different courses
+                await Promise.all([
+                    page.waitForResponse(
+                        (r) => r.url().includes("/course/search") && r.url().includes("page=2"),
+                        { timeout: 15000 }
+                    ),
+                    page.getByRole("button", { name: /^Next$/i }).click(),
+                ]);
+                await page.waitForTimeout(300);
+                const page2Titles = await page
+                    .locator('[data-testid="search-results-grid"] > a')
+                    .evaluateAll((els) => els.map((el) => el.getAttribute("href")));
+
+                const paginationPreserved =
+                    page.url().includes("page=2") &&
+                    page.url().includes("sort=price_asc") &&
+                    page1Titles.length === 2 &&
+                    page2Titles.length > 0 &&
+                    !page2Titles.some((href) => page1Titles.includes(href));
+
+                // Click Previous -> returns to Page 1
+                await Promise.all([
+                    page.waitForResponse(
+                        (r) => r.url().includes("/course/search") && r.url().includes("page=1"),
+                        { timeout: 15000 }
+                    ),
+                    page.getByRole("button", { name: /^Previous$/i }).click(),
+                ]);
+                await page.waitForTimeout(300);
+                const prevWorked = !page.url().includes("page=2");
+
+                // Out-of-range page -> offers "Go to Page 1" recovery
+                await page.goto(`${FRONTEND_URL}/#/courses?page=99&limit=2`, {
+                    waitUntil: "networkidle",
+                });
+                await page.waitForSelector("text=Go to Page 1", { timeout: 10000 });
+                await page.getByRole("button", { name: /Go to Page 1/i }).click();
+                await page.waitForSelector('[data-testid="search-results-grid"]', { timeout: 15000 });
+                const oobRecovered =
+                    (await page.locator('[data-testid="search-results-grid"] > a').count()) > 0;
+
+                // Mobile 375px search & filter usability
+                await page.setViewportSize({ width: 375, height: 812 });
+                await page.goto(`${FRONTEND_URL}/#/`, { waitUntil: "networkidle" });
+                const mobileToggle = page.locator('button[aria-label="Toggle course search"]');
+                await mobileToggle.waitFor({ state: "visible", timeout: 10000 });
+                await mobileToggle.click();
+
+                const mobileInput = page.locator("#mobile-navbar-course-search");
+                await mobileInput.waitFor({ state: "visible", timeout: 10000 });
+                await mobileInput.fill("Free");
+                await Promise.all([
+                    page.waitForResponse(
+                        (r) => r.url().includes("/course/search") && r.url().includes("q=Free"),
+                        { timeout: 15000 }
+                    ),
+                    mobileInput.press("Enter"),
+                ]);
+                await waitForHash(page, "/courses?q=Free");
+                await page.waitForSelector('[data-testid="search-results-grid"]', { timeout: 15000 });
+
+                // Toggle mobile Filters drawer and verify zero horizontal overflow
+                await page.getByRole("button", { name: /Filters/i }).click();
+                await page.waitForSelector("#filter-category", { state: "visible", timeout: 10000 });
+                const mobileOverflow = await page.evaluate(
+                    () => document.documentElement.scrollWidth > window.innerWidth
+                );
+
+                record(
+                    "E2E-26",
+                    "GAP-004 Server-Side Pagination, Out-of-Range Recovery & Mobile (375px) Search",
+                    paginationPreserved && prevWorked && oobRecovered && !mobileOverflow,
+                    `paginationPreserved=${paginationPreserved}, prevWorked=${prevWorked}, oobRecovered=${oobRecovered}, mobileOverflow=${mobileOverflow}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
         // Regression Checks against Isolated Environment (Footer, 404, 401 Interceptor, Mobile)
         // =========================================================================
         {

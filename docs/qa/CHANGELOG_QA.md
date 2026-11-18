@@ -4,6 +4,17 @@
 
 ---
 
+## 2026-11-18 — QA Cycle #6 (`GAP-004`: Global Course Search, Filtering, Sorting & Server-Side Pagination)
+
+| Task / Bug ID | Files Modified / Added | Changes Made | Tests Executed | Verification Status |
+|---------------|------------------------|--------------|----------------|---------------------|
+| `CHECKPOINT` | Cycle #5 commit `bdfd765` (local only) | Created clean local checkpoint commit preserving Cycle #5 `GAP-005` & QA docs (unpushed) | `git status`, `git log` | `VERIFIED` |
+| `GAP-004` (Backend & DB) | `server/models/Course.js`, `server/controllers/Course.js`, `server/routes/Course.js` | Added `GET /api/v1/course/search` with strict scalar/bounds query validation, Express 5 + `qs` operator-key injection rejection, multi-token escaped regex search (`courseName`, `courseDescription`, `whatYouWillLearn`, `tag`), unconditional `{ status: "Published" }` visibility enforcement (excluding Drafts), MongoDB `$facet` aggregation filtering (`category`, `priceType: all|free|paid`, `minPrice`, `maxPrice`, real `RatingAndReview` `minRating`, `tag`), 5 DB-backed sorts (`newest`, `popular`, `price_asc`, `price_desc`, `rating`), server-side pagination with `MAX_LIMIT = 50` clamping, and compound/text indexes on `Course` | `course.test.js` (+6), `integration.realdb.test.js` (+1 real-DB search/filter/sort/pagination/index suite) | `VERIFIED` |
+| `GAP-004` (Frontend) | `src/services/apis.js`, `src/services/operations/courseDetailsAPI.js`, `src/components/common/NavbarSearch.jsx` (new), `src/components/common/Navbar.jsx`, `src/pages/Courses.jsx` (new), `src/pages/Catalog.jsx`, `src/App.jsx` | Added `SEARCH_COURSES_API` & `searchCourses`; built debounced `NavbarSearch` with live preview, loading/empty/error/retry states, clear button & course navigation across desktop Navbar, mobile header search toggle, and mobile drawer; built URL-synchronized `/courses` (and `/search`) page with category/Free/Paid/price-range/rating filters, inline range validation, active filter chips, all 5 sort options, server-side pagination & out-of-range recovery; integrated `Catalog.jsx` category link to `/courses?category=...` | `courseDetailsAPI.search.test.js` (2/2), `NavbarSearch.test.jsx` (2/2), `Courses.test.jsx` (2/2), Playwright `E2E-24`–`E2E-26` (3/3), `PUB-01`–`PUB-04` (4/4) | `VERIFIED` |
+| `GAP-004` (Tests & Docs) | `server/__tests__/course.test.js`, `server/__tests__/integration.realdb.test.js`, `src/__mocks__/react-router-dom.js`, `src/services/__tests__/courseDetailsAPI.search.test.js` (new), `src/components/common/__tests__/NavbarSearch.test.jsx` (new), `src/pages/__tests__/Courses.test.jsx` (new), `e2e/authenticated.e2e.js`, `docs/qa/*` | Added 20 new tests across Backend Unit, Real Isolated MongoDB Integration, Frontend Unit, Isolated Playwright E2E, and Public Console/Network Regression; updated all 7 QA docs (238/238 executed tests passing, 0 blocked, 0 open bugs) | `npm run test:all` (73 FE + 122 BE), Playwright (14/14 + 4/4 public), `npx eslint src --max-warnings=0`, `npm run build` | `VERIFIED` |
+
+---
+
 ## 2026-11-18 — QA Cycle #5 (`GAP-005`: Free Course ₹0 Direct Enrollment & Pricing Validation)
 
 | Task / Bug ID | Files Modified / Added | Changes Made | Tests Executed | Verification Status |

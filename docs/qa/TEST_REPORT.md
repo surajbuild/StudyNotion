@@ -1,8 +1,65 @@
 # StudyNotion — Detailed QA Test Report
 
-> **Latest Cycle:** Cycle #5 — `GAP-005` Free Course (₹0) Direct Enrollment & Pricing Validation  
+> **Latest Cycle:** Cycle #6 — `GAP-004` Global Course Search, Filtering, Sorting & Server-Side Pagination  
 > **Date:** 2026-11-18  
 > **Environment:** Windows 11 | Node.js v22.16.0 | React 18 (CRA 5) | Express 5 | Mongoose 8 | MongoDB 8.0 (Isolated Local Ephemeral on `127.0.0.1:27018`) | Chromium 1208 (Playwright)
+
+---
+
+## Cycle #6 — Execution Summary (2026-11-18)
+
+| Test Suite / Verification Gate | Command | Suites | Tests | Passed | Failed | Blocked | Result |
+|-------------------------------|---------|--------|-------|--------|--------|---------|--------|
+| **Frontend Unit & Component Tests** | `npm test` | 20 | 73 | 73 | 0 | 0 | **PASS** (7.54s, +3 suites / +6 tests) |
+| **Backend Unit, API & Safety Guardrails** | `npm run test:server` | 12 | 114 | 114 | 0 | 0 | **PASS** (+6 tests in `course.test.js`) |
+| **Backend Real-MongoDB Full-Stack Integration** | `npm run test:server:integration` (inside `npm run test:server`) | 1 | 8 | 8 | 0 | 0 | **PASS** (7.19s, +1 comprehensive `GAP-004` real-DB suite) |
+| **Isolated Authenticated & Feature Playwright E2E (`E2E-16`–`26` + `REG-01`–`03`)** | `npm run test:e2e:isolated` | 1 | 14 | 14 | 0 | 0 | **PASS** (+3 new `E2E-24`–`E2E-26`, 0 page errors, 0 Swiper warnings) |
+| **Public Catalog & Console/Network Regression (`PUB-01`–`PUB-04`)** | `node scratch/public_regression.js` | 1 | 4 | 4 | 0 | 0 | **PASS** (0 console errors, 0 page errors, 0 failed network requests) |
+| **Strict Frontend ESLint** | `npx eslint src --max-warnings=0` | — | — | 0 errors, 0 warnings | — | — | **PASS** (Exit 0) |
+| **Frontend Production Build** | `npm run build` | — | — | Exit 0 (0 ESLint warnings) | — | — | **PASS** |
+
+### Cycle #6 Actual Verification Outputs
+
+#### A. Combined Automated Test Run (`npm run test:all`)
+```text
+Frontend (npm test):
+Test Suites: 20 passed, 20 total
+Tests:       73 passed, 73 total (added courseDetailsAPI.search.test.js [2], NavbarSearch.test.jsx [2], Courses.test.jsx [2])
+Time:        7.54 s
+
+Backend (npm run test:server):
+Test Suites: 13 passed, 13 total
+Tests:       122 passed, 122 total (added course.test.js [+6], integration.realdb.test.js [+1])
+Time:        32.087 s
+```
+
+#### B. Isolated Playwright E2E Run (`e2e/authenticated.e2e.js`) & Public Regression Audit
+```text
+[PASS] E2E-16 Live Signup -> OTP -> Login -> Profile Edit -> Refresh
+[PASS] E2E-17 Live Cart -> Razorpay Checkout (Sandbox Mock) -> Enrollment
+[PASS] E2E-18 Live ViewCourse Video Playback + Mark Complete + Add Review
+[PASS] E2E-19 Live Instructor Create Course (3 steps) + Upload Thumbnail & Video + Publish
+[PASS] E2E-20 Live Edit Course + Delete Course + Instructor Dashboard Chart
+[PASS] E2E-21 Live Update Password + Delete Account Confirmation Modal
+[PASS] E2E-22 GAP-005 Free Course Direct Enrollment & Content Access (Zero Razorpay)
+[PASS] E2E-23 GAP-005 Instructor Create & Publish ₹0 Free Course via CoursesTable
+[PASS] E2E-24 GAP-004 Navbar Search (Debounce Preview, Clear, Navigation & Draft Exclusion): draftCreated=true, preview=200, navDetails=true, draftExcluded=true, cleared=true
+[PASS] E2E-25 GAP-004 Filtering, Combined Filters, All 5 Sorts, URL Sync & API Error Retry: freeAndPaid=true, free=true, paid=true, combined=true, urlSync=true, sorts=true/true/true/true, errorRetry=true
+[PASS] E2E-26 GAP-004 Server-Side Pagination, Out-of-Range Recovery & Mobile (375px) Search: paginationPreserved=true, prevWorked=true, oobRecovered=true, mobileOverflow=false
+[PASS] REG-01..REG-03 Footer, Error Page & Mobile 375px Regressions
+
+PAGE ERRORS: 0 [] | SWIPER WARNINGS: 0 | TOTAL: 14 PASSED: 14 FAILED: 0
+
+Public Catalog & Console/Network Regression:
+[PASS] PUB-01 Homepage | [PASS] PUB-02 Catalog -> Category Search Integration | [PASS] PUB-03 All Catalog Categories | [PASS] PUB-04 Public Pages & /search Alias
+CONSOLE_ERRORS: 0 [] | PAGE_ERRORS: 0 [] | FAILED_REQUESTS: 0 []
+```
+
+#### C. Strict ESLint & Production Build
+```text
+$ npx eslint src --max-warnings=0 -> Exit 0 (0 errors, 0 warnings)
+$ npm run build -> Exit 0 (0 [eslint] warnings; only 2 pre-existing third-party swiper PostCSS CSS-nesting notices)
+```
 
 ---
 

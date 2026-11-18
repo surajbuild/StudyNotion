@@ -5,6 +5,7 @@ const router = express.Router();
 const {
   createCourse,
   getAllCourses,
+  searchCourses,
   getCourseDetails,
   getInstructorCourses,
   editCourse,
@@ -80,6 +81,9 @@ router.post("/deleteSubSection", auth, isInstructor, deleteSubSection);
 
 //Get all Registered Courses
 router.get("/getAllCourses", getAllCourses);
+
+//Global Course Search, Filtering, Sorting & Pagination
+router.get("/search", searchCourses);
 
 //Get Details for a specific courses
 router.post("/getCourseDetails", getCourseDetails);

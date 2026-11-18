@@ -37,15 +37,12 @@
 
 ## Category B — Missing Inferred Core Ed-Tech Features
 
-### `GAP-004` — Global Course Search & Multi-Criteria Filtering
+### `GAP-004` — Global Course Search, Filtering, Sorting & Pagination — `RESOLVED (Cycle #6)`
 - **Classification:** Inferred Core Expectation for an Online Learning Platform
-- **What is missing:** No search input in `Navbar.jsx` or `Catalog.jsx`; no filtering by price range, rating, free vs. paid, or keyword; no pagination on `getAllCourses` or `categoryPageDetails`.
-- **Why it is important:** As the catalog grows beyond a few courses, users cannot find specific topics (e.g., "React", "Docker") without clicking through every category.
-- **Required Changes:**
-  - *Backend:* Add `GET /api/v1/course/search?q=&category=&minPrice=&maxPrice=&minRating=&page=&limit=` in `server/controllers/Course.js` with MongoDB text index on `courseName`, `courseDescription`, `tag`.
-  - *Frontend:* Add search bar in `Navbar.jsx` + `src/pages/SearchResults.jsx` with filter sidebar & pagination.
-  - *Database:* Add compound/text index on `Course`.
-- **Priority:** High | **Complexity:** `MEDIUM`
+- **Resolution (Cycle #6):**
+  - **Backend & Database:** Added `GET /api/v1/course/search` in `server/controllers/Course.js` & `server/routes/Course.js` with strict scalar/type/bounds query validation, Express 5 + `qs` operator-key injection protection, escaped multi-token case-insensitive regex matching across `courseName`, `courseDescription`, `whatYouWillLearn`, and `tag`, unconditional `{ status: "Published" }` visibility enforcement (excluding all `Draft` courses), MongoDB aggregation filtering (`category`, `priceType: all|free|paid`, `minPrice`, `maxPrice`, real `RatingAndReview` `minRating`, `tag`), 5 DB-backed sorts (`newest`, `popular`, `price_asc`, `price_desc`, `rating`), server-side `$facet` pagination with `MAX_LIMIT = 50` clamping, and compound/text indexes on `server/models/Course.js`.
+  - **Frontend:** Added `SEARCH_COURSES_API` & `searchCourses` in `src/services/apis.js` & `src/services/operations/courseDetailsAPI.js`; built debounced `NavbarSearch.jsx` integrated into desktop Navbar, mobile top search toggle, and mobile drawer (`Navbar.jsx`); built full URL-synchronized `src/pages/Courses.jsx` (`/courses` & `/search`) with filter sidebar, inline price-range validation, active filter chips, 5 sort options, pagination, loading/empty/error/retry states, and linked `Catalog.jsx` categories directly to pre-filtered `/courses?category=...`.
+  - **Verification:** `course.test.js` (+6), `integration.realdb.test.js` (+1 full real-DB search/filter/sort/pagination/index suite), `courseDetailsAPI.search.test.js` (2/2), `NavbarSearch.test.jsx` (2/2), `Courses.test.jsx` (2/2), Playwright `E2E-24`–`E2E-26` (3/3), and Public Regression `PUB-01`–`PUB-04` (4/4, 0 console/page/network errors).
 
 ### `GAP-005` — Free Course (₹0) Direct Enrollment Flow — `RESOLVED (Cycle #5)`
 - **Classification:** Missing Integration / Business Logic Gap

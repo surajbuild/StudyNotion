@@ -66,5 +66,15 @@ const courseSchema = new mongoose.Schema({
 });
 
 courseSchema.index({ instructor: 1, status: 1 });
+courseSchema.index({ status: 1, createdAt: -1 });
+courseSchema.index({ status: 1, category: 1, price: 1 });
+courseSchema.index({ status: 1, price: 1 });
+courseSchema.index(
+    { courseName: "text", courseDescription: "text", tag: "text" },
+    {
+        name: "course_search_text_idx",
+        weights: { courseName: 10, tag: 5, courseDescription: 2 },
+    }
+);
 
 module.exports = mongoose.model("Course", courseSchema);

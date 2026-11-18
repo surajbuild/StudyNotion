@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Course = require("../models/Course");
 const Category = require("../models/Category");
 const User = require("../models/User");
@@ -603,6 +604,444 @@ exports.getFullCourseDetails = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to fetch course details",
+      error: error.message,
+    });
+  }
+};
+
+// ============================================================
+// GLOBAL COURSE SEARCH, FILTERING, SORTING & PAGINATION (GAP-004)
+// ============================================================
+const MAX_SEARCH_QUERY_LENGTH = 100;
+const MAX_SEARCH_TOKENS = 8;
+const MAX_TAG_LENGTH = 50;
+const DEFAULT_PAGE = 1;
+const DEFAULT_LIMIT = 9;
+const MAX_LIMIT = 50;
+const MAX_PAGE = 100000;
+const ALLOWED_PRICE_TYPES = new Set(["all", "free", "paid"]);
+const ALLOWED_SORTS = new Set(["newest", "popular", "price_asc", "price_desc", "rating"]);
+const OBJECT_ID_REGEX = /^[a-fA-F0-9]{24}$/;
+
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const getScalarStringParam = (query, name) => {
+  if (!(name in query) || query[name] === undefined || query[name] === null) {
+    return { present: false, value: "" };
+  }
+  const raw = query[name];
+  if (typeof raw !== "string") {
+    return { present: true, error: `Invalid query parameter: ${name}` };
+  }
+  return { present: true, value: raw.trim() };
+};
+
+const parseSearchParams = (query = {}) => {
+  // Reject operator/bracket injection keys (covers both Express 5 simple parser and qs extended parser)
+  for (const [key, val] of Object.entries(query)) {
+    if (/[$[\]]/.test(key)) {
+      return { error: `Invalid query parameter: ${key}` };
+    }
+    if (val !== undefined && val !== null && typeof val !== "string") {
+      return { error: `Invalid query parameter: ${key}` };
+    }
+  }
+
+  // 1. Search query `q`
+  const qParam = getScalarStringParam(query, "q");
+  if (qParam.error) return { error: qParam.error };
+  if (qParam.value.length > MAX_SEARCH_QUERY_LENGTH) {
+    return { error: `Search query must be ${MAX_SEARCH_QUERY_LENGTH} characters or fewer` };
+  }
+
+  // 2. Category ObjectId
+  const catParam = getScalarStringParam(query, "category");
+  if (catParam.error) return { error: catParam.error };
+  let categoryId = null;
+  if (catParam.value !== "") {
+    if (!OBJECT_ID_REGEX.test(catParam.value) || !mongoose.Types.ObjectId.isValid(catParam.value)) {
+      return { error: "Invalid category ID" };
+    }
+    categoryId = new mongoose.Types.ObjectId(catParam.value);
+  }
+
+  // 3. Price type (all | free | paid)
+  const priceTypeParam = getScalarStringParam(query, "priceType");
+  if (priceTypeParam.error) return { error: priceTypeParam.error };
+  const priceType = priceTypeParam.value === "" ? "all" : priceTypeParam.value.toLowerCase();
+  if (!ALLOWED_PRICE_TYPES.has(priceType)) {
+    return { error: "Invalid priceType. Allowed values: all, free, paid" };
+  }
+
+  // 4. Min / Max price
+  const minPriceParam = getScalarStringParam(query, "minPrice");
+  if (minPriceParam.error) return { error: minPriceParam.error };
+  let minPrice = null;
+  if (minPriceParam.value !== "") {
+    const parsed = Number(minPriceParam.value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return { error: "minPrice must be a non-negative number" };
+    }
+    minPrice = parsed;
+  }
+
+  const maxPriceParam = getScalarStringParam(query, "maxPrice");
+  if (maxPriceParam.error) return { error: maxPriceParam.error };
+  let maxPrice = null;
+  if (maxPriceParam.value !== "") {
+    const parsed = Number(maxPriceParam.value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return { error: "maxPrice must be a non-negative number" };
+    }
+    maxPrice = parsed;
+  }
+
+  if (minPrice !== null && maxPrice !== null && minPrice > maxPrice) {
+    return { error: "minPrice cannot be greater than maxPrice" };
+  }
+
+  // 5. Minimum rating (0..5)
+  const minRatingParam = getScalarStringParam(query, "minRating");
+  if (minRatingParam.error) return { error: minRatingParam.error };
+  let minRating = null;
+  if (minRatingParam.value !== "") {
+    const parsed = Number(minRatingParam.value);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 5) {
+      return { error: "minRating must be a number between 0 and 5" };
+    }
+    minRating = parsed;
+  }
+
+  // 6. Optional tag filter
+  const tagParam = getScalarStringParam(query, "tag");
+  if (tagParam.error) return { error: tagParam.error };
+  if (tagParam.value.length > MAX_TAG_LENGTH) {
+    return { error: `Tag filter must be ${MAX_TAG_LENGTH} characters or fewer` };
+  }
+  const tag = tagParam.value || null;
+
+  // 7. Sort option
+  const sortParam = getScalarStringParam(query, "sort");
+  if (sortParam.error) return { error: sortParam.error };
+  const sort = sortParam.value === "" ? "newest" : sortParam.value.toLowerCase();
+  if (!ALLOWED_SORTS.has(sort)) {
+    return { error: "Invalid sort option. Allowed values: newest, popular, price_asc, price_desc, rating" };
+  }
+
+  // 8. Pagination: page & limit
+  const pageParam = getScalarStringParam(query, "page");
+  if (pageParam.error) return { error: pageParam.error };
+  let page = DEFAULT_PAGE;
+  if (pageParam.value !== "") {
+    if (!/^\d+$/.test(pageParam.value)) {
+      return { error: "page must be a positive integer" };
+    }
+    const parsedPage = Number(pageParam.value);
+    if (!Number.isSafeInteger(parsedPage) || parsedPage < 1 || parsedPage > MAX_PAGE) {
+      return { error: `page must be an integer between 1 and ${MAX_PAGE}` };
+    }
+    page = parsedPage;
+  }
+
+  const limitParam = getScalarStringParam(query, "limit");
+  if (limitParam.error) return { error: limitParam.error };
+  let limit = DEFAULT_LIMIT;
+  if (limitParam.value !== "") {
+    if (!/^\d+$/.test(limitParam.value)) {
+      return { error: "limit must be a positive integer" };
+    }
+    const parsedLimit = Number(limitParam.value);
+    if (!Number.isSafeInteger(parsedLimit) || parsedLimit < 1) {
+      return { error: "limit must be a positive integer" };
+    }
+    limit = Math.min(parsedLimit, MAX_LIMIT);
+  }
+
+  return {
+    q: qParam.value,
+    categoryId,
+    categoryRaw: categoryId ? catParam.value : null,
+    priceType,
+    minPrice,
+    maxPrice,
+    minRating,
+    tag,
+    sort,
+    page,
+    limit,
+  };
+};
+
+exports.searchCourses = async (req, res) => {
+  try {
+    const parsed = parseSearchParams(req.query || {});
+    if (parsed.error) {
+      return res.status(400).json({
+        success: false,
+        message: parsed.error,
+      });
+    }
+
+    const {
+      q,
+      categoryId,
+      categoryRaw,
+      priceType,
+      minPrice,
+      maxPrice,
+      minRating,
+      tag,
+      sort,
+      page,
+      limit,
+    } = parsed;
+
+    // Always restrict public search strictly to Published courses (never expose Drafts)
+    const andConditions = [{ status: "Published" }];
+
+    if (categoryId) {
+      andConditions.push({ category: categoryId });
+    }
+
+    if (priceType === "free") {
+      andConditions.push({ price: 0 });
+    } else if (priceType === "paid") {
+      andConditions.push({ price: { $gt: 0 } });
+    }
+
+    if (minPrice !== null) {
+      andConditions.push({ price: { $gte: minPrice } });
+    }
+
+    if (maxPrice !== null) {
+      andConditions.push({ price: { $lte: maxPrice } });
+    }
+
+    if (tag) {
+      const tagRegex = new RegExp(escapeRegex(tag), "i");
+      andConditions.push({ tag: tagRegex });
+    }
+
+    if (q) {
+      const tokens = q.split(/\s+/).filter(Boolean).slice(0, MAX_SEARCH_TOKENS);
+      for (const token of tokens) {
+        const tokenRegex = new RegExp(escapeRegex(token), "i");
+        andConditions.push({
+          $or: [
+            { courseName: tokenRegex },
+            { courseDescription: tokenRegex },
+            { whatYouWillLearn: tokenRegex },
+            { tag: tokenRegex },
+          ],
+        });
+      }
+    }
+
+    const matchStage = andConditions.length === 1 ? andConditions[0] : { $and: andConditions };
+    const needsRatingBeforePagination = (minRating !== null && minRating > 0) || sort === "rating";
+
+    const pipeline = [{ $match: matchStage }];
+
+    // Compute studentEnrolledCount before sort when sorting by popularity
+    if (sort === "popular") {
+      pipeline.push({
+        $addFields: {
+          studentEnrolledCount: { $size: { $ifNull: ["$studentEnrolled", []] } },
+        },
+      });
+    }
+
+    if (needsRatingBeforePagination) {
+      pipeline.push(
+        {
+          $lookup: {
+            from: "ratingandreviews",
+            localField: "_id",
+            foreignField: "course",
+            as: "_ratingDocs",
+            pipeline: [{ $project: { rating: 1 } }],
+          },
+        },
+        {
+          $addFields: {
+            reviewCount: { $size: "$_ratingDocs" },
+            averageRating: {
+              $cond: [
+                { $gt: [{ $size: "$_ratingDocs" }, 0] },
+                { $round: [{ $avg: "$_ratingDocs.rating" }, 1] },
+                0,
+              ],
+            },
+          },
+        }
+      );
+
+      if (minRating !== null && minRating > 0) {
+        pipeline.push({
+          $match: {
+            averageRating: { $gte: minRating },
+          },
+        });
+      }
+    }
+
+    let sortStage;
+    switch (sort) {
+      case "popular":
+        sortStage = { studentEnrolledCount: -1, createdAt: -1, _id: -1 };
+        break;
+      case "price_asc":
+        sortStage = { price: 1, createdAt: -1, _id: -1 };
+        break;
+      case "price_desc":
+        sortStage = { price: -1, createdAt: -1, _id: -1 };
+        break;
+      case "rating":
+        sortStage = { averageRating: -1, reviewCount: -1, createdAt: -1, _id: -1 };
+        break;
+      case "newest":
+      default:
+        sortStage = { createdAt: -1, _id: -1 };
+        break;
+    }
+
+    const coursesBranch = [
+      { $sort: sortStage },
+      { $skip: (page - 1) * limit },
+      { $limit: limit },
+      {
+        $lookup: {
+          from: "users",
+          localField: "instructor",
+          foreignField: "_id",
+          as: "instructor",
+          pipeline: [
+            {
+              $project: {
+                firstName: 1,
+                lastName: 1,
+                image: 1,
+              },
+            },
+          ],
+        },
+      },
+      { $unwind: { path: "$instructor", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "categories",
+          localField: "category",
+          foreignField: "_id",
+          as: "category",
+          pipeline: [
+            {
+              $project: {
+                name: 1,
+              },
+            },
+          ],
+        },
+      },
+      { $unwind: { path: "$category", preserveNullAndEmptyArrays: true } },
+    ];
+
+    if (needsRatingBeforePagination) {
+      coursesBranch.push({
+        $addFields: {
+          ratingAndReviews: "$_ratingDocs",
+          studentEnrolledCount: { $size: { $ifNull: ["$studentEnrolled", []] } },
+        },
+      });
+    } else {
+      coursesBranch.push(
+        {
+          $lookup: {
+            from: "ratingandreviews",
+            localField: "_id",
+            foreignField: "course",
+            as: "ratingAndReviews",
+            pipeline: [{ $project: { rating: 1 } }],
+          },
+        },
+        {
+          $addFields: {
+            studentEnrolledCount: { $size: { $ifNull: ["$studentEnrolled", []] } },
+            reviewCount: { $size: "$ratingAndReviews" },
+            averageRating: {
+              $cond: [
+                { $gt: [{ $size: "$ratingAndReviews" }, 0] },
+                { $round: [{ $avg: "$ratingAndReviews.rating" }, 1] },
+                0,
+              ],
+            },
+          },
+        }
+      );
+    }
+
+    coursesBranch.push({
+      $project: {
+        courseName: 1,
+        courseDescription: 1,
+        whatYouWillLearn: 1,
+        price: 1,
+        thumbnail: 1,
+        tag: 1,
+        status: 1,
+        createdAt: 1,
+        instructor: 1,
+        category: 1,
+        ratingAndReviews: 1,
+        studentEnrolled: 1,
+        studentEnrolledCount: 1,
+        averageRating: 1,
+        reviewCount: 1,
+      },
+    });
+
+    pipeline.push({
+      $facet: {
+        metadata: [{ $count: "totalCourses" }],
+        courses: coursesBranch,
+      },
+    });
+
+    const aggregateResult = await Course.aggregate(pipeline);
+    const facet = Array.isArray(aggregateResult) && aggregateResult[0] ? aggregateResult[0] : {};
+    const courses = Array.isArray(facet.courses) ? facet.courses : [];
+    const totalCourses = facet.metadata?.[0]?.totalCourses || 0;
+    const totalPages = totalCourses > 0 ? Math.ceil(totalCourses / limit) : 0;
+
+    return res.status(200).json({
+      success: true,
+      message: "Courses fetched successfully",
+      data: {
+        courses,
+        pagination: {
+          page,
+          limit,
+          totalCourses,
+          totalPages,
+          hasNextPage: page < totalPages,
+          hasPrevPage: totalCourses > 0 && page > 1,
+        },
+        filters: {
+          q,
+          category: categoryRaw,
+          priceType,
+          minPrice,
+          maxPrice,
+          minRating,
+          tag,
+          sort,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("searchCourses error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to search courses",
       error: error.message,
     });
   }

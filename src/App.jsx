@@ -12,6 +12,7 @@ const Login = lazy(() => import("./pages/Login"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const Signup = lazy(() => import("./pages/Signup"));
 const Catalog = lazy(() => import("./pages/Catalog"));
+const Courses = lazy(() => import("./pages/Courses"));
 const UpdatePassword = lazy(() => import("./pages/UpdatePassword"));
 const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
 const Error = lazy(() => import("./pages/Error"));
@@ -48,6 +49,8 @@ function App() {
         <Routes>
           {/* ── Public routes ──────────────────────────────────────────────── */}
           <Route path="/" element={<Home />} />
+          <Route path="/courses" element={<Courses />} />
+          <Route path="/search" element={<Courses />} />
           <Route path="/catalog/:categoryName" element={<Catalog />} />
           <Route path="/courses/:courseId" element={<CourseDetails />} />
           <Route path="/about" element={<About />} />
