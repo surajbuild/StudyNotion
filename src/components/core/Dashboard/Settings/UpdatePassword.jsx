@@ -4,6 +4,10 @@ import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai"
 import { useSelector } from "react-redux"
 import { useNavigate } from "react-router-dom"
 import { changePassword } from "../../../../services/operations/SettingsAPI"
+import {
+    MIN_PASSWORD_LENGTH,
+    PASSWORD_MIN_LENGTH_MESSAGE,
+} from "../../../../utils/passwordPolicy"
 import IconBtn from "../../../common/IconBtn"
 
 export default function UpdatePassword() {
@@ -63,7 +67,7 @@ export default function UpdatePassword() {
                             {showOldPassword ? <AiOutlineEyeInvisible fontSize={24} fill="#AFB2BF" /> : <AiOutlineEye fontSize={24} fill="#AFB2BF" />}
                         </span>
                         {errors.oldPassword && (
-                            <span className="-mt-1 text-xs text-yellow-100">
+                            <span role="alert" className="-mt-1 text-xs text-yellow-100">
                                 {errors.oldPassword.message}
                             </span>
                         )}
@@ -81,9 +85,11 @@ export default function UpdatePassword() {
                             className="form-style rounded-md border border-richblack-600 bg-richblack-700 px-5 py-2 pr-10 font-medium text-richblack-50 transition-all hover:bg-richblack-600"
                             {...register("newPassword", {
                                 required: "New password is required",
+                                validate: (value) =>
+                                    value.trim().length > 0 || "Password cannot be empty",
                                 minLength: {
-                                    value: 8,
-                                    message: "Password must be at least 8 characters",
+                                    value: MIN_PASSWORD_LENGTH,
+                                    message: PASSWORD_MIN_LENGTH_MESSAGE,
                                 },
                             })}
                         />
@@ -93,9 +99,13 @@ export default function UpdatePassword() {
                         >
                             {showNewPassword ? <AiOutlineEyeInvisible fontSize={24} fill="#AFB2BF" /> : <AiOutlineEye fontSize={24} fill="#AFB2BF" />}
                         </span>
-                        {errors.newPassword && (
-                            <span className="-mt-1 text-xs text-yellow-100">
+                        {errors.newPassword ? (
+                            <span role="alert" className="-mt-1 text-xs text-yellow-100">
                                 {errors.newPassword.message}
+                            </span>
+                        ) : (
+                            <span className="-mt-1 text-xs text-richblack-300">
+                                Must be at least 8 characters
                             </span>
                         )}
                     </div>
@@ -132,7 +142,7 @@ export default function UpdatePassword() {
                             {showConfirmNewPassword ? <AiOutlineEyeInvisible fontSize={24} fill="#AFB2BF" /> : <AiOutlineEye fontSize={24} fill="#AFB2BF" />}
                         </span>
                         {errors.confirmNewPassword && (
-                            <span className="-mt-1 text-xs text-yellow-100">
+                            <span role="alert" className="-mt-1 text-xs text-yellow-100">
                                 {errors.confirmNewPassword.message}
                             </span>
                         )}

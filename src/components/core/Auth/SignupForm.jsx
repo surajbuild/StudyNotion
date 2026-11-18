@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 import { setSignupData } from "../../../slices/authSlice";
 import { sendOtp } from "../../../services/operations/authAPI";
 import { toast } from "react-hot-toast";
+import { validateNewPassword } from "../../../utils/passwordPolicy";
 
 const SignupForm = () => {
   const navigate = useNavigate();
@@ -25,28 +26,50 @@ const SignupForm = () => {
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [confirmPasswordError, setConfirmPasswordError] = useState("");
 
   const { firstName, lastName, email, password, confirmPassword } = formData;
 
   // Update the relevant field whenever any input changes
   const handleOnChange = (e) => {
+    const { name, value } = e.target;
     setFormData((prevData) => ({
       ...prevData,
-      [e.target.name]: e.target.value,
+      [name]: value,
     }));
+    if (name === "password" && passwordError) {
+      setPasswordError("");
+    }
+    if ((name === "confirmPassword" || name === "password") && confirmPasswordError) {
+      setConfirmPasswordError("");
+    }
   };
 
   const handleOnSubmit = (e) => {
     e.preventDefault();
+    setPasswordError("");
+    setConfirmPasswordError("");
 
     // Client-side validation before hitting the network
-    if (!password.trim() || !confirmPassword.trim()) {
-      toast.error("Passwords cannot be empty");
+    const passwordValidation = validateNewPassword(password);
+    if (!passwordValidation.valid) {
+      setPasswordError(passwordValidation.message);
+      toast.error(passwordValidation.message);
+      return;
+    }
+
+    if (!confirmPassword.trim()) {
+      const msg = "Please confirm your password";
+      setConfirmPasswordError(msg);
+      toast.error(msg);
       return;
     }
 
     if (password !== confirmPassword) {
-      toast.error("Passwords Do Not Match");
+      const msg = "Passwords Do Not Match";
+      setConfirmPasswordError(msg);
+      toast.error(msg);
       return;
     }
 
@@ -152,13 +175,21 @@ const SignupForm = () => {
               onClick={() => setShowPassword((prev) => !prev)}
               className="absolute right-3 top-[38px] z-[10] cursor-pointer"
             >
-             
               {showPassword ? (
                 <AiOutlineEye fontSize={24} fill="#AFB2BF" />
               ) : (
                 <AiOutlineEyeInvisible fontSize={24} fill="#AFB2BF" />
               )}
             </span>
+            {passwordError ? (
+              <p role="alert" className="mt-1 text-xs text-pink-200">
+                {passwordError}
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-richblack-300">
+                Must be at least 8 characters
+              </p>
+            )}
           </label>
 
           {/* Confirm Password */}
@@ -189,6 +220,11 @@ const SignupForm = () => {
                 <AiOutlineEyeInvisible fontSize={24} fill="#AFB2BF" />
               )}
             </span>
+            {confirmPasswordError && (
+              <p role="alert" className="mt-1 text-xs text-pink-200">
+                {confirmPasswordError}
+              </p>
+            )}
           </label>
         </div>
 

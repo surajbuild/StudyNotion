@@ -4,8 +4,10 @@ import { useLocation } from "react-router-dom";
 import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 import { BiArrowBack } from "react-icons/bi";
 import { Link } from "react-router-dom";
+import { toast } from "react-hot-toast";
 import { resetPassword } from "../services/operations/authAPI";
 import { BsCheckCircle } from "react-icons/bs";
+import { MIN_PASSWORD_LENGTH, validateNewPassword } from "../utils/passwordPolicy";
 
 const UpdatePassword = () => {
   const dispatch = useDispatch();
@@ -19,6 +21,8 @@ const UpdatePassword = () => {
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [confirmPasswordError, setConfirmPasswordError] = useState("");
   // ✅ Enhancement: track whether the reset was successful so we can show
   // a confirmation screen instead of immediately navigating away.
   const [resetSuccess, setResetSuccess] = useState(false);
@@ -26,24 +30,42 @@ const UpdatePassword = () => {
   const { password, confirmPassword } = formData;
 
   const handleOnChange = (e) => {
+    const { name, value } = e.target;
     setFormData((prevData) => ({
       ...prevData,
-      [e.target.name]: e.target.value,
+      [name]: value,
     }));
+    if (name === "password" && passwordError) {
+      setPasswordError("");
+    }
+    if ((name === "confirmPassword" || name === "password") && confirmPasswordError) {
+      setConfirmPasswordError("");
+    }
   };
 
   const handleOnSubmit = async (e) => {
     e.preventDefault();
+    setPasswordError("");
+    setConfirmPasswordError("");
 
     // ✅ FIX: Extract the reset token from the URL.
     // The route is /update-password/:id, so the token is the last segment.
     const token = location.pathname.split("/").at(-1);
 
+    // Enforce consistent minimum password policy before hitting the network
+    const passwordValidation = validateNewPassword(password);
+    if (!passwordValidation.valid) {
+      setPasswordError(passwordValidation.message);
+      toast.error(passwordValidation.message);
+      return;
+    }
+
     // ✅ FIX: Added client-side password-match check before hitting the network.
     // Showing an instant toast avoids an unnecessary round-trip to the backend.
     if (password !== confirmPassword) {
-      const { toast } = await import("react-hot-toast");
-      toast.error("Passwords do not match");
+      const msg = "Passwords do not match";
+      setConfirmPasswordError(msg);
+      toast.error(msg);
       return;
     }
 
@@ -56,7 +78,7 @@ const UpdatePassword = () => {
   // Simple password-strength calculator for the visual indicator
   const getPasswordStrength = (pwd) => {
     if (pwd.length === 0) return null;
-    if (pwd.length < 6)
+    if (pwd.length < MIN_PASSWORD_LENGTH)
       return { text: "Weak", color: "text-red-100", width: "w-1/4" };
     if (pwd.length < 10)
       return { text: "Medium", color: "text-yellow-500", width: "w-1/2" };
@@ -145,6 +167,17 @@ const UpdatePassword = () => {
                 )}
               </span>
 
+              {/* Validation error or minimum length helper */}
+              {passwordError ? (
+                <p role="alert" className="mt-2 text-xs text-pink-200">
+                  {passwordError}
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-richblack-300">
+                  Must be at least 8 characters
+                </p>
+              )}
+
               {/* Password Strength Indicator */}
               {passwordStrength && (
                 <div className="mt-2">
@@ -201,7 +234,12 @@ const UpdatePassword = () => {
                 )}
               </span>
 
-              {/* Real-time match indicator */}
+              {/* Real-time match indicator or submit mismatch error */}
+              {confirmPasswordError && confirmPassword.length === 0 && (
+                <p role="alert" className="mt-2 text-xs text-pink-200">
+                  {confirmPasswordError}
+                </p>
+              )}
               {confirmPassword.length > 0 && (
                 <div className="mt-2 flex items-center gap-2">
                   {password === confirmPassword ? (
@@ -212,7 +250,7 @@ const UpdatePassword = () => {
                       </span>
                     </>
                   ) : (
-                    <span className="text-xs text-pink-200">
+                    <span role="alert" className="text-xs text-pink-200">
                       Passwords do not match
                     </span>
                   )}
