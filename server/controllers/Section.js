@@ -42,6 +42,7 @@ exports.createSection = async (req, res) => {
             success: true,
             message: "Section created successfully",
             updatedCourseDetails,
+            data: updatedCourseDetails,
         });
     } catch (error) {
         console.error("createSection error:", error);

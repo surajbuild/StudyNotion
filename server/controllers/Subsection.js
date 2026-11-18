@@ -73,7 +73,7 @@ exports.createSubSection = async (req, res) => {
 exports.updateSubSection = async (req, res) => {
     try {
         const { title, timeDuration, description, subSectionId, sectionId } = req.body;
-        const video = req.files?.videoFile;
+        const video = req.files?.videoFile || req.files?.video;
 
         if (!subSectionId) {
             return res.status(400).json({
@@ -95,18 +95,7 @@ exports.updateSubSection = async (req, res) => {
 
         await SubSection.findByIdAndUpdate(subSectionId, updatePayload, { new: true });
 
-        // Return the full updated course so the frontend Redux store stays in sync
-        const updatedCourse = await getPopulatedCourse(sectionId);
-
-        if (updatedCourse) {
-            return res.status(200).json({
-                success: true,
-                message: "Sub-section updated successfully",
-                data: updatedCourse,
-            });
-        }
-
-        // Fallback: if we can't find the parent course, return the updated section
+        // Return the updated section (matching frontend SubSectionModal expectation)
         const updatedSection = await Section.findById(sectionId).populate("subSection");
         return res.status(200).json({
             success: true,
@@ -147,16 +136,6 @@ exports.deleteSubSection = async (req, res) => {
         );
 
         if (sectionId) {
-            const updatedCourse = await getPopulatedCourse(sectionId);
-            if (updatedCourse) {
-                return res.status(200).json({
-                    success: true,
-                    message: "Sub-section deleted successfully",
-                    data: updatedCourse,
-                });
-            }
-
-            // Fallback: return just the updated section if course lookup fails
             const updatedSection = await Section.findById(sectionId).populate("subSection");
             return res.status(200).json({
                 success: true,
