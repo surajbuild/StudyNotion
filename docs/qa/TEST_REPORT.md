@@ -1,8 +1,59 @@
 # StudyNotion — Detailed QA Test Report
 
-> **Latest Cycle:** Cycle #6 — `GAP-004` Global Course Search, Filtering, Sorting & Server-Side Pagination  
+> **Latest Cycle:** Cycle #7 — `GAP-001` Admin Dashboard & Category Management + `BUG-030` Fix  
 > **Date:** 2026-11-18  
 > **Environment:** Windows 11 | Node.js v22.16.0 | React 18 (CRA 5) | Express 5 | Mongoose 8 | MongoDB 8.0 (Isolated Local Ephemeral on `127.0.0.1:27018`) | Chromium 1208 (Playwright)
+
+---
+
+## Cycle #7 — Execution Summary (2026-11-18)
+
+| Test Suite / Verification Gate | Command | Suites | Tests | Passed | Failed | Blocked | Result |
+|-------------------------------|---------|--------|-------|--------|--------|---------|--------|
+| **Frontend Unit & Component Tests** | `npm test` | 23 | 84 | 84 | 0 | 0 | **PASS** (7.22s, +3 suites / +11 tests incl. `BUG-030`) |
+| **Backend Unit, API & Safety Guardrails** | `npm run test:server` | 12 | 120 | 120 | 0 | 0 | **PASS** (+6 tests in `category.test.js`) |
+| **Backend Real-MongoDB Full-Stack Integration** | `npm run test:server:integration` (inside `npm run test:server`) | 1 | 9 | 9 | 0 | 0 | **PASS** (10.52s, +1 comprehensive `GAP-001` real-DB suite) |
+| **Isolated Authenticated & Feature Playwright E2E (`E2E-16`–`29` + `REG-01`–`03`)** | `npm run test:e2e:isolated` | 1 | 17 | 17 | 0 | 0 | **PASS** (+3 new `E2E-27`–`E2E-29`, 0 page errors, 0 Swiper warnings) |
+| **Public Catalog & Console/Network Regression (`PUB-01`–`PUB-04`)** | `node scratch/public_regression.js` | 1 | 4 | 4 | 0 | 0 | **PASS** (0 console errors, 0 page errors, 0 failed network requests) |
+| **Strict Frontend ESLint** | `npx eslint src --max-warnings=0` | — | — | 0 errors, 0 warnings | — | — | **PASS** (Exit 0) |
+| **Frontend Production Build** | `npm run build` | — | — | Exit 0 (0 ESLint warnings) | — | — | **PASS** |
+
+### Cycle #7 Actual Verification Outputs
+
+#### A. Automated Unit & Real-MongoDB Integration Suites
+```text
+Frontend (npm test):
+Test Suites: 23 passed, 23 total
+Tests:       84 passed, 84 total (added AdminRoute.test.jsx [5], adminAPI.test.js [3], CategoryManagement.test.jsx [3])
+Time:        7.22 s
+
+Backend (npm run test:server):
+Test Suites: 13 passed, 13 total
+Tests:       129 passed, 129 total (added category.test.js [+6], integration.realdb.test.js [+1])
+Time:        43.285 s
+```
+
+#### B. Isolated Playwright E2E Run (`e2e/authenticated.e2e.js`) & Public Regression Audit
+```text
+[PASS] E2E-16..E2E-21 Authenticated Student, Razorpay Payment, ViewCourse, Instructor CRUD & Settings
+[PASS] E2E-22..E2E-23 GAP-005 Free Course Direct Enrollment & Publishing
+[PASS] E2E-24..E2E-26 GAP-004 Global Search, Filters, Sorting, Pagination & Mobile Search
+[PASS] E2E-27 GAP-001 Admin Security & RBAC (Unauth, Student & Instructor Blocked): unauth=true, stuNav=true, stuRoute=true, stuApi=403, instNav=true, instRoute=true, instApi=403
+[PASS] E2E-28 GAP-001 Admin Dashboard, Category CRUD, Duplicate Guard, Safe Delete & Error Retry: login=200, dash=true, noCart=true, safeBlock=true, create=200, dup=409, update=200, search=true, delete=200, errorRetry=true
+[PASS] E2E-29 GAP-001 Category Consistency (Catalog + Global Search) & Mobile 375px Admin UI: adminMobileOverflow=false, catalogConsistent=true, searchHasUpdatedCat=true, searchFilterConsistent=true
+[PASS] REG-01..REG-03 Footer, Error Page & Mobile 375px Regressions
+
+PAGE ERRORS: 0 [] | SWIPER WARNINGS: 0 | TOTAL: 17 PASSED: 17 FAILED: 0
+
+Public Catalog & Console/Network Regression:
+[PASS] PUB-01..PUB-04 | CONSOLE_ERRORS: 0 [] | PAGE_ERRORS: 0 [] | FAILED_REQUESTS: 0 []
+```
+
+#### C. Strict ESLint & Production Build
+```text
+$ npx eslint src --max-warnings=0 -> Exit 0 (0 errors, 0 warnings)
+$ npm run build -> Exit 0 (0 [eslint] warnings; only 2 pre-existing third-party swiper PostCSS CSS-nesting notices)
+```
 
 ---
 

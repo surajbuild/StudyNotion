@@ -1,15 +1,34 @@
 # StudyNotion — Bug Tracker & Root Cause Analysis
 
 > **Last Updated:** 2026-11-18  
-> **Audit Cycle:** Cycle #6 (`GAP-004`)  
+> **Audit Cycle:** Cycle #7 (`GAP-001` + `BUG-030`)  
 > **Severity Levels:** `CRITICAL` | `HIGH` | `MEDIUM` | `LOW`  
-> **Total Logged:** 27 (`BUG-001`–`BUG-029`, excluding unused gap) | **Fixed & Verified:** 27 | **Open:** 0
+> **Total Logged:** 28 (`BUG-001`–`BUG-030`, excluding unused gap) | **Fixed & Verified:** 28 | **Open:** 0
 
 ---
 
 ## Open Bugs
 
-*None — all tracked bugs across Cycles #1–#6 have been fixed and verified.*
+*None — all tracked bugs across Cycles #1–#7 have been fixed and verified.*
+
+---
+
+## Cycle #7 — Newly Discovered & Fixed Bug + Admin Feature Delivery (`GAP-001`)
+
+### `BUG-030` — `OpenRoute` Redirect Race Condition Overrode Admin Login Destination
+- **Module:** Authentication & Routing (`OpenRoute` / `authAPI`)
+- **Severity:** `MEDIUM` | **Priority:** P2 | **Status:** `FIXED & VERIFIED`
+- **Location:** [`src/components/core/Auth/OpenRoute.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/components/core/Auth/OpenRoute.jsx), [`src/services/operations/authAPI.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/services/operations/authAPI.js#L122-L140)
+- **How Discovered:** Running live Playwright `E2E-28` (Admin login) against the isolated environment timed out waiting for `#/dashboard/admin`.
+- **Root Cause:** `login()` in `authAPI.js` dispatched `setToken(...)` before `setUser(...)`, and `<Login>` is wrapped in `<OpenRoute>`. The instant `token` became non-null, `OpenRoute` re-rendered and unconditionally redirected to `<Navigate to="/dashboard/my-profile" />`, hijacking the Admin redirect before `navigate("/dashboard/admin")` could take effect.
+- **Resolution:** Updated `OpenRoute.jsx` to read `state.profile?.user?.accountType` safely and redirect `ACCOUNT_TYPE.ADMIN` to `/dashboard/admin` (preserving `/dashboard/my-profile` for Students, Instructors, and partial stores), and updated `authAPI.js` to dispatch `setUser` before `setToken`.
+- **Regression Verification:** [`src/components/core/Auth/__tests__/AdminRoute.test.jsx`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/src/components/core/Auth/__tests__/AdminRoute.test.jsx) (+1 regression test), `RouteGuards.test.jsx` (4/4), and live Playwright `E2E-28` (`PASS`).
+
+### `GAP-001` *(Tracked Separately)* — Admin Dashboard & Category Management UI/API
+- **Module:** Admin Dashboard, Category CRUD & RBAC Security
+- **Status:** `RESOLVED & VERIFIED`
+- **Additional UI Hygiene Fixed:** Restricted the Navbar Shopping Cart icon in `Navbar.jsx` from `user?.accountType !== "Instructor"` to `user?.accountType === ACCOUNT_TYPE.STUDENT` so Admins never see a Student cart link.
+- **Verification:** `category.test.js` (+6), `integration.realdb.test.js` (+1 full real-DB suite), `AdminRoute.test.jsx` (5/5), `adminAPI.test.js` (3/3), `CategoryManagement.test.jsx` (3/3), Playwright `E2E-27`–`E2E-29` (3/3), and `PUB-01`–`PUB-04` (4/4).
 
 ---
 

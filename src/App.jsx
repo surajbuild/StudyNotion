@@ -4,6 +4,7 @@ import { Route, Routes } from "react-router-dom";
 import Navbar from "./components/common/Navbar";
 import OpenRoute from "./components/core/Auth/OpenRoute";
 import PrivateRoute from "./components/core/Auth/PrivateRoute";
+import AdminRoute from "./components/core/Auth/AdminRoute";
 import { ACCOUNT_TYPE } from "./utils/constants";
 import { useSelector } from "react-redux";
 
@@ -27,6 +28,8 @@ const MyCourses = lazy(() => import("./components/core/Dashboard/MyCourses"));
 const AddCourse = lazy(() => import("./components/core/Dashboard/AddCourse"));
 const EditCourse = lazy(() => import("./components/core/Dashboard/EditCourse"));
 const Instructor = lazy(() => import("./components/core/Dashboard/InstructorDashboard/Instructor"));
+const AdminDashboard = lazy(() => import("./components/core/Dashboard/Admin/AdminDashboard"));
+const CategoryManagement = lazy(() => import("./components/core/Dashboard/Admin/CategoryManagement"));
 const CourseDetails = lazy(() => import("./pages/CourseDetails"));
 const ViewCourse = lazy(() => import("./pages/ViewCourse"));
 const VideoDetails = lazy(() => import("./components/core/ViewCourse/VideoDetails"));
@@ -92,6 +95,24 @@ function App() {
                 <Route path="instructor" element={<Instructor />} />
               </>
             )}
+
+            {/* Admin routes — strictly guarded by AdminRoute (redirects non-admins safely) */}
+            <Route
+              path="admin"
+              element={
+                <AdminRoute>
+                  <AdminDashboard />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="admin/categories"
+              element={
+                <AdminRoute>
+                  <CategoryManagement />
+                </AdminRoute>
+              }
+            />
           </Route>
 
           <Route element={

@@ -47,4 +47,18 @@ export const sidebarLinks = [
     // react-icons/hi2 (HiShoppingCart) or react-icons/bi (BiCart) instead.
     icon: "VscArchive",
   },
+  {
+    id: 7,
+    name: "Admin Dashboard",
+    path: "/dashboard/admin",
+    type: ACCOUNT_TYPE.ADMIN,
+    icon: "VscDashboard",
+  },
+  {
+    id: 8,
+    name: "Manage Categories",
+    path: "/dashboard/admin/categories",
+    type: ACCOUNT_TYPE.ADMIN,
+    icon: "VscFolderLibrary",
+  },
 ];

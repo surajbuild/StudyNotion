@@ -913,4 +913,192 @@ describe("Isolated Real-MongoDB Full-Stack Integration Suite (GAP-009)", () => {
             expect(badParamRes.status).toBe(400);
         });
     });
+
+    describe("8. Admin Dashboard, Category CRUD, RBAC & Course Consistency (GAP-001 Real MongoDB)", () => {
+        test("enforces admin RBAC, validates CRUD, blocks unsafe deletion, and keeps catalog/search/course details consistent", async () => {
+            const jwt = require("jsonwebtoken");
+            const expiredAdminJwt = jwt.sign(
+                { id: seeded.users.adminId, email: seeded.users.adminEmail, accountType: "Admin" },
+                process.env.JWT_SECRET,
+                { expiresIn: "-5s" }
+            );
+
+            // 1. Security checks: unauthenticated (401), invalid/expired JWT (401), student & instructor (403)
+            const adminEndpoints = [
+                { method: "get", path: "/api/v1/course/adminDashboard" },
+                {
+                    method: "post",
+                    path: "/api/v1/course/createCategory",
+                    body: { name: "Unauthorized Cat", accountType: "Admin" },
+                },
+                {
+                    method: "put",
+                    path: "/api/v1/course/updateCategory",
+                    body: { categoryId: seeded.categories.webDevId, name: "Hacked", accountType: "Admin" },
+                },
+                {
+                    method: "delete",
+                    path: "/api/v1/course/deleteCategory",
+                    body: { categoryId: seeded.categories.webDevId, accountType: "Admin" },
+                },
+            ];
+
+            for (const ep of adminEndpoints) {
+                expect((await request(app)[ep.method](ep.path).send(ep.body || {})).status).toBe(401);
+                expect(
+                    (
+                        await request(app)
+                            [ep.method](ep.path)
+                            .set("Authorization", "Bearer tampered.jwt.value")
+                            .send(ep.body || {})
+                    ).status
+                ).toBe(401);
+                expect(
+                    (
+                        await request(app)
+                            [ep.method](ep.path)
+                            .set("Authorization", `Bearer ${expiredAdminJwt}`)
+                            .send(ep.body || {})
+                    ).status
+                ).toBe(401);
+                expect(
+                    (
+                        await request(app)
+                            [ep.method](ep.path)
+                            .set("Authorization", `Bearer ${studentToken}`)
+                            .send(ep.body || {})
+                    ).status
+                ).toBe(403);
+                expect(
+                    (
+                        await request(app)
+                            [ep.method](ep.path)
+                            .set("Authorization", `Bearer ${instructorToken}`)
+                            .send(ep.body || {})
+                    ).status
+                ).toBe(403);
+            }
+
+            // 2. Admin creates a new category & duplicate prevention blocks exact + slug collisions (409)
+            const createRes = await request(app)
+                .post("/api/v1/course/createCategory")
+                .set("Authorization", `Bearer ${adminToken}`)
+                .send({ name: "Cloud Architecture", description: "Scalable cloud systems" });
+            expect(createRes.status).toBe(200);
+            expect(createRes.body.success).toBe(true);
+            const cloudCatId = createRes.body.data._id;
+
+            const dupExactRes = await request(app)
+                .post("/api/v1/course/createCategory")
+                .set("Authorization", `Bearer ${adminToken}`)
+                .send({ name: "cloud architecture", description: "Duplicate" });
+            expect(dupExactRes.status).toBe(409);
+
+            const dupSlugRes = await request(app)
+                .post("/api/v1/course/createCategory")
+                .set("Authorization", `Bearer ${adminToken}`)
+                .send({ name: "Cloud-Architecture", description: "Slug collision" });
+            expect(dupSlugRes.status).toBe(409);
+
+            // 3. Instructor creates & publishes a course in the newly created category
+            const courseRes = await request(app)
+                .post("/api/v1/course/createCourse")
+                .set("Authorization", `Bearer ${instructorToken}`)
+                .send({
+                    courseName: "AWS Cloud Foundations",
+                    courseDescription: "Hands-on cloud architecture fundamentals",
+                    whatYouWillLearn: "Design resilient AWS stacks",
+                    price: 599,
+                    category: cloudCatId,
+                    status: "Published",
+                });
+            expect(courseRes.status).toBe(200);
+            const cloudCourseId = courseRes.body.data._id;
+
+            // Warm getCourseDetails cache before category rename to prove cache invalidation works
+            const preRenameDetails = await request(app)
+                .post("/api/v1/course/getCourseDetails")
+                .send({ courseId: cloudCourseId });
+            expect(preRenameDetails.status).toBe(200);
+            expect(preRenameDetails.body.data.courseDetails.category.name).toBe(
+                "Cloud Architecture"
+            );
+
+            // 4. Admin updates category name & description -> preserves course relationship & updates Catalog/Search/CourseDetails
+            const updateRes = await request(app)
+                .put("/api/v1/course/updateCategory")
+                .set("Authorization", `Bearer ${adminToken}`)
+                .send({
+                    categoryId: cloudCatId,
+                    name: "Cloud Engineering",
+                    description: "Updated cloud engineering curriculum",
+                });
+            expect(updateRes.status).toBe(200);
+            expect(updateRes.body.data.name).toBe("Cloud Engineering");
+
+            // Catalog page details reflects updated name & preserves linked published course
+            const catPageRes = await request(app)
+                .post("/api/v1/course/getCategoryPageDetails")
+                .send({ categoryId: cloudCatId });
+            expect(catPageRes.status).toBe(200);
+            expect(catPageRes.body.data.selectedCategory.name).toBe("Cloud Engineering");
+            expect(
+                catPageRes.body.data.selectedCategory.courses.map((c) => c._id.toString())
+            ).toContain(cloudCourseId);
+
+            // Global search filtered by category returns updated category name
+            const searchRes = await request(app)
+                .get("/api/v1/course/search")
+                .query({ category: cloudCatId });
+            expect(searchRes.status).toBe(200);
+            expect(searchRes.body.data.courses[0].courseName).toBe("AWS Cloud Foundations");
+            expect(searchRes.body.data.courses[0].category.name).toBe("Cloud Engineering");
+
+            // Course details reflects updated category name (stale cache invalidated)
+            const postRenameDetails = await request(app)
+                .post("/api/v1/course/getCourseDetails")
+                .send({ courseId: cloudCourseId });
+            expect(postRenameDetails.status).toBe(200);
+            expect(postRenameDetails.body.data.courseDetails.category.name).toBe(
+                "Cloud Engineering"
+            );
+
+            // 5. Safe deletion: deleting category with associated course MUST be blocked (409)
+            const blockedDelRes = await request(app)
+                .delete("/api/v1/course/deleteCategory")
+                .set("Authorization", `Bearer ${adminToken}`)
+                .send({ categoryId: cloudCatId });
+            expect(blockedDelRes.status).toBe(409);
+            expect(blockedDelRes.body.associatedCourseCount).toBe(1);
+            expect(await Category.findById(cloudCatId)).not.toBeNull();
+
+            // 6. Admin dashboard reports accurate course counts & empty category deletion succeeds (200)
+            const emptyCatRes = await request(app)
+                .post("/api/v1/course/createCategory")
+                .set("Authorization", `Bearer ${adminToken}`)
+                .send({ name: "Temporary Empty Category", description: "Safe to remove" });
+            expect(emptyCatRes.status).toBe(200);
+            const emptyCatId = emptyCatRes.body.data._id;
+
+            const dashRes = await request(app)
+                .get("/api/v1/course/adminDashboard")
+                .set("Authorization", `Bearer ${adminToken}`);
+            expect(dashRes.status).toBe(200);
+            const cloudRow = dashRes.body.data.categories.find(
+                (c) => c._id.toString() === cloudCatId
+            );
+            const emptyRow = dashRes.body.data.categories.find(
+                (c) => c._id.toString() === emptyCatId
+            );
+            expect(cloudRow.totalCourseCount).toBe(1);
+            expect(emptyRow.totalCourseCount).toBe(0);
+
+            const deleteEmptyRes = await request(app)
+                .delete("/api/v1/course/deleteCategory")
+                .set("Authorization", `Bearer ${adminToken}`)
+                .send({ categoryId: emptyCatId });
+            expect(deleteEmptyRes.status).toBe(200);
+            expect(await Category.findById(emptyCatId)).toBeNull();
+        });
+    });
 });

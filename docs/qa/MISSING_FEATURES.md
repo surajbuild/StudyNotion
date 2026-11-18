@@ -7,16 +7,13 @@
 
 ## Category A — Missing Confirmed / Directly Referenced Features
 
-### `GAP-001` — Admin Dashboard & Category Management UI
-- **Classification:** Confirmed Project Requirement (backend `POST /api/v1/course/createCategory` + `isAdmin` middleware + `ACCOUNT_TYPE.ADMIN` already exist)
-- **What is missing:** There is zero Admin frontend UI to create, edit, or delete Categories, or manage platform users/instructors. Categories can currently only be added via direct API calls (Postman/curl) or MongoDB Compass.
-- **Why it is important:** Instructors cannot categorize courses unless an Admin populates categories first.
-- **What happens if not implemented:** Platform admins have no web UI to add new subjects or manage the catalog.
-- **Required Changes:**
-  - *Frontend:* Add Admin routes in `src/App.jsx`, Admin sidebar links in `src/data/dashboard-links.js`, and `src/components/core/Dashboard/Admin/CategoryManager.jsx`.
-  - *Backend:* Add `PUT /updateCategory` and `DELETE /deleteCategory` in `server/controllers/Category.js` and `server/routes/Course.js`.
-  - *Database:* No schema change required.
-- **Priority:** High | **Complexity:** `MEDIUM`
+### `GAP-001` — Admin Dashboard & Category Management UI — `RESOLVED (Cycle #7)`
+- **Classification:** Confirmed Project Requirement (backend `POST /api/v1/course/createCategory` + `isAdmin` middleware + `ACCOUNT_TYPE.ADMIN`)
+- **Resolution (Cycle #7):**
+  - **Backend & Database:** Added `timestamps: true` and `trim: true` to `server/models/Category.js`; hardened `isAdmin` (`!req.user` check); hardened `POST /api/v1/course/createCategory` with name/length/slug validation and case-insensitive + slug-collision duplicate prevention (`409`); added `PUT /api/v1/course/updateCategory` (preserving course relationships & invalidating category/course-detail caches), `DELETE /api/v1/course/deleteCategory` (safe deletion blocking categories with associated courses via authoritative `Course.countDocuments` check returning `409`), and `GET /api/v1/course/adminDashboard` (`auth, isAdmin`, returning platform KPIs & categories enriched with live course counts).
+  - **Frontend:** Built strict `AdminRoute.jsx` guard (redirecting unauthenticated users to `/login` and Student/Instructor users away to `/dashboard/my-profile`), `AdminDashboard.jsx`, `CategoryManagement.jsx` (search, pagination, desktop table + mobile card layout, Create/Edit modal with inline validation & server error display, safe-delete guard & `ConfirmationModal`, loading/empty/error/retry states), and `adminAPI.js` with `"categories-updated"` live refresh for `Navbar.jsx` & `Footer.jsx`. Fixed `Navbar.jsx` so Student Cart icon is restricted to `ACCOUNT_TYPE.STUDENT`, added Admin-only links in `dashboard-links.js` & mobile drawer, and fixed `BUG-030` (`OpenRoute.jsx` + `authAPI.js` Admin login redirect).
+  - **Verification:** `category.test.js` (+6), `integration.realdb.test.js` (+1 full real-DB RBAC/CRUD/consistency test), `AdminRoute.test.jsx` (5/5), `adminAPI.test.js` (3/3), `CategoryManagement.test.jsx` (3/3), and Playwright `E2E-27`–`E2E-29` (3/3).
+- **Remaining Optional Scope:** Full Admin User/Instructor management UI (covered separately under `GAP-002`).
 
 ### `GAP-002` — Instructor Approval Enforcement
 - **Classification:** Confirmed Partial Implementation (`server/controllers/Auth.js` line 87 computes `const approved = accountType !== "Instructor"`)

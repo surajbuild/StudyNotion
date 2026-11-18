@@ -64,6 +64,14 @@ export const categories = {
   CATEGORIES_API: BASE_URL + "/course/showAllCategories",
 };
 
+// ---------- ADMIN DASHBOARD & CATEGORY MANAGEMENT ----------
+export const adminEndpoints = {
+  ADMIN_DASHBOARD_API: BASE_URL + "/course/adminDashboard",
+  CREATE_CATEGORY_API: BASE_URL + "/course/createCategory",
+  UPDATE_CATEGORY_API: BASE_URL + "/course/updateCategory",
+  DELETE_CATEGORY_API: BASE_URL + "/course/deleteCategory",
+};
+
 // ---------- CATALOG PAGE ----------
 export const catalogData = {
   CATALOGPAGEDATA_API: BASE_URL + "/course/getCategoryPageDetails",

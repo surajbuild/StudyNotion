@@ -4,6 +4,18 @@
 
 ---
 
+## 2026-11-18 — QA Cycle #7 (`GAP-001`: Admin Dashboard & Category Management + `BUG-030` Fix)
+
+| Task / Bug ID | Files Modified / Added | Changes Made | Tests Executed | Verification Status |
+|---------------|------------------------|--------------|----------------|---------------------|
+| `CHECKPOINT` | Cycle #6 commit `be2eadb` (local only) | Created clean local checkpoint commit preserving Cycle #6 `GAP-004` & QA docs (unpushed) | `git status`, `git log` | `VERIFIED` |
+| `GAP-001` (Backend & DB) | `server/models/Category.js`, `server/middlewares/auth.js`, `server/controllers/Category.js`, `server/routes/Course.js` | Added `timestamps: true` & `trim: true` to `Category`; hardened `isAdmin` (`!req.user`); enhanced `POST /createCategory` with length/slug validation & case/slug duplicate prevention (`409`); added `PUT /updateCategory` (preserving course references & invalidating category + affected `getCourseDetails` caches), `DELETE /deleteCategory` (safe deletion blocking categories with associated courses via `Course.countDocuments` -> `409`), and `GET /adminDashboard` (`auth, isAdmin`) returning platform KPIs & enriched categories | `category.test.js` (+6), `integration.realdb.test.js` (+1 real-DB RBAC/CRUD/consistency suite) | `VERIFIED` |
+| `GAP-001` (Frontend) | `src/services/apis.js`, `src/services/operations/adminAPI.js` (new), `src/components/core/Auth/AdminRoute.jsx` (new), `src/components/core/Dashboard/Admin/AdminDashboard.jsx` (new), `src/components/core/Dashboard/Admin/CategoryManagement.jsx` (new), `src/data/dashboard-links.js`, `src/App.jsx`, `src/components/common/Navbar.jsx`, `src/components/common/Footer.jsx`, `src/components/core/Auth/ProfileDropdown.jsx` | Added strict `AdminRoute` guard, `AdminDashboard` overview & `CategoryManagement` CRUD UI (search, pagination, desktop table + mobile cards, Create/Edit modal with inline & 409 validation, safe-delete block dialog & `ConfirmationModal`, error retry); wired Admin-only Sidebar & mobile drawer links, restricted Navbar Cart icon strictly to `ACCOUNT_TYPE.STUDENT`, and added live `"categories-updated"` refresh in `Navbar` & `Footer` | `AdminRoute.test.jsx` (5/5), `adminAPI.test.js` (3/3), `CategoryManagement.test.jsx` (3/3), Playwright `E2E-27`–`E2E-29` (3/3) | `VERIFIED` |
+| `BUG-030` | `src/components/core/Auth/OpenRoute.jsx`, `src/services/operations/authAPI.js` | Fixed genuine redirect race condition caught by live `E2E-28`: `OpenRoute` redirected authenticated Admins to `/dashboard/my-profile` on `setToken` before `navigate("/dashboard/admin")`; updated `OpenRoute` to route `ACCOUNT_TYPE.ADMIN` to `/dashboard/admin` and dispatched `setUser` before `setToken` | `AdminRoute.test.jsx` (+1), `RouteGuards.test.jsx` (4/4), Playwright `E2E-28` | `VERIFIED` |
+| `GAP-001` (Tests & Docs) | `server/__tests__/category.test.js`, `server/__tests__/integration.realdb.test.js`, `src/components/core/Auth/__tests__/AdminRoute.test.jsx` (new), `src/services/__tests__/adminAPI.test.js` (new), `src/components/core/Dashboard/Admin/__tests__/CategoryManagement.test.jsx` (new), `e2e/authenticated.e2e.js`, `docs/qa/*` | Added 21 new tests across Backend Unit, Real Isolated MongoDB Integration, Frontend Unit, and Live Playwright E2E; updated all 7 QA docs (259/259 executed tests passing, 0 blocked, 0 open bugs) | `npm test` (84 FE), `npm run test:server` (129 BE), Playwright (17/17 + 4/4 public), `npx eslint src --max-warnings=0`, `npm run build` | `VERIFIED` |
+
+---
+
 ## 2026-11-18 — QA Cycle #6 (`GAP-004`: Global Course Search, Filtering, Sorting & Server-Side Pagination)
 
 | Task / Bug ID | Files Modified / Added | Changes Made | Tests Executed | Verification Status |

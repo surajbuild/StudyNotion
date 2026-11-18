@@ -72,8 +72,13 @@ const Footer = () => {
       }
     };
     loadCategories();
+    const handleCategoriesUpdated = () => {
+      loadCategories();
+    };
+    window.addEventListener("categories-updated", handleCategoriesUpdated);
     return () => {
       isMounted = false;
+      window.removeEventListener("categories-updated", handleCategoriesUpdated);
     };
   }, []);
 

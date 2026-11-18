@@ -59,6 +59,7 @@ const TEST_RAZORPAY_SECRET =
 const FIXTURES = {
     studentEmail: "qa.student@isolated.test",
     instructorEmail: "qa.instructor@isolated.test",
+    adminEmail: "qa.admin@isolated.test",
     disposableEmail: "qa.disposable@isolated.test",
 };
 
@@ -1173,6 +1174,344 @@ async function runAuthenticatedE2E() {
                     "GAP-004 Server-Side Pagination, Out-of-Range Recovery & Mobile (375px) Search",
                     paginationPreserved && prevWorked && oobRecovered && !mobileOverflow,
                     `paginationPreserved=${paginationPreserved}, prevWorked=${prevWorked}, oobRecovered=${oobRecovered}, mobileOverflow=${mobileOverflow}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-27 (GAP-001): Admin Route & API RBAC Security (Unauth, Student, Instructor)
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                // 1. Unauthenticated direct visit to /dashboard/admin -> redirects to /login
+                await page.goto(`${FRONTEND_URL}/#/dashboard/admin`, { waitUntil: "networkidle" });
+                await waitForHash(page, "/login");
+                const unauthBlocked = page.url().includes("/login");
+
+                // 2. Logged-in Student: zero Admin sidebar links & direct route redirects away + API 403
+                await uiLogin(page, FIXTURES.studentEmail, TEST_PASSWORD);
+                await waitForHash(page, "/dashboard/my-profile");
+                const studentSidebarText = await page.locator("body").innerText();
+                const studentNoAdminNav =
+                    !studentSidebarText.includes("Admin Dashboard") &&
+                    !studentSidebarText.includes("Manage Categories");
+
+                await page.goto(`${FRONTEND_URL}/#/dashboard/admin/categories`, {
+                    waitUntil: "networkidle",
+                });
+                await waitForHash(page, "/dashboard/my-profile");
+                const studentRouteBlocked =
+                    page.url().includes("/dashboard/my-profile") &&
+                    !page.url().includes("/dashboard/admin");
+
+                const studentApiStatus = await page.evaluate(async (apiBase) => {
+                    const tok = localStorage.getItem("token");
+                    const res = await fetch(`${apiBase}/course/adminDashboard`, {
+                        headers: { Authorization: `Bearer ${tok}` },
+                    });
+                    return res.status;
+                }, API_BASE_URL);
+
+                await uiLogout(page);
+
+                // 3. Logged-in Instructor: zero Admin sidebar links & direct route redirects away + API 403
+                await uiLogin(page, FIXTURES.instructorEmail, TEST_PASSWORD);
+                await waitForHash(page, "/dashboard/my-profile");
+                const instSidebarText = await page.locator("body").innerText();
+                const instNoAdminNav =
+                    !instSidebarText.includes("Admin Dashboard") &&
+                    !instSidebarText.includes("Manage Categories");
+
+                await page.goto(`${FRONTEND_URL}/#/dashboard/admin`, { waitUntil: "networkidle" });
+                await waitForHash(page, "/dashboard/my-profile");
+                const instRouteBlocked =
+                    page.url().includes("/dashboard/my-profile") &&
+                    !page.url().includes("/dashboard/admin");
+
+                const instApiStatus = await page.evaluate(async (apiBase) => {
+                    const tok = localStorage.getItem("token");
+                    const res = await fetch(`${apiBase}/course/createCategory`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${tok}`,
+                        },
+                        body: JSON.stringify({ name: "Unauthorized Instructor Cat" }),
+                    });
+                    return res.status;
+                }, API_BASE_URL);
+
+                record(
+                    "E2E-27",
+                    "GAP-001 Admin Security & RBAC (Unauth, Student & Instructor Blocked)",
+                    unauthBlocked &&
+                        studentNoAdminNav &&
+                        studentRouteBlocked &&
+                        studentApiStatus === 403 &&
+                        instNoAdminNav &&
+                        instRouteBlocked &&
+                        instApiStatus === 403,
+                    `unauth=${unauthBlocked}, stuNav=${studentNoAdminNav}, stuRoute=${studentRouteBlocked}, stuApi=${studentApiStatus}, instNav=${instNoAdminNav}, instRoute=${instRouteBlocked}, instApi=${instApiStatus}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-28 (GAP-001): Admin Login, Dashboard, Category CRUD, Duplicates, Safe Delete & Error Retry
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                const loginStatus = await uiLogin(page, FIXTURES.adminEmail, TEST_PASSWORD);
+                await waitForHash(page, "/dashboard/admin");
+                await page
+                    .locator('h1:has-text("Admin Dashboard")')
+                    .waitFor({ state: "visible", timeout: 15000 });
+
+                const dashBody = await page.locator("body").innerText();
+                const dashBodyLower = dashBody.toLowerCase();
+                const dashLoaded =
+                    dashBodyLower.includes("total categories") &&
+                    dashBodyLower.includes("total courses") &&
+                    dashBody.includes("Manage Categories");
+                const noStudentCartIcon =
+                    (await page.locator('a[href="#/dashboard/cart"]').count()) === 0;
+
+                // Navigate to Category Management via visible sidebar/CTA link
+                await page.locator('a[href="#/dashboard/admin/categories"]:visible').first().click();
+                await waitForHash(page, "/dashboard/admin/categories");
+                await page
+                    .locator('h1:has-text("Category Management")')
+                    .waitFor({ state: "visible", timeout: 15000 });
+
+                // Safe delete block: attempting to delete "Web Dev" (in use) opens blocked dialog
+                await page.locator('button[aria-label="Delete Web Dev"]:visible').first().click();
+                await page.waitForSelector("text=Cannot Delete Category", { timeout: 10000 });
+                const safeDeleteBlocked = (await page.locator("body").innerText()).includes(
+                    "associated"
+                );
+                await page.getByRole("button", { name: /^Close$/i }).click();
+
+                // Create new category "Cybersecurity"
+                await page.getByRole("button", { name: /Create Category/i }).first().click();
+                await page.waitForSelector("#category-name", { timeout: 10000 });
+                await page.fill("#category-name", "Cybersecurity");
+                await page.fill("#category-description", "Network defense and ethical hacking");
+                const [createResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/course/createCategory"), {
+                        timeout: 15000,
+                    }),
+                    page.locator('div[role="dialog"] button[type="submit"]').click(),
+                ]);
+                await page
+                    .locator('button[aria-label="Edit Cybersecurity"]:visible')
+                    .first()
+                    .waitFor({ state: "visible", timeout: 10000 });
+
+                // Duplicate prevention check (case-insensitive -> 409 inline error in modal)
+                await page.getByRole("button", { name: /Create Category/i }).first().click();
+                await page.fill("#category-name", "cybersecurity");
+                const [dupResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/course/createCategory"), {
+                        timeout: 15000,
+                    }),
+                    page.locator('div[role="dialog"] button[type="submit"]').click(),
+                ]);
+                const dupErrorShown = (await page.locator('div[role="dialog"]').innerText()).includes(
+                    "already exists"
+                );
+                await page.locator('div[role="dialog"] button[aria-label="Close modal"]').click();
+
+                // Edit "Cybersecurity" -> "Cybersecurity Pro"
+                await page.locator('button[aria-label="Edit Cybersecurity"]:visible').first().click();
+                await page.waitForSelector("#category-name", { timeout: 10000 });
+                await page.fill("#category-name", "Cybersecurity Pro");
+                await page.fill("#category-description", "Advanced security engineering");
+                const [updateResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/course/updateCategory"), {
+                        timeout: 15000,
+                    }),
+                    page.locator('div[role="dialog"] button[type="submit"]').click(),
+                ]);
+                await page
+                    .locator('button[aria-label="Delete Cybersecurity Pro"]:visible')
+                    .first()
+                    .waitFor({ state: "visible", timeout: 10000 });
+
+                // Search categories table
+                await page.fill("#admin-category-search", "Cybersecurity Pro");
+                await page.waitForTimeout(200);
+                const searchFiltered = (await page.locator("body").innerText()).includes(
+                    "Showing 1 of"
+                );
+                await page.locator('button[aria-label="Clear category search"]').click();
+
+                // Delete empty category "Cybersecurity Pro" via ConfirmationModal
+                await page
+                    .locator('button[aria-label="Delete Cybersecurity Pro"]:visible')
+                    .first()
+                    .click();
+                await page.waitForSelector("text=Delete Category?", { timeout: 10000 });
+                const [deleteResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/course/deleteCategory"), {
+                        timeout: 15000,
+                    }),
+                    page.locator('button:has-text("Delete"):visible').last().click(),
+                ]);
+                await page.waitForTimeout(600);
+                const deletedFromTable = !(await page.locator("body").innerText()).includes(
+                    "Cybersecurity Pro"
+                );
+
+                // API failure recovery on Category Management
+                let failOnce = true;
+                await page.route("**/api/v1/course/adminDashboard**", async (route) => {
+                    if (failOnce) {
+                        failOnce = false;
+                        await route.fulfill({
+                            status: 500,
+                            contentType: "application/json",
+                            body: JSON.stringify({
+                                success: false,
+                                message: "Simulated admin outage",
+                            }),
+                        });
+                    } else {
+                        await route.continue();
+                    }
+                });
+                await page.reload({ waitUntil: "networkidle" });
+                await page.waitForSelector("text=Could not load categories", { timeout: 10000 });
+                const errorShown = (await page.locator("body").innerText()).includes(
+                    "Simulated admin outage"
+                );
+                await page.getByRole("button", { name: /^Retry$/i }).click();
+                await page
+                    .locator('button[aria-label="Edit Web Dev"]:visible')
+                    .first()
+                    .waitFor({ state: "visible", timeout: 10000 });
+                await page.unroute("**/api/v1/course/adminDashboard**");
+                const retryOk = (await page.locator("body").innerText()).includes("Web Dev");
+
+                record(
+                    "E2E-28",
+                    "GAP-001 Admin Dashboard, Category CRUD, Duplicate Guard, Safe Delete & Error Retry",
+                    loginStatus === 200 &&
+                        dashLoaded &&
+                        noStudentCartIcon &&
+                        safeDeleteBlocked &&
+                        createResp.status() === 200 &&
+                        dupResp.status() === 409 &&
+                        dupErrorShown &&
+                        updateResp.status() === 200 &&
+                        searchFiltered &&
+                        deleteResp.status() === 200 &&
+                        deletedFromTable &&
+                        errorShown &&
+                        retryOk,
+                    `login=${loginStatus}, dash=${dashLoaded}, noCart=${noStudentCartIcon}, safeBlock=${safeDeleteBlocked}, create=${createResp.status()}, dup=${dupResp.status()}, update=${updateResp.status()}, search=${searchFiltered}, delete=${deleteResp.status()}, errorRetry=${errorShown && retryOk}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-29 (GAP-001): Category Update Consistency Across Catalog, Search & Mobile 375px Admin UI
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                await uiLogin(page, FIXTURES.adminEmail, TEST_PASSWORD);
+                await page.goto(`${FRONTEND_URL}/#/dashboard/admin/categories`, {
+                    waitUntil: "networkidle",
+                });
+                await page
+                    .locator('button[aria-label="Edit Data Science"]:visible')
+                    .first()
+                    .waitFor({ state: "visible", timeout: 15000 });
+
+                // Rename "Data Science" -> "Applied Data Science"
+                await page.locator('button[aria-label="Edit Data Science"]:visible').first().click();
+                await page.waitForSelector("#category-name", { timeout: 10000 });
+                await page.fill("#category-name", "Applied Data Science");
+                await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/course/updateCategory"), {
+                        timeout: 15000,
+                    }),
+                    page.locator('div[role="dialog"] button[type="submit"]').click(),
+                ]);
+                await page
+                    .locator('button[aria-label="Edit Applied Data Science"]:visible')
+                    .first()
+                    .waitFor({ state: "visible", timeout: 10000 });
+
+                // Verify mobile 375px layout on Admin Category Management
+                await page.setViewportSize({ width: 375, height: 812 });
+                await page.waitForTimeout(300);
+                const adminMobileOverflow = await page.evaluate(
+                    () => document.documentElement.scrollWidth > window.innerWidth
+                );
+                await page.setViewportSize({ width: 1280, height: 860 });
+
+                // Verify Catalog route with updated slug still displays associated course
+                await page.goto(`${FRONTEND_URL}/#/catalog/applied-data-science`, {
+                    waitUntil: "networkidle",
+                });
+                await page.waitForSelector("text=Isolated Data Science Essentials", {
+                    timeout: 15000,
+                });
+                const catalogConsistent = (await page.locator("body").innerText()).includes(
+                    "Applied Data Science"
+                );
+
+                // Verify Global Search category filter lists updated name and finds associated course
+                await page.goto(`${FRONTEND_URL}/#/courses`, { waitUntil: "networkidle" });
+                await page.waitForSelector("#filter-category", { timeout: 15000 });
+                const categoryOptionsText = await page.locator("#filter-category").innerText();
+                const searchHasUpdatedCat = categoryOptionsText.includes("Applied Data Science");
+                await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/course/search"), {
+                        timeout: 15000,
+                    }),
+                    page.selectOption("#filter-category", seeded.categories.dataScienceId),
+                ]);
+                await page.waitForSelector("text=Isolated Data Science Essentials", {
+                    timeout: 10000,
+                });
+                const searchFilterConsistent = (
+                    await page.locator('[data-testid="search-results-grid"]').innerText()
+                ).includes("Isolated Data Science Essentials");
+
+                // Restore original category name so downstream regression tests see canonical seeded names
+                await page.goto(`${FRONTEND_URL}/#/dashboard/admin/categories`, {
+                    waitUntil: "networkidle",
+                });
+                await page
+                    .locator('button[aria-label="Edit Applied Data Science"]:visible')
+                    .first()
+                    .click();
+                await page.fill("#category-name", "Data Science");
+                await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/course/updateCategory"), {
+                        timeout: 15000,
+                    }),
+                    page.locator('div[role="dialog"] button[type="submit"]').click(),
+                ]);
+
+                record(
+                    "E2E-29",
+                    "GAP-001 Category Consistency (Catalog + Global Search) & Mobile 375px Admin UI",
+                    !adminMobileOverflow &&
+                        catalogConsistent &&
+                        searchHasUpdatedCat &&
+                        searchFilterConsistent,
+                    `adminMobileOverflow=${adminMobileOverflow}, catalogConsistent=${catalogConsistent}, searchHasUpdatedCat=${searchHasUpdatedCat}, searchFilterConsistent=${searchFilterConsistent}`
                 );
             } finally {
                 await ctx.close();

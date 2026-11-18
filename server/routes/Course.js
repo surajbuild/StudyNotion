@@ -18,6 +18,9 @@ const {
   showAllCategories,
   categoryPageDetails,
   createCategory,
+  updateCategory,
+  deleteCategory,
+  getAdminDashboard,
 } = require("../controllers/Category");
 
 //sub-section controllers
@@ -103,9 +106,12 @@ router.delete("/deleteCourse", auth, isInstructor, deleteCourse);
 router.post("/updateCourseProgress", auth, isStudent, updateCourseProgress)
 
 // *******************************************************************************
-//                                  Category routes(Only by Admin)
+//                                  Category & Admin routes(Admin Only for mutations)
 // *******************************************************************************
+router.get("/adminDashboard", auth, isAdmin, getAdminDashboard);
 router.post("/createCategory", auth, isAdmin, createCategory);
+router.put("/updateCategory", auth, isAdmin, updateCategory);
+router.delete("/deleteCategory", auth, isAdmin, deleteCategory);
 router.get("/showAllCategories", showAllCategories);
 router.post("/getCategoryPageDetails", categoryPageDetails);
 

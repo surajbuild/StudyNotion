@@ -119,20 +119,23 @@ export const login = (email, password, navigate) => async (dispatch) => {
 
     toast.success("Login Successful", { id: toastId });
 
-    // Store the JWT in Redux
-    dispatch(setToken(response.data.token));
-
     const userImage = response.data.user.image
       ? response.data.user.image
       : `https://api.dicebear.com/6.x/initials/svg?seed=${response.data.user.firstName}+${response.data.user.lastName}`;
 
+    // Store user before token so OpenRoute sees the user's accountType immediately on re-render
     dispatch(setUser({ ...response.data.user, image: userImage }));
+    dispatch(setToken(response.data.token));
 
     // Authorization header later.
     localStorage.setItem("token", response.data.token);
     localStorage.setItem("user", JSON.stringify(response.data.user));
 
-    navigate("/dashboard/my-profile");
+    if (response.data.user?.accountType === "Admin") {
+      navigate("/dashboard/admin");
+    } else {
+      navigate("/dashboard/my-profile");
+    }
   } catch (error) {
     const errorMessage =
       error?.response?.data?.message ||

@@ -4,6 +4,7 @@ import { VscDashboard, VscSignOut } from "react-icons/vsc";
 import { useDispatch, useSelector } from "react-redux";
 import { Link, useNavigate } from "react-router-dom";
 import { logout } from "../../../services/operations/authAPI";
+import { ACCOUNT_TYPE } from "../../../utils/constants";
 
 export default function ProfileDropdown() {
   const { user } = useSelector((state) => state.profile);
@@ -53,7 +54,14 @@ export default function ProfileDropdown() {
           ref={ref}
         >
           {/* Dashboard link */}
-          <Link to="/dashboard/my-profile" onClick={() => setOpen(false)}>
+          <Link
+            to={
+              user?.accountType === ACCOUNT_TYPE.ADMIN
+                ? "/dashboard/admin"
+                : "/dashboard/my-profile"
+            }
+            onClick={() => setOpen(false)}
+          >
             <div className="flex w-full items-center gap-x-1 py-[10px] px-[12px] text-sm text-richblack-100 hover:bg-richblack-700 hover:text-richblack-25">
               <VscDashboard className="text-lg" />
               Dashboard

@@ -70,9 +70,9 @@
 
 | ID | Feature | Impl. Status | Frontend | Backend | API Integration | Test Status | Missing Pieces / Related Bugs | Next Action |
 |----|---------|--------------|----------|---------|-----------------|-------------|-------------------------------|-------------|
-| `F-ADM-01` | Create Category API | `PARTIALLY IMPLEMENTED` | **None** | `Category.js` (`createCategory`, `isAdmin`) | Backend only | `PASS (MOCKED)` | Backend works (`category.test.js`), zero Admin UI to create/manage categories | Build Admin Category Management page |
-| `F-ADM-02` | Show All Categories | `FULLY IMPLEMENTED` | `Navbar.jsx`, `Catalog.jsx`, `CourseInformationForm.jsx` | `Category.js` (`showAllCategories`) | Connected | `PASS` | Cached (5 min TTL) + verified live (`E2E-02`) | Done |
-| `F-ADM-03` | Admin Dashboard / User Management | `NOT IMPLEMENTED` | None | None | Missing | `NOT RUN` | `ACCOUNT_TYPE.ADMIN` exists in constants & `isAdmin` middleware, but no Admin routes or UI | Build Admin dashboard or remove unused role |
+| `F-ADM-01` | Category Management (CRUD API & Admin UI) | `FULLY IMPLEMENTED` | `CategoryManagement.jsx`, `adminAPI.js` | `Category.js` (`createCategory`, `updateCategory`, `deleteCategory`, `isAdmin`) | Connected | `PASS` | Resolved `GAP-001` in Cycle #7: full Admin CRUD with name/slug duplicate protection (`409`), safe deletion blocking categories with associated courses (`409`), cache invalidation & live Navbar/Footer/Catalog/Search consistency (`category.test.js`, `integration.realdb.test.js`, `CategoryManagement.test.jsx`, `E2E-28`, `E2E-29`) | Done |
+| `F-ADM-02` | Show All Categories | `FULLY IMPLEMENTED` | `Navbar.jsx`, `Catalog.jsx`, `Courses.jsx`, `CourseInformationForm.jsx` | `Category.js` (`showAllCategories`) | Connected | `PASS` | Cached (5 min TTL) + auto-invalidated on Admin CRUD + live `"categories-updated"` refresh (`E2E-02`, `E2E-29`) | Done |
+| `F-ADM-03` | Admin Dashboard / Platform Overview (User Mgmt Pending) | `PARTIALLY IMPLEMENTED` | `AdminDashboard.jsx`, `AdminRoute.jsx`, `dashboard-links.js` | `Category.js` (`getAdminDashboard`, `isAdmin`) | Connected | `PASS` | Resolved `GAP-001` Admin Dashboard overview, RBAC route guards & `BUG-030` Admin login redirect (`AdminRoute.test.jsx`, `E2E-27`, `E2E-28`); full User/Instructor management UI remains optional future scope (`GAP-002`) | Optional: add Admin User/Instructor management |
 
 ---
 

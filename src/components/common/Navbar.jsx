@@ -48,6 +48,13 @@ const Navbar = () => {
 
   useEffect(() => {
     fetchSubLinks();
+    const handleCategoriesUpdated = () => {
+      fetchSubLinks();
+    };
+    window.addEventListener("categories-updated", handleCategoriesUpdated);
+    return () => {
+      window.removeEventListener("categories-updated", handleCategoriesUpdated);
+    };
   }, [fetchSubLinks]);
 
   const matchRoute = (route) => matchPath({ path: route }, location.pathname);
@@ -140,7 +147,7 @@ const Navbar = () => {
             {mobileSearchOpen ? <HiX /> : <AiOutlineSearch />}
           </button>
 
-          {user && user?.accountType !== "Instructor" && (
+          {user && user?.accountType === ACCOUNT_TYPE.STUDENT && (
             <Link to="/dashboard/cart" className="relative">
               <AiOutlineShoppingCart className="text-2xl text-richblack-100" />
               {totalItems > 0 && (
@@ -334,6 +341,25 @@ const Navbar = () => {
                     className="flex items-center gap-x-2 py-2 text-sm text-richblack-200 hover:text-yellow-25"
                   >
                     <span>Add Course</span>
+                  </Link>
+                </>
+              )}
+
+              {user?.accountType === ACCOUNT_TYPE.ADMIN && (
+                <>
+                  <Link
+                    to="/dashboard/admin"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-x-2 py-2 text-sm text-richblack-200 hover:text-yellow-25"
+                  >
+                    <span>Admin Dashboard</span>
+                  </Link>
+                  <Link
+                    to="/dashboard/admin/categories"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-x-2 py-2 text-sm text-richblack-200 hover:text-yellow-25"
+                  >
+                    <span>Manage Categories</span>
                   </Link>
                 </>
               )}
