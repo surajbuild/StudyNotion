@@ -244,6 +244,60 @@
 
 ---
 
+## Cycle #12 — Critical Security Hardening, Privacy & Session Protection (5 Findings Resolved)
+
+### `SEC-001` — Overly Permissive Vercel CORS Wildcard Configuration
+- **Module:** Backend Security (`CORS`)
+- **Severity:** `CRITICAL` | **Priority:** P1 | **Status:** `FIXED & VERIFIED`
+- **Location:** [`server/config/corsConfig.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/config/corsConfig.js), [`server/index.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/index.js)
+- **Root Cause:** `server/index.js` permitted arbitrary Vercel domains via `origin.endsWith(".vercel.app")`, allowing any attacker-controlled Vercel subdomain to make credentialed cross-origin requests to the API.
+- **Resolution:** Removed the wildcard behavior. Created dedicated `corsConfig.js` module enforcing exact normalized origin comparisons against an explicit allowlist configured via `ALLOWED_ORIGINS` and `FRONTEND_URL` environment variables, plus exact localhost dev ports (`3000`, `3001`) in non-production/test environments only. Requests without an Origin header (server-to-server, curl) are permitted; preflight OPTIONS requests are handled with 204 for allowed origins and 403 for unlisted origins.
+- **Regression Tests:** `server/__tests__/cors.test.js` (14/14 PASS), real MongoDB `BE-DB-20` (PASS), and Playwright `E2E-42` (PASS).
+
+### `SEC-002` — Plaintext Password Reset Token Persistence in MongoDB
+- **Module:** Authentication (`Reset Password`)
+- **Severity:** `HIGH` | **Priority:** P1 | **Status:** `FIXED & VERIFIED`
+- **Location:** [`server/utils/tokenSecurity.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/utils/tokenSecurity.js), [`server/models/User.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/models/User.js), [`server/controllers/ResetPassword.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/controllers/ResetPassword.js)
+- **Root Cause:** Password reset tokens were generated via `crypto.randomUUID()` and saved directly in MongoDB in plaintext in the `token` field, exposing valid password-reset links if the database were dumped or read via NoSQL injection or query logging.
+- **Resolution:** Implemented cryptographic SHA-256 token hashing via `tokenSecurity.js`. `resetPasswordToken` generates 256 bits of entropy via `crypto.randomBytes(32).toString("hex")`, stores only `resetPasswordTokenHash: hashToken(rawToken)` in MongoDB, clears legacy `token: null`, and delivers the raw token only via the email link. `resetPassword` hashes the incoming token, looks up `resetPasswordTokenHash`, verifies expiry, clears token fields, and atomically increments `tokenVersion`.
+- **Regression Tests:** `server/__tests__/auth.test.js` (PASS), real MongoDB `BE-DB-16` (PASS, verifying raw token is absent from MongoDB and single-use is enforced).
+
+### `SEC-003` — JWTs Remain Valid up to 24h After Password Changes and Resets
+- **Module:** Authentication & Session Management (`JWT Revocation`)
+- **Severity:** `HIGH` | **Priority:** P1 | **Status:** `FIXED & VERIFIED`
+- **Location:** [`server/models/User.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/models/User.js), [`server/controllers/Auth.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/controllers/Auth.js), [`server/controllers/ResetPassword.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/controllers/ResetPassword.js), [`server/middlewares/auth.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/middlewares/auth.js)
+- **Root Cause:** JWTs were signed with a static 24-hour expiry and contained no version identifier. Changing or resetting a password updated the password hash but left previously issued JWTs completely valid for up to 24 hours.
+- **Resolution:** Added `tokenVersion: { type: Number, default: 0 }` to `User`. `Auth.login` embeds `tokenVersion` into the signed JWT payload. `Auth.changePassword` and `ResetPassword.resetPassword` atomically increment `tokenVersion` by 1. `auth.js` middleware fetches the authoritative `tokenVersion` from MongoDB and immediately rejects stale or mismatched tokens with HTTP 401 and `code: "TOKEN_REVOKED"`. Legacy tokens without `tokenVersion` remain valid until password change/reset for backward compatibility. Hardened auth cookies with `SameSite: Strict` (production) / `Lax` (dev) and `Secure: true` in production.
+- **Regression Tests:** `server/__tests__/authMiddleware.test.js` (+5 tests PASS), real MongoDB `BE-DB-17` & `BE-DB-18` (PASS), and Playwright `E2E-41` (PASS).
+
+### `SEC-004` — Student Email Address Exposure in Public Reviews Endpoint
+- **Module:** Student / Public Courses (`Rating and Review`)
+- **Severity:** `MEDIUM` | **Priority:** P2 | **Status:** `FIXED & VERIFIED`
+- **Location:** [`server/controllers/RatingAndReview.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/controllers/RatingAndReview.js)
+- **Root Cause:** Public unauthenticated endpoint `GET /api/v1/course/getReviews` populated user details with `.select("firstName lastName email image")`, exposing student email addresses to unauthenticated visitors.
+- **Resolution:** Modified user populate projection to `.select("firstName lastName image")`, excluding `email`. Verified frontend `ReviewSlider.jsx` uses only name, image, and review text, maintaining 100% UI fidelity.
+- **Regression Tests:** `server/__tests__/ratingReview.test.js` (PASS), real MongoDB `BE-DB-19` (PASS), and Playwright `E2E-42` (PASS).
+
+### `SEC-006` — Authentication Token Accepted from Request Body (`req.body.token`)
+- **Module:** Authentication Middleware (`Security Architecture`)
+- **Severity:** `HIGH` | **Priority:** P1 | **Status:** `FIXED & VERIFIED`
+- **Location:** [`server/middlewares/auth.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/middlewares/auth.js)
+- **Root Cause:** `auth` middleware inspected `req.cookies?.token || req.body?.token || authHeader`, allowing authentication tokens to be injected in POST/PUT request bodies, bypassing header sanitization and increasing CSRF/XSS exploitation surface.
+- **Resolution:** Completely removed `req.body.token` fallback. Auth tokens are accepted strictly from `Authorization: Bearer <token>` header or httpOnly cookie. Verified all frontend API services (`src/services/operations/`) already supply `Authorization: Bearer <token>`.
+- **Regression Tests:** `server/__tests__/authMiddleware.test.js` (PASS), real MongoDB `BE-DB-20` (PASS), and Playwright `E2E-42` (PASS).
+
+---
+
+## Remaining Tracked Security Findings (Cycle #13 Backlog)
+
+| ID | Title | Severity | Planned Cycle | Scope |
+|----|-------|----------|---------------|-------|
+| `SEC-005` | Account enumeration through distinct error messages | `LOW` | Cycle #13 | Standardize login, signup, and reset error responses (`"Invalid credentials"` / `"If that email exists, an email has been sent"`) |
+| `SEC-007` | In-memory rate limiting resets across cluster restarts | `MEDIUM` | Cycle #13 | Redis-backed distributed rate limiter with fallback to memory store |
+| `SEC-008` | File upload MIME/extension spoofing | `MEDIUM` | Cycle #13 | Magic-byte buffer validation (`file-type` header inspection) for thumbnail images & video lectures |
+
+---
+
 ## Cycles #1 & #2 — Historical Fixed & Verified Bugs (21 Total)
 
 | Bug ID | Severity | Title | Root Cause & File | Fix Status | Regression Test |

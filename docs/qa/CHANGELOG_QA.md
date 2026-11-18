@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-11-19 — QA Cycle #12 (Critical Security Hardening, Privacy & Session Protection: `SEC-001`, `SEC-002`, `SEC-003`, `SEC-004`, `SEC-006`)
+
+| Task / Bug ID | Files Modified / Added | Changes Made | Tests Executed | Verification Status |
+|---------------|------------------------|--------------|----------------|---------------------|
+| `CHECKPOINT` | Cycle #11 commit `f11ec32` (local only) | Created clean local checkpoint commit preserving Cycle #11 `F-INS-11` & QA docs (unpushed) | `git status`, `git log` | `VERIFIED` |
+| `SEC-001` (Strict CORS Allowlist) | `server/config/corsConfig.js` (new), `server/index.js`, `server/__tests__/cors.test.js` (new) | Removed overly permissive Vercel wildcard regex (`origin.endsWith(".vercel.app")`); implemented normalized exact origin allowlisting (`ALLOWED_ORIGINS`, `FRONTEND_URL`, and exact local dev origins), preflight OPTIONS handler, and credentialed access restricted strictly to approved origins while allowing requests with no Origin header (curl/CLI/server-to-server) | `cors.test.js` (14/14), `BE-DB-20`, `E2E-42` | `VERIFIED` |
+| `SEC-002` (Hashed Password Reset Tokens) | `server/utils/tokenSecurity.js` (new), `server/models/User.js`, `server/controllers/ResetPassword.js` | Replaced plaintext UUID token storage in MongoDB with SHA-256 token hashing; generates 256-bit entropy raw token, stores only SHA-256 digest in `User.resetPasswordTokenHash`, sends raw token strictly via reset link, looks up token via SHA-256 hash, clears tokens upon reset, and rejects legacy plaintext tokens safely | `auth.test.js`, `BE-DB-16` | `VERIFIED` |
+| `SEC-003` (JWT Revocation on Password Change & Reset) | `server/models/User.js`, `server/controllers/Auth.js`, `server/controllers/ResetPassword.js`, `server/middlewares/auth.js` | Added `tokenVersion` to `User.js` model and embedded `tokenVersion` in JWT payloads upon login; checks authoritative database `tokenVersion` in `auth.js` middleware, returning `401 Unauthorized` (`code: "TOKEN_REVOKED"`) for stale or legacy tokens; atomically increments `tokenVersion` on `changePassword` and `resetPassword`; hardened auth cookies (`SameSite`, `Secure`) | `authMiddleware.test.js` (+5, 22/22), `BE-DB-17`, `E2E-41` | `VERIFIED` |
+| `SEC-004` (Student Reviewer Email Privacy) | `server/controllers/RatingAndReview.js` | Removed student `email` from `getAllRating` user population projection (`select("firstName lastName image")`), completely eliminating unauthenticated PII leakage in public course review lists | `ratingReview.test.js` (8/8), `BE-DB-18`, `E2E-42` | `VERIFIED` |
+| `SEC-006` (Request Body Token Deprecation) | `server/middlewares/auth.js` | Removed `req.body.token` fallback from `auth.js` middleware; authentication tokens are now accepted strictly via `Authorization: Bearer <token>` header or `httpOnly` secure cookie, eliminating body parameter injection risks | `authMiddleware.test.js`, `BE-DB-19`, `E2E-42` | `VERIFIED` |
+| `SEC-TESTS` & Docs | `server/__tests__/cors.test.js` (new), `server/__tests__/authMiddleware.test.js`, `server/__tests__/integration.realdb.test.js`, `e2e/authenticated.e2e.js`, `docs/qa/*` | Added 26 new automated and E2E security tests (14 unit in `cors.test.js`, 5 unit in `authMiddleware.test.js`, 5 real-DB integration `BE-DB-16`–`BE-DB-20`, 2 live Playwright E2E `E2E-41`–`E2E-42`); updated all QA tracking documents (`378 / 378` live-executed + `25` historical = `403 / 403` cumulative PASS, 0 open bugs, 0 failures, 5/5 targeted security findings resolved) | `npm test` (120 FE), Backend Jest (204 unit + 20 real-DB), Playwright (30/30 + 4/4 public), `npx eslint src --max-warnings=0`, `npm run build` | `VERIFIED` |
+
+---
+
 ## 2026-11-18 — QA Cycle #11 (`F-INS-11` / `OPT-004`: Instructor Enrolled Student Roster & Course Progress Tracking + `BUG-036` Fix)
 
 | Task / Bug ID | Files Modified / Added | Changes Made | Tests Executed | Verification Status |

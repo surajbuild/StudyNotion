@@ -1,8 +1,69 @@
 # StudyNotion — Detailed QA Test Report
 
-> **Latest Cycle:** Cycle #11 — `F-INS-11` Instructor Enrolled Student Roster & Course Progress Tracking + `BUG-036` Fix  
-> **Date:** 2026-11-18  
+> **Latest Cycle:** Cycle #12 — Critical Security Hardening, Privacy & Session Protection (`SEC-001`, `SEC-002`, `SEC-003`, `SEC-004`, `SEC-006`)  
+> **Date:** 2026-11-19  
 > **Environment:** Windows 11 | Node.js v22.16.0 | React 18 (CRA 5) | Express 5 | Mongoose 8 | MongoDB 8.0 (Isolated Local Ephemeral on `127.0.0.1:27018`) | Chromium 1208 (Playwright)
+
+---
+
+## Cycle #12 — Execution Summary (2026-11-19)
+
+| Test Suite / Verification Gate | Command | Suites | Tests | Passed | Failed | Blocked | Result |
+|-------------------------------|---------|--------|-------|--------|--------|---------|--------|
+| **Frontend Unit & Component Tests** | `npm test` | 34 | 120 | 120 | 0 | 0 | **PASS** (9.94s, all suites passing) |
+| **Backend Unit, API & Safety Guardrails** | `npx jest --testPathIgnorePatterns=integration.realdb.test.js` | 16 | 204 | 204 | 0 | 0 | **PASS** (33.01s, +1 suite / +19 tests: `cors.test.js` [14], `authMiddleware.test.js` [5]) |
+| **Backend Real-MongoDB Full-Stack Integration** | `npx jest __tests__/integration.realdb.test.js --runInBand --forceExit` | 1 | 20 | 20 | 0 | 0 | **PASS** (10.14s, +5 real DB security tests: `BE-DB-16`–`BE-DB-20`) |
+| **Isolated Authenticated & Feature Playwright E2E (`E2E-16`–`42` + `REG-01`–`03`)** | `node e2e/authenticated.e2e.js` | 1 | 30 | 30 | 0 | 0 | **PASS** (+2 new `E2E-41`–`E2E-42`, 0 page errors, 0 Swiper warnings) |
+| **Public Catalog & Console/Network Regression (`PUB-01`–`PUB-04`)** | `node scratch/public_regression.js` | 1 | 4 | 4 | 0 | 0 | **PASS** (0 console errors, 0 page errors, 0 failed network requests) |
+| **Cycle #12 Live-Executed Subtotal** | — | **53** | **378** | **378** | **0** | **0** | **PASS (`378 / 378` live + `25` historical Cycle #2–#3 = `403 / 403` cumulative)** |
+| **Strict Frontend ESLint** | `npx eslint src --max-warnings=0` | — | — | 0 errors, 0 warnings | — | — | **PASS** (Exit 0) |
+| **Frontend Production Build** | `npm run build` | — | — | Exit 0 (0 ESLint warnings) | — | — | **PASS** |
+
+### Cycle #12 Actual Verification Outputs
+
+#### A. Automated Unit & Real-MongoDB Integration Suites
+```text
+Frontend (npm test -- --watchAll=false):
+Test Suites: 34 passed, 34 total
+Tests:       120 passed, 120 total
+Time:        9.942 s
+
+Backend Unit (server/npm test):
+Test Suites: 16 passed, 16 total
+Tests:       204 passed, 204 total (added cors.test.js [14], authMiddleware.test.js BE-MW-18..22 [5])
+Time:        33.012 s
+
+Backend Real-MongoDB Integration (server/__tests__/integration.realdb.test.js):
+Test Suites: 1 passed, 1 total
+Tests:       20 passed, 20 total (added BE-DB-16..20: token hashing, JWT revocation, public review privacy, body token rejection, strict CORS)
+Time:        10.142 s
+```
+
+#### B. Isolated Playwright E2E Run (`e2e/authenticated.e2e.js`) & Public Regression Audit
+```text
+[PASS] E2E-16..E2E-21 Authenticated Student, Razorpay Payment, ViewCourse, Instructor CRUD & Settings
+[PASS] E2E-22..E2E-23 GAP-005 Free Course Direct Enrollment & Publishing
+[PASS] E2E-24..E2E-26 GAP-004 Global Search, Filters, Sorting, Pagination & Mobile Search
+[PASS] E2E-27..E2E-29 GAP-001 Admin Security, Dashboard, Category CRUD & Consistency
+[PASS] E2E-30..E2E-32 GAP-008 Persistent DB Cart, Order History, Mixed Checkout & Cross-User Isolation
+[PASS] E2E-33..E2E-34 GAP-007 Password Policy Consistency (Signup, Settings, Forgot/Reset)
+[PASS] E2E-35..E2E-38 GAP-002 Instructor Approval Enforcement & Admin User Management
+[PASS] E2E-39..E2E-40 F-INS-11 Instructor Student Roster, Search, Mobile 375px, Live Progress & RBAC
+[PASS] E2E-41 SEC-003 JWT Revocation on Password Change & Reset: initialProfileOk=true, postChangeStale401=true, postChangeFresh200=true, postResetStale401=true, postResetFresh200=true
+[PASS] E2E-42 SEC-001/004/006 Strict Security Verifications: corsBlocked=true, reviewEmailsExposed=0, bodyTokenRejected401=true
+[PASS] REG-01..REG-03 Footer, Error Page & Mobile 375px Regressions
+
+PAGE ERRORS: 0 [] | SWIPER WARNINGS: 0 | TOTAL: 30 PASSED: 30 FAILED: 0
+
+Public Catalog & Console/Network Regression:
+[PASS] PUB-01..PUB-04 | CONSOLE_ERRORS: 0 [] | PAGE_ERRORS: 0 [] | FAILED_REQUESTS: 0 []
+```
+
+#### C. Strict ESLint & Production Build
+```text
+$ npx eslint src --max-warnings=0 -> Exit 0 (0 errors, 0 warnings)
+$ npm run build -> Exit 0 (0 [eslint] warnings; production build compiled successfully)
+```
 
 ---
 

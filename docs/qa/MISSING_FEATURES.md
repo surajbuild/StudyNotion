@@ -1,7 +1,7 @@
 # StudyNotion — Missing Functionality & Feature Gap Analysis
 
-> **Last Updated:** 2026-11-18  
-> **Classification Rule:** Findings are strictly separated into **(1) Confirmed Project Requirements / Broken Expectations**, **(2) Inferred Core Ed-Tech Expectations**, and **(3) Optional Enhancements**. Optional recommendations are never labeled as bugs.
+> **Last Updated:** 2026-11-19  
+> **Classification Rule:** Findings are strictly separated into **(1) Confirmed Project Requirements / Broken Expectations**, **(2) Inferred Core Ed-Tech Expectations**, **(3) Security Vulnerabilities & Hardening**, and **(4) Optional Enhancements**. Optional recommendations are never labeled as bugs.
 
 ---
 
@@ -91,3 +91,18 @@
 | `OPT-004` | **Enrolled Student Roster View for Instructors (`F-INS-11`)** — `RESOLVED (Cycle #11)` | Shows student names, emails, authoritative enrollment date, and individual lecture completion % per course (`GET /api/v1/course/:courseId/enrolled-students`, `CourseStudents.jsx`) | `LOW` |
 | `OPT-005` | **Review Editing & Deletion** | Allows students to update/delete their own submitted rating & review | `LOW` |
 | `OPT-006` | **Swagger / OpenAPI Documentation** | Auto-documents all 30+ backend REST endpoints | `LOW` |
+
+---
+
+## Category E — Security Vulnerabilities & Session Protection (Roadmap Findings)
+
+| ID | Finding | Severity | Status | Resolution Cycle & Summary |
+|----|---------|----------|--------|----------------------------|
+| `SEC-001` | **Wildcard Vercel CORS Insecurity** | **CRITICAL** | **RESOLVED** | **Cycle #12**: Replaced `origin.endsWith(".vercel.app")` with strict origin allowlist in `server/config/corsConfig.js`. Only accepts exact origins in `ALLOWED_ORIGINS` / `FRONTEND_URL` and exact local development ports. Preflight handled, credentials restricted to approved origins. |
+| `SEC-002` | **Plaintext Password Reset Tokens in Database** | **HIGH** | **RESOLVED** | **Cycle #12**: Implemented SHA-256 token hashing (`resetPasswordTokenHash` in `User.js`, `tokenSecurity.js`). Raw tokens exist solely in reset URLs; database stores only SHA-256 digests. Legacy plaintext tokens safely rejected. |
+| `SEC-003` | **JWT Validity After Password Changes & Resets** | **HIGH** | **RESOLVED** | **Cycle #12**: Added `tokenVersion` on `User.js` model, embedded in JWT payload on login. Checked authoritatively against DB in `auth.js` middleware, rejecting stale tokens with `401 Unauthorized` (`code: "TOKEN_REVOKED"`). Atomically incremented on password changes and resets. Hardened auth cookies (`SameSite`, `Secure`). |
+| `SEC-004` | **Public Reviewer Email PII Exposure** | **HIGH** | **RESOLVED** | **Cycle #12**: Sanitized reviewer projection in `server/controllers/RatingAndReview.js` to `select("firstName lastName image")`. Email is completely removed from public API responses. |
+| `SEC-005` | **Account Enumeration via Auth Responses** | **MEDIUM** | **BACKLOG** | Tracked for Cycle #14 / Production Hardening: Standardize authentication responses (login, signup, forgot-password) to avoid disclosing account existence. |
+| `SEC-006` | **Authentication JWT Accepted from Request Body** | **HIGH** | **RESOLVED** | **Cycle #12**: Removed `req.body.token` fallback in `server/middlewares/auth.js`. Tokens accepted strictly via `Authorization: Bearer <token>` header or `httpOnly` secure cookie. |
+| `SEC-007` | **In-Memory Rate Limiting Not Distributed** | **MEDIUM** | **BACKLOG** | Tracked for Production Infra: Back `express-rate-limit` with Redis store (`rate-limit-redis`) for multi-instance clusters. |
+| `SEC-008` | **File Upload Magic-Byte Validation** | **MEDIUM** | **BACKLOG** | Tracked for Production Infra: Validate file magic numbers (signatures) buffer checks before Cloudinary upload. |

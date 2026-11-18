@@ -1,7 +1,7 @@
 # StudyNotion — Continuous QA Dashboard
 
-> **Last Audit Date:** 2026-11-18  
-> **Audit Cycle:** Cycle #11 (`F-INS-11` / `OPT-004`: Instructor Enrolled Student Roster & Course Progress Tracking + `BUG-036` Fix)  
+> **Last Audit Date:** 2026-11-19  
+> **Audit Cycle:** Cycle #12 (Critical Security Hardening, Privacy & Session Protection: `SEC-001`, `SEC-002`, `SEC-003`, `SEC-004`, `SEC-006` Resolution)  
 > **Application Stack:** React 18 + Redux Toolkit + React Router 7 (HashRouter) | Express 5 + Mongoose 8 + MongoDB 8 (Isolated Test) / Atlas (Prod)  
 > **External Integrations:** Razorpay (Paid Courses Only; Mocked/Sandbox in Test), Cloudinary (Mocked in Test), Nodemailer (In-Memory Capture in Test)
 
@@ -12,33 +12,49 @@
 | Metric | Count | Percentage / Formula |
 |--------|-------|----------------------|
 | **Total Discovered Features** | **54** | 100% baseline (`FEATURE_MATRIX.md`) |
-| ↳ Fully Implemented | **51** | `51 / 54 = 94.4%` (`F-INS-11` Instructor Student Roster & Progress Tracking completed in Cycle #11; Auth, Student, Instructor, Admin & Infra modules are all 100% complete) |
+| ↳ Fully Implemented | **51** | `51 / 54 = 94.4%` (Auth, Student, Instructor, Admin & Infra modules are 100% complete) |
 | ↳ Partially Implemented | **0** | `0 / 54 = 0.0%` |
 | ↳ Implemented But Broken | **0** | `0 / 54 = 0.0%` |
 | ↳ Not Implemented (Optional Gaps) | **3** | `3 / 54 = 5.6%` (Announcements, Quizzes, Certificates) |
 | ↳ Blocked / Not Live-Verified | **0** | `0 / 54 = 0.0%` |
+| **Tracked Security Findings Resolved** | **5 / 5** | **100%** assigned Cycle #12 deliverables (`SEC-001`, `SEC-002`, `SEC-003`, `SEC-004`, `SEC-006` fully fixed & verified) |
 
 ---
 
 ## 2. Test Execution Status (0 Blocked, 100% Pass Rate)
 
-> **Count Reconciliation Note:** Active Cycle #11 live-executed suites total **352 / 352** (up +16 from Cycle #10's 336 live-executed tests). Including the **25** preserved historical Cycle #2 (`18`) & Cycle #3 (`7`) browser verification cases brings the cumulative QA registry total to **377 / 377**.
+> **Count Reconciliation Note:** Active Cycle #12 live-executed suites total **378 / 378** (up +26 from Cycle #11's 352 live-executed tests). Including the **25** preserved historical Cycle #2 (`18`) & Cycle #3 (`7`) browser verification cases brings the cumulative QA registry total to **403 / 403**.
 
 | Test Layer | Tool | Total Cases | Passed | Failed | Blocked | Pending | Pass Rate |
 |------------|------|-------------|--------|--------|---------|---------|-----------|
-| **Backend Unit, API & Safety Guardrails** | Jest + Supertest | 185 | 185 | 0 | 0 | 0 | `185 / 185 = 100.0%` (+8 in Cycle #11: `courseRoster.test.js`) |
-| **Backend Real-MongoDB Integration** | Jest + Supertest + Local MongoDB 8.0 | 15 | 15 | 0 | 0 | 0 | `15 / 15 = 100.0%` (+1 in Cycle #11: `BE-DB-15`) |
-| **Frontend Unit & Component Tests** | Jest (CRA) | 120 | 120 | 0 | 0 | 0 | `120 / 120 = 100.0%` (+5 in Cycle #11 across 2 new suites) |
-| **Isolated Authenticated & Feature E2E (`E2E-16`–`E2E-40` + `REG-01`–`03`)** | Playwright + Isolated MongoDB | 28 | 28 | 0 | 0 | 0 | `28 / 28 = 100.0%` (+2 in Cycle #11: `E2E-39`–`E2E-40`) |
-| **Live Public Catalog & Console/Network Regression (`PUB-01`–`PUB-04`)** | Playwright (Chromium) | 4 | 4 | 0 | 0 | 0 | `4 / 4 = 100.0%` (re-verified Cycle #11) |
-| **Subtotal — Cycle #11 Live-Executed Suites** | — | **352** | **352** | **0** | **0** | **0** | **`352 / 352 = 100.0%`** |
+| **Backend Unit, API & Safety Guardrails** | Jest + Supertest | 204 | 204 | 0 | 0 | 0 | `204 / 204 = 100.0%` (+19 in Cycle #12 across `cors.test.js` & `authMiddleware.test.js`) |
+| **Backend Real-MongoDB Integration** | Jest + Supertest + Local MongoDB 8.0 | 20 | 20 | 0 | 0 | 0 | `20 / 20 = 100.0%` (+5 in Cycle #12: `BE-DB-16`–`BE-DB-20`) |
+| **Frontend Unit & Component Tests** | Jest (CRA) | 120 | 120 | 0 | 0 | 0 | `120 / 120 = 100.0%` (34/34 suites passing) |
+| **Isolated Authenticated & Feature E2E (`E2E-16`–`E2E-42` + `REG-01`–`03`)** | Playwright (Chromium) + Isolated MongoDB | 30 | 30 | 0 | 0 | 0 | `30 / 30 = 100.0%` (+2 in Cycle #12: `E2E-41`–`E2E-42`) |
+| **Live Public Catalog & Console/Network Regression (`PUB-01`–`PUB-04`)** | Playwright (Chromium) | 4 | 4 | 0 | 0 | 0 | `4 / 4 = 100.0%` (re-verified Cycle #12) |
+| **Subtotal — Cycle #12 Live-Executed Suites** | — | **378** | **378** | **0** | **0** | **0** | **`378 / 378 = 100.0%`** |
 | *Historical Browser E2E (Cycle #2 Public & Auth: `E2E-01`–`E2E-15`)* | Playwright (Chromium) | *18* | *18* | *0* | *0* | *0* | *`18 / 18 = 100.0%` (Cycle #2 baseline)* |
 | *Historical Browser E2E (Cycle #3 Bug & Regression: `C3-E2E-01`–`07`)* | Playwright (Chromium) | *7* | *7* | *0* | *0* | *0* | *`7 / 7 = 100.0%` (Cycle #3 baseline)* |
-| **CUMULATIVE REGISTRY TOTAL** | — | **377** | **377** | **0** | **0** | **0** | **`377 / 377 = 100.0%`** |
+| **CUMULATIVE REGISTRY TOTAL** | — | **403** | **403** | **0** | **0** | **0** | **`403 / 403 = 100.0%`** |
 
 ---
 
-## 3. Bug Tracker Summary
+## 3. Security Findings Tracker
+
+| ID | Title | Severity | Status | Fixed in | Verification |
+|----|-------|----------|--------|----------|--------------|
+| **`SEC-001`** | Overly permissive Vercel wildcard CORS (`origin.endsWith(".vercel.app")`) | **CRITICAL** | **VERIFIED FIXED** | Cycle #12 | `corsConfig.js`, `cors.test.js` (14/14), `BE-DB-20`, `E2E-42` |
+| **`SEC-002`** | Plaintext password-reset token storage in MongoDB | **HIGH** | **VERIFIED FIXED** | Cycle #12 | `tokenSecurity.js`, `ResetPassword.js` SHA-256 hash, `auth.test.js`, `BE-DB-16` |
+| **`SEC-003`** | JWTs remain valid up to 24h after password changes & resets | **HIGH** | **VERIFIED FIXED** | Cycle #12 | `User.tokenVersion`, `auth.js` middleware, `authMiddleware.test.js`, `BE-DB-17`–`18`, `E2E-41` |
+| **`SEC-004`** | Student email exposed in unauthenticated public reviews API | **MEDIUM** | **VERIFIED FIXED** | Cycle #12 | `RatingAndReview.getAllRating` projection (`-email`), `ratingReview.test.js`, `BE-DB-19`, `E2E-42` |
+| **`SEC-005`** | User enumeration via distinct auth error messages | **LOW** | *TRACKED / BACKLOG* | Cycle #13 | Documented in roadmap |
+| **`SEC-006`** | Authentication JWT accepted from request body (`req.body.token`) | **HIGH** | **VERIFIED FIXED** | Cycle #12 | `auth.js` accepts only `Authorization: Bearer` & cookies, `authMiddleware.test.js`, `BE-DB-20`, `E2E-42` |
+| **`SEC-007`** | Memory rate-limiting resets across cluster workers | **MEDIUM** | *TRACKED / BACKLOG* | Cycle #13 | Documented in roadmap |
+| **`SEC-008`** | File upload relies on client MIME/extension without magic-byte verification | **MEDIUM** | *TRACKED / BACKLOG* | Cycle #13 | Documented in roadmap |
+
+---
+
+## 4. Bug Tracker Summary
 
 | Severity | Discovered | Fixed & Verified | Open |
 |----------|------------|------------------|------|
@@ -48,50 +64,57 @@
 | **LOW** | 4 | 4 (`BUG-026`, `BUG-027`, `BUG-033`, `BUG-036`) | **0** |
 | **TOTAL** | **34** | **34** (`34 / 34 = 100.0%`) | **0** |
 
-*\*Note: Separately tracked feature/integration milestones resolved: `GAP-006` (Cycle #3), `GAP-009` (Cycle #4), `GAP-005` (Cycle #5), `GAP-004` (Cycle #6), `GAP-001` (Cycle #7), `GAP-008` (Cycle #8), `GAP-007` (Cycle #9), `GAP-002` (Cycle #10), and **`F-INS-11` / `OPT-004`** (Cycle #11 — Instructor Enrolled Student Roster & Course Progress Tracking).*
+*\*Note: Separately tracked architectural & security milestones resolved: `GAP-006` (Cycle #3), `GAP-009` (Cycle #4), `GAP-005` (Cycle #5), `GAP-004` (Cycle #6), `GAP-001` (Cycle #7), `GAP-008` (Cycle #8), `GAP-007` (Cycle #9), `GAP-002` (Cycle #10), `F-INS-11` (Cycle #11), and **`SEC-001`, `SEC-002`, `SEC-003`, `SEC-004`, `SEC-006`** (Cycle #12 — Security Hardening, Privacy & Session Protection).*
 
 ---
 
-## 4. Module-Wise Health Overview
+## 5. Module-Wise Health Overview
 
-| Module | Total Features | Fully Impl. | Partial | Broken | Not Impl. | Blocked | Open Bugs |
-|--------|---------------|-------------|---------|--------|-----------|---------|-----------|
-| **A. Authentication & Security** | 12 | 12 | 0 | 0 | 0 | 0 | **0** |
-| **B. Student Module** | 14 | 14 | 0 | 0 | 0 | 0 | **0** |
-| **C. Instructor Module** | 12 | 12 | 0 | 0 | 0 | 0 | **0** |
-| **D. Admin & Categories** | 3 | 3 | 0 | 0 | 0 | 0 | **0** |
-| **E. Common / Public UI** | 10 | 7 | 0 | 0 | 3 | 0 | **0** |
-| **F. Backend Infra & Build** | 3 | 3 | 0 | 0 | 0 | 0 | **0** |
-| **TOTAL** | **54** | **51** | **0** | **0** | **3** | **0** | **0** |
+| Module | Total Features | Fully Impl. | Partial | Broken | Not Impl. | Blocked | Open Bugs | Security Status |
+|--------|---------------|-------------|---------|--------|-----------|---------|-----------|-----------------|
+| **A. Authentication & Security** | 12 | 12 | 0 | 0 | 0 | 0 | **0** | **Hardened**: SHA-256 reset tokens, JWT tokenVersion revocation, no body tokens, SameSite cookies |
+| **B. Student Module** | 14 | 14 | 0 | 0 | 0 | 0 | **0** | **Secure**: RBAC guarded, unexposed email in reviews |
+| **C. Instructor Module** | 12 | 12 | 0 | 0 | 0 | 0 | **0** | **Secure**: Authoritative approval workflow, ownership verified |
+| **D. Admin & Categories** | 3 | 3 | 0 | 0 | 0 | 0 | **0** | **Secure**: Strict admin RBAC, cascade guards |
+| **E. Common / Public UI** | 10 | 7 | 0 | 0 | 3 | 0 | **0** | **Hardened**: Strict origin CORS allowlist, no wildcards |
+| **F. Backend Infra & Build** | 3 | 3 | 0 | 0 | 0 | 0 | **0** | **Production-Ready**: Passing lint, build, real-DB integration |
+| **TOTAL** | **54** | **51** | **0** | **0** | **3** | **0** | **0** | **All 5 assigned security findings resolved** |
 
 ---
 
-## 5. Build, Lint & Runtime Health
+## 6. Build, Lint & Runtime Health
 
 | Check | Command | Result |
 |-------|---------|--------|
 | **Frontend ESLint (Strict)** | `npx eslint src --max-warnings=0` | **PASS** — 0 errors, 0 warnings |
 | **Frontend Production Build** | `npm run build` | **PASS** — Exit 0, 0 ESLint warnings |
-| **Isolated MongoDB Test Env** | `node server/test-env/startIsolatedEnv.js` | **PASS** — Ephemeral local MongoDB 8.0 on `127.0.0.1:27018/studynotion_test` |
+| **Backend Unit & Safety Suite** | `npm --prefix server run test:unit` | **PASS** — 16/16 suites, 204/204 tests |
+| **Real MongoDB Integration** | `npm --prefix server run test:integration` | **PASS** — 20/20 real DB tests on `127.0.0.1:27018` |
+| **Isolated Playwright E2E** | `npm run test:e2e:isolated` | **PASS** — 30/30 live journeys on `:3001` + `:4001` |
 
 ---
 
-## 6. Remaining Priority Work
+## 7. Remaining Priority Work
 
 ### Open Bugs
 - **None (0 open bugs).**
 
-### Remaining Missing Features & Optional Enhancements (see [`MISSING_FEATURES.md`](./MISSING_FEATURES.md))
-1. **`GAP-003` — Legal & Policy Pages** (pending product-owner approved copy).
-2. **Optional Enhancements (`OPT-001`–`OPT-003`, `OPT-005`–`OPT-006`)** — Course Announcements, Quizzes/Assignments, Completion Certificates, Review Editing/Deletion, OpenAPI docs, plus separate Admin Account Suspension/Deletion.
+### Remaining Security Findings (Cycle #13)
+1. **`SEC-005`** — Account enumeration via distinct auth error messages (standardize login/forgot password messages).
+2. **`SEC-007`** — Distributed rate-limiting via Redis for horizontal scaling.
+3. **`SEC-008`** — Magic-byte / buffer inspection for file uploads.
+
+### Optional Enhancements & Feature Gaps (see [`MISSING_FEATURES.md`](./MISSING_FEATURES.md))
+1. **`GAP-003` — Legal & Policy Pages** (pending product-owner copy).
+2. **Optional Enhancements (`OPT-001`–`OPT-003`, `OPT-005`–`OPT-006`)** — Announcements, Quizzes, Certificates, Review Editing/Deletion, OpenAPI docs.
 
 ---
 
-## 7. Quick Links to QA Tracking System
+## 8. Quick Links to QA Tracking System
 
 - **[FEATURE_MATRIX.md](./FEATURE_MATRIX.md)** — Complete 54-feature inventory with separate Implementation vs. Testing status
-- **[TEST_CASES.md](./TEST_CASES.md)** — Detailed 377-test registry (352 Cycle #11 live + 25 historical baseline) across Backend, Real-DB Integration, Frontend, and Playwright E2E
-- **[BUG_TRACKER.md](./BUG_TRACKER.md)** — All 34 discovered & verified bugs + resolved feature milestones
-- **[MISSING_FEATURES.md](./MISSING_FEATURES.md)** — Feature gap analysis (Required vs. Inferred vs. Optional)
+- **[TEST_CASES.md](./TEST_CASES.md)** — Detailed 403-test registry (378 Cycle #12 live + 25 historical baseline)
+- **[BUG_TRACKER.md](./BUG_TRACKER.md)** — All 34 discovered & verified bugs + resolved feature & security milestones
+- **[MISSING_FEATURES.md](./MISSING_FEATURES.md)** — Feature gap & security finding analysis
 - **[TEST_REPORT.md](./TEST_REPORT.md)** — Cycle-by-cycle execution logs, commands, and build verification
-- **[CHANGELOG_QA.md](./CHANGELOG_QA.md)** — Chronological log of every fix and QA update
+- **[CHANGELOG_QA.md](./CHANGELOG_QA.md)** — Chronological log of every fix, security update, and QA milestone
