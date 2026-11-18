@@ -50,30 +50,9 @@ app.use(compression());
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 
-const allowedOrigins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    ...(isTestMode() ? ["http://localhost:3001", "http://127.0.0.1:3001"] : []),
-    process.env.FRONTEND_URL,
-].filter(Boolean); // removes undefined/empty values
+const { createCorsOptions } = require("./config/corsConfig");
 
-app.use(
-    cors({
-        origin: (origin, callback) => {
-            // Allow server-to-server requests (no origin), listed origins, and vercel.app domains
-            if (
-                !origin ||
-                allowedOrigins.includes(origin) ||
-                origin.endsWith(".vercel.app")
-            ) {
-                callback(null, true);
-            } else {
-                callback(new Error(`CORS blocked for origin: ${origin}`));
-            }
-        },
-        credentials: true,
-    })
-);
+app.use(cors(createCorsOptions()));
 
 app.use(
     fileUpload({
