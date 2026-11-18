@@ -13,11 +13,13 @@ jest.mock("../utils/mailSender", () => jest.fn().mockResolvedValue({}));
 jest.mock("../models/Course");
 jest.mock("../models/User");
 jest.mock("../models/CourseProgress");
+jest.mock("../models/Order");
 
 const { instance } = require("../config/razorpay");
 const Course = require("../models/Course");
 const User = require("../models/User");
 const CourseProgress = require("../models/CourseProgress");
+const Order = require("../models/Order");
 const app = require("../index");
 
 describe("Payment Endpoints (server/controllers/Payments.js)", () => {
@@ -88,6 +90,11 @@ describe("Payment Endpoints (server/controllers/Payments.js)", () => {
         amount: 100000,
         currency: "INR",
       });
+      Order.create.mockResolvedValue({
+        _id: "order_db_1",
+        razorpayOrderId: "order_rzp_123",
+        status: "PENDING",
+      });
 
       const res = await request(app)
         .post("/api/v1/payment/capturePayment")
@@ -97,6 +104,16 @@ describe("Payment Endpoints (server/controllers/Payments.js)", () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.message.id).toBe("order_rzp_123");
+      expect(Order.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user: "student_1",
+          amount: 1000,
+          amountInSubunits: 100000,
+          currency: "INR",
+          razorpayOrderId: "order_rzp_123",
+          status: "PENDING",
+        })
+      );
     });
   });
 
@@ -123,6 +140,32 @@ describe("Payment Endpoints (server/controllers/Payments.js)", () => {
         .createHmac("sha256", RAZORPAY_SECRET)
         .update(`${orderId}|${paymentId}`)
         .digest("hex");
+
+      const pendingOrder = {
+        _id: "order_db_123",
+        user: "student_1",
+        courses: ["c1"],
+        amount: 1000,
+        amountInSubunits: 100000,
+        currency: "INR",
+        razorpayOrderId: orderId,
+        status: "PENDING",
+        enrollmentCompleted: false,
+      };
+      Order.findOne
+        .mockResolvedValueOnce(pendingOrder) // lookup by razorpayOrderId
+        .mockResolvedValueOnce(null); // duplicate razorpayPaymentId check
+      Order.findOneAndUpdate.mockResolvedValueOnce({
+        ...pendingOrder,
+        status: "PAID",
+        razorpayPaymentId: paymentId,
+      });
+      Order.findByIdAndUpdate.mockResolvedValueOnce({
+        ...pendingOrder,
+        status: "PAID",
+        razorpayPaymentId: paymentId,
+        enrollmentCompleted: true,
+      });
 
       Course.updateMany.mockResolvedValue({});
       CourseProgress.create.mockResolvedValue({ _id: "prog_1" });
@@ -299,6 +342,230 @@ describe("Payment Endpoints (server/controllers/Payments.js)", () => {
       expect(res.status).toBe(400);
       expect(res.body.message).toMatch(/free enrollment/i);
       expect(instance.orders.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Order Security, Replay Protection & Order History (GAP-008)", () => {
+    const validOrderDbId = "507f1f77bcf86cd799439099";
+    const sign = (orderId, paymentId) =>
+      crypto
+        .createHmac("sha256", RAZORPAY_SECRET)
+        .update(`${orderId}|${paymentId}`)
+        .digest("hex");
+
+    it("should reject unknown orderId (404), cross-user order (403), amount/currency/course mismatch (400)", async () => {
+      const orderId = "order_sec_1";
+      const paymentId = "pay_sec_1";
+      const sig = sign(orderId, paymentId);
+
+      // 404 unknown order
+      Order.findOne.mockResolvedValueOnce(null);
+      const notFoundRes = await request(app)
+        .post("/api/v1/payment/verifyPayment")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({ razorpay_order_id: orderId, razorpay_payment_id: paymentId, razorpay_signature: sig });
+      expect(notFoundRes.status).toBe(404);
+
+      // 403 cross-user order
+      Order.findOne.mockResolvedValueOnce({
+        _id: validOrderDbId,
+        user: "other_student_999",
+        courses: ["c1"],
+        amountInSubunits: 99900,
+        currency: "INR",
+        status: "PENDING",
+      });
+      const crossUserRes = await request(app)
+        .post("/api/v1/payment/verifyPayment")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({ razorpay_order_id: orderId, razorpay_payment_id: paymentId, razorpay_signature: sig });
+      expect(crossUserRes.status).toBe(403);
+
+      // 400 wrong amount
+      Order.findOne.mockResolvedValueOnce({
+        _id: validOrderDbId,
+        user: "student_1",
+        courses: ["c1"],
+        amountInSubunits: 99900,
+        currency: "INR",
+        status: "PENDING",
+      });
+      const wrongAmtRes = await request(app)
+        .post("/api/v1/payment/verifyPayment")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({
+          razorpay_order_id: orderId,
+          razorpay_payment_id: paymentId,
+          razorpay_signature: sig,
+          amount: 100,
+        });
+      expect(wrongAmtRes.status).toBe(400);
+      expect(wrongAmtRes.body.message).toMatch(/amount mismatch/i);
+
+      // 400 wrong currency
+      Order.findOne.mockResolvedValueOnce({
+        _id: validOrderDbId,
+        user: "student_1",
+        courses: ["c1"],
+        amountInSubunits: 99900,
+        currency: "INR",
+        status: "PENDING",
+      });
+      const wrongCurrRes = await request(app)
+        .post("/api/v1/payment/verifyPayment")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({
+          razorpay_order_id: orderId,
+          razorpay_payment_id: paymentId,
+          razorpay_signature: sig,
+          currency: "USD",
+        });
+      expect(wrongCurrRes.status).toBe(400);
+      expect(wrongCurrRes.body.message).toMatch(/currency mismatch/i);
+
+      // 400 tampered extra course
+      Order.findOne.mockResolvedValueOnce({
+        _id: validOrderDbId,
+        user: "student_1",
+        courses: ["c1"],
+        amountInSubunits: 99900,
+        currency: "INR",
+        status: "PENDING",
+      });
+      const tamperedCoursesRes = await request(app)
+        .post("/api/v1/payment/verifyPayment")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({
+          razorpay_order_id: orderId,
+          razorpay_payment_id: paymentId,
+          razorpay_signature: sig,
+          courses: ["c1", "unpaid_extra_course"],
+        });
+      expect(tamperedCoursesRes.status).toBe(400);
+      expect(Course.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("should reject duplicate razorpay_payment_id across orders (409) and handle repeated verification idempotently (200)", async () => {
+      const orderId = "order_dup_1";
+      const paymentId = "pay_replayed_1";
+      const sig = sign(orderId, paymentId);
+
+      // Replay paymentId from another order -> 409
+      Order.findOne
+        .mockResolvedValueOnce({
+          _id: validOrderDbId,
+          user: "student_1",
+          courses: ["c1"],
+          amountInSubunits: 99900,
+          currency: "INR",
+          status: "PENDING",
+        })
+        .mockResolvedValueOnce({
+          _id: "507f1f77bcf86cd799439088",
+          razorpayPaymentId: paymentId,
+        });
+      const replayRes = await request(app)
+        .post("/api/v1/payment/verifyPayment")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({ razorpay_order_id: orderId, razorpay_payment_id: paymentId, razorpay_signature: sig });
+      expect(replayRes.status).toBe(409);
+      expect(Course.updateMany).not.toHaveBeenCalled();
+
+      // Repeated callback on same PAID + enrolled order -> 200 idempotent, zero re-enrollment
+      Order.findOne
+        .mockResolvedValueOnce({
+          _id: validOrderDbId,
+          user: "student_1",
+          courses: ["c1"],
+          amountInSubunits: 99900,
+          currency: "INR",
+          razorpayPaymentId: paymentId,
+          status: "PAID",
+          enrollmentCompleted: true,
+        })
+        .mockResolvedValueOnce({
+          _id: validOrderDbId,
+          razorpayPaymentId: paymentId,
+        });
+      const idempotentRes = await request(app)
+        .post("/api/v1/payment/verifyPayment")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({ razorpay_order_id: orderId, razorpay_payment_id: paymentId, razorpay_signature: sig });
+      expect(idempotentRes.status).toBe(200);
+      expect(idempotentRes.body.alreadyProcessed).toBe(true);
+      expect(Course.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("should mark PENDING order FAILED/CANCELLED and refuse downgrading PAID orders (409)", async () => {
+      Order.findOne.mockResolvedValueOnce({
+        _id: validOrderDbId,
+        user: "student_1",
+        status: "PAID",
+      });
+      const downgradeRes = await request(app)
+        .post("/api/v1/payment/markPaymentFailed")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({ razorpay_order_id: "order_paid", status: "CANCELLED" });
+      expect(downgradeRes.status).toBe(409);
+
+      Order.findOne.mockResolvedValueOnce({
+        _id: validOrderDbId,
+        user: "student_1",
+        status: "PENDING",
+      });
+      Order.findOneAndUpdate.mockResolvedValueOnce({
+        _id: validOrderDbId,
+        status: "CANCELLED",
+        failureReason: "Dismissed by user",
+      });
+      const cancelRes = await request(app)
+        .post("/api/v1/payment/markPaymentFailed")
+        .set("Authorization", `Bearer ${studentToken}`)
+        .send({ razorpay_order_id: "order_pending", status: "CANCELLED", reason: "Dismissed by user" });
+      expect(cancelRes.status).toBe(200);
+      expect(cancelRes.body.data.order.status).toBe("CANCELLED");
+    });
+
+    it("should enforce pagination, ownership (403), and ObjectId validation (400) on order history endpoints", async () => {
+      const badPageRes = await request(app)
+        .get("/api/v1/payment/orders?page=0")
+        .set("Authorization", `Bearer ${studentToken}`);
+      expect(badPageRes.status).toBe(400);
+
+      const badIdRes = await request(app)
+        .get("/api/v1/payment/orders/not-valid")
+        .set("Authorization", `Bearer ${studentToken}`);
+      expect(badIdRes.status).toBe(400);
+
+      Order.findById.mockReturnValueOnce({
+        lean: jest.fn().mockResolvedValue({
+          _id: validOrderDbId,
+          user: "different_student_id",
+          status: "PAID",
+        }),
+      });
+      const crossDetailsRes = await request(app)
+        .get(`/api/v1/payment/orders/${validOrderDbId}`)
+        .set("Authorization", `Bearer ${studentToken}`);
+      expect(crossDetailsRes.status).toBe(403);
+
+      Order.find.mockReturnValueOnce({
+        sort: jest.fn().mockReturnValue({
+          skip: jest.fn().mockReturnValue({
+            limit: jest.fn().mockReturnValue({
+              lean: jest.fn().mockResolvedValue([{ _id: validOrderDbId, status: "PAID", amount: 999 }]),
+            }),
+          }),
+        }),
+      });
+      Order.countDocuments.mockResolvedValueOnce(1);
+
+      const listRes = await request(app)
+        .get("/api/v1/payment/orders?page=1&limit=10")
+        .set("Authorization", `Bearer ${studentToken}`);
+      expect(listRes.status).toBe(200);
+      expect(listRes.body.data.orders).toHaveLength(1);
+      expect(listRes.body.data.pagination.totalOrders).toBe(1);
     });
   });
 });

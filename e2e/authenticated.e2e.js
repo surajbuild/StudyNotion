@@ -1519,6 +1519,309 @@ async function runAuthenticatedE2E() {
         }
 
         // =========================================================================
+        // E2E-30 (GAP-008): Database-Backed Cart (Refresh, Logout/Login, Second Browser, Merge & Remove)
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                await uiLogin(page, FIXTURES.studentEmail, TEST_PASSWORD);
+
+                // Add Data Science course to persistent DB cart
+                await page.goto(`${FRONTEND_URL}/#/courses/${seeded.courses.dataScienceCourseId}`, {
+                    waitUntil: "networkidle",
+                });
+                const [addCartResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/cart/add"), { timeout: 15000 }),
+                    page.locator('button:has-text("Add to Cart"):visible').first().click(),
+                ]);
+
+                // Verify cart & hard refresh persistence
+                await page.goto(`${FRONTEND_URL}/#/dashboard/cart`, { waitUntil: "networkidle" });
+                await page.waitForSelector("text=Isolated Data Science Essentials", { timeout: 15000 });
+                await page.reload({ waitUntil: "networkidle" });
+                await page.waitForSelector("text=Isolated Data Science Essentials", { timeout: 15000 });
+                const persistedAfterRefresh = (await page.locator("body").innerText()).includes("1299");
+
+                // Logout & re-login -> DB cart must survive logout
+                await uiLogout(page);
+                await uiLogin(page, FIXTURES.studentEmail, TEST_PASSWORD);
+                await page.goto(`${FRONTEND_URL}/#/dashboard/cart`, { waitUntil: "networkidle" });
+                await page.waitForSelector("text=Isolated Data Science Essentials", { timeout: 15000 });
+                const survivedLogout = (await page.locator("body").innerText()).includes(
+                    "Isolated Data Science Essentials"
+                );
+
+                // Multi-browser persistence: brand new empty browser context logs in -> loads DB cart
+                const { ctx: ctx2, page: page2 } = await newTrackedContext();
+                let secondBrowserOk = false;
+                try {
+                    await uiLogin(page2, FIXTURES.studentEmail, TEST_PASSWORD);
+                    await page2.goto(`${FRONTEND_URL}/#/dashboard/cart`, { waitUntil: "networkidle" });
+                    await page2.waitForSelector("text=Isolated Data Science Essentials", {
+                        timeout: 15000,
+                    });
+                    secondBrowserOk = (await page2.locator("body").innerText()).includes("1299");
+                } finally {
+                    await ctx2.close();
+                }
+
+                // Remove from DB cart & verify empty across reload
+                const [removeResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/cart/remove"), { timeout: 15000 }),
+                    page.getByRole("button", { name: /Remove/i }).first().click(),
+                ]);
+                await page.waitForSelector("text=Your Cart is Empty", { timeout: 10000 });
+
+                // Anonymous local cart merge on login -> pre-seed localStorage before login
+                await uiLogout(page);
+                await page.evaluate((dsId) => {
+                    localStorage.setItem("cart", JSON.stringify([{ _id: dsId, price: 1 }]));
+                }, seeded.courses.dataScienceCourseId);
+                await uiLogin(page, FIXTURES.studentEmail, TEST_PASSWORD);
+                await page.goto(`${FRONTEND_URL}/#/dashboard/cart`, { waitUntil: "networkidle" });
+                await page.waitForSelector("text=Isolated Data Science Essentials", { timeout: 15000 });
+                const mergedWithAuthoritativePrice = (await page.locator("body").innerText()).includes(
+                    "1299"
+                );
+
+                record(
+                    "E2E-30",
+                    "GAP-008 Persistent DB Cart (Refresh, Logout/Login, Multi-Browser, Remove & Merge)",
+                    addCartResp.status() === 200 &&
+                        persistedAfterRefresh &&
+                        survivedLogout &&
+                        secondBrowserOk &&
+                        removeResp.status() === 200 &&
+                        mergedWithAuthoritativePrice,
+                    `add=${addCartResp.status()}, refresh=${persistedAfterRefresh}, logout=${survivedLogout}, secondBrowser=${secondBrowserOk}, remove=${removeResp.status()}, mergeAuthoritative=${mergedWithAuthoritativePrice}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-31 (GAP-008): Cancelled Payment Recording, Order History, Details Modal & Mobile 375px
+        // =========================================================================
+        let qaStudentPaidOrderId = null;
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                // Mock Razorpay to trigger modal.ondismiss (user cancelled payment)
+                await page.route("https://checkout.razorpay.com/v1/checkout.js", async (route) => {
+                    await route.fulfill({
+                        status: 200,
+                        contentType: "application/javascript",
+                        body: `
+                            window.Razorpay = function(options) {
+                                this.on = function() {};
+                                this.open = function() {
+                                    if (options.modal && typeof options.modal.ondismiss === "function") {
+                                        options.modal.ondismiss();
+                                    }
+                                };
+                            };
+                        `,
+                    });
+                });
+
+                await uiLogin(page, FIXTURES.studentEmail, TEST_PASSWORD);
+                await page.goto(`${FRONTEND_URL}/#/dashboard/cart`, { waitUntil: "networkidle" });
+                await page.waitForSelector("text=Isolated Data Science Essentials", { timeout: 15000 });
+
+                const [cancelResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/payment/markPaymentFailed"), {
+                        timeout: 15000,
+                    }),
+                    page.getByRole("button", { name: /Buy Now/i }).click(),
+                ]);
+                await page.waitForTimeout(400);
+                // Cart still intact after cancellation
+                const cartStillHasCourse = (await page.locator("body").innerText()).includes(
+                    "Isolated Data Science Essentials"
+                );
+
+                // Navigate to Order History via sidebar/direct route
+                await page.goto(`${FRONTEND_URL}/#/dashboard/order-history`, {
+                    waitUntil: "networkidle",
+                });
+                await page
+                    .locator('button:has-text("View Details"):visible')
+                    .first()
+                    .waitFor({ state: "visible", timeout: 15000 });
+                const histText = await page.locator("body").innerText();
+                const hasPaidAndCancelled =
+                    histText.includes("PAID") &&
+                    histText.includes("CANCELLED") &&
+                    histText.includes("Isolated DevOps Bootcamp") &&
+                    histText.includes("Isolated Free JavaScript Primer");
+
+                // Open Order Details modal on first PAID order
+                await page.selectOption("#order-status-filter", "PAID");
+                await page.waitForTimeout(500);
+                const [detailResp] = await Promise.all([
+                    page.waitForResponse((r) => /\/payment\/orders\/[a-f0-9]{24}$/i.test(r.url()), {
+                        timeout: 15000,
+                    }),
+                    page.locator('button:has-text("View Details"):visible').first().click(),
+                ]);
+                const detailJson = await detailResp.json();
+                qaStudentPaidOrderId = detailJson?.data?.order?._id || null;
+                await page.waitForSelector('div[role="dialog"]', { timeout: 10000 });
+                const modalText = await page.locator('div[role="dialog"]').innerText();
+                const modalOk =
+                    modalText.includes("Order Details") &&
+                    modalText.includes("Receipt Reference") &&
+                    modalText.includes("PAID");
+                await page.locator('button[aria-label="Close order details"]').click();
+
+                // Mobile 375px layout check on Order History
+                await page.setViewportSize({ width: 375, height: 812 });
+                await page.waitForTimeout(300);
+                const orderMobileOverflow = await page.evaluate(
+                    () => document.documentElement.scrollWidth > window.innerWidth
+                );
+
+                record(
+                    "E2E-31",
+                    "GAP-008 Payment Cancellation, Order History, Details Modal & Mobile 375px",
+                    cancelResp.status() === 200 &&
+                        cartStillHasCourse &&
+                        hasPaidAndCancelled &&
+                        Boolean(qaStudentPaidOrderId) &&
+                        modalOk &&
+                        !orderMobileOverflow,
+                    `cancel=${cancelResp.status()}, cartIntact=${cartStillHasCourse}, paidAndCancelled=${hasPaidAndCancelled}, modalOk=${modalOk}, mobileOverflow=${orderMobileOverflow}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-32 (GAP-008): Mixed Free + Paid Cart Checkout & Cross-User Order Isolation
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                await page.exposeFunction("__computeMixedRzpSig", (orderId, paymentId) => {
+                    return crypto
+                        .createHmac("sha256", TEST_RAZORPAY_SECRET)
+                        .update(`${orderId}|${paymentId}`)
+                        .digest("hex");
+                });
+
+                await page.route("https://checkout.razorpay.com/v1/checkout.js", async (route) => {
+                    await route.fulfill({
+                        status: 200,
+                        contentType: "application/javascript",
+                        body: `
+                            window.__mixedRzpOpts = null;
+                            window.Razorpay = function(options) {
+                                window.__mixedRzpOpts = {
+                                    amount: options.amount,
+                                    currency: options.currency,
+                                    order_id: options.order_id,
+                                };
+                                this.on = function() {};
+                                this.open = async function() {
+                                    const paymentId = "pay_mixed_e2e_" + Date.now();
+                                    const signature = await window.__computeMixedRzpSig(options.order_id, paymentId);
+                                    options.handler({
+                                        razorpay_order_id: options.order_id,
+                                        razorpay_payment_id: paymentId,
+                                        razorpay_signature: signature,
+                                    });
+                                };
+                            };
+                        `,
+                    });
+                });
+
+                // Login as Student 2 (created in E2E-16)
+                await uiLogin(page, "e2e16.student@isolated.test", TEST_PASSWORD);
+
+                // Empty Order History + Cross-user 403 check on QA Student's order
+                await page.goto(`${FRONTEND_URL}/#/dashboard/order-history`, {
+                    waitUntil: "networkidle",
+                });
+                await page.waitForSelector("text=No orders yet", { timeout: 15000 });
+                const emptyHistoryOk = (await page.locator("body").innerText()).includes(
+                    "No orders yet"
+                );
+
+                const crossOrderStatus = await page.evaluate(
+                    async ({ apiBase, targetOrderId }) => {
+                        const tok = localStorage.getItem("token");
+                        const res = await fetch(`${apiBase}/payment/orders/${targetOrderId}`, {
+                            headers: { Authorization: `Bearer ${tok}` },
+                        });
+                        return res.status;
+                    },
+                    { apiBase: API_BASE_URL, targetOrderId: qaStudentPaidOrderId }
+                );
+
+                // Add both Free (₹0) and Paid (₹1299) courses to Student 2's persistent cart
+                await page.evaluate(
+                    async ({ apiBase, freeId, paidId }) => {
+                        const tok = localStorage.getItem("token");
+                        for (const courseId of [freeId, paidId]) {
+                            await fetch(`${apiBase}/cart/add`, {
+                                method: "POST",
+                                headers: {
+                                    "Content-Type": "application/json",
+                                    Authorization: `Bearer ${tok}`,
+                                },
+                                body: JSON.stringify({ courseId }),
+                            });
+                        }
+                    },
+                    {
+                        apiBase: API_BASE_URL,
+                        freeId: seeded.courses.freeCourseId,
+                        paidId: seeded.courses.dataScienceCourseId,
+                    }
+                );
+
+                await page.goto(`${FRONTEND_URL}/#/dashboard/cart`, { waitUntil: "networkidle" });
+                await page.waitForSelector("text=Isolated Data Science Essentials", { timeout: 15000 });
+                const mixedCartText = await page.locator("body").innerText();
+                const mixedNoticeOk =
+                    mixedCartText.includes("only charged for paid courses") &&
+                    mixedCartText.includes("1299");
+
+                // Complete mixed checkout -> charges ONLY ₹1299 (129900 paise), enrolls BOTH courses
+                const [verifyResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/payment/verifyPayment"), {
+                        timeout: 20000,
+                    }),
+                    page.getByRole("button", { name: /Buy Now/i }).click(),
+                ]);
+                await waitForHash(page, "/dashboard/enrolled-courses");
+                await page.waitForSelector("text=Isolated Data Science Essentials", { timeout: 15000 });
+                const enrolledText = await page.locator("body").innerText();
+                const bothEnrolled =
+                    enrolledText.includes("Isolated Data Science Essentials") &&
+                    enrolledText.includes("Isolated Free JavaScript Primer");
+                const rzpOpts = await page.evaluate(() => window.__mixedRzpOpts);
+
+                record(
+                    "E2E-32",
+                    "GAP-008 Mixed Free+Paid Cart Checkout & Cross-User Order Isolation",
+                    emptyHistoryOk &&
+                        crossOrderStatus === 403 &&
+                        mixedNoticeOk &&
+                        verifyResp.status() === 200 &&
+                        rzpOpts?.amount === "129900" &&
+                        bothEnrolled,
+                    `emptyHist=${emptyHistoryOk}, cross403=${crossOrderStatus}, mixedNotice=${mixedNoticeOk}, verify=${verifyResp.status()}, rzpAmount=${rzpOpts?.amount}, bothEnrolled=${bothEnrolled}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
         // Regression Checks against Isolated Environment (Footer, 404, 401 Interceptor, Mobile)
         // =========================================================================
         {

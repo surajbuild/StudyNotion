@@ -30,6 +30,7 @@ const SubSection = require("../models/SubSection");
 const CourseProgress = require("../models/CourseProgress");
 const RatingAndReview = require("../models/RatingAndReview");
 const OTP = require("../models/OTP");
+const Order = require("../models/Order");
 const mailSender = require("../utils/mailSender");
 
 const app = require("../index");
@@ -1099,6 +1100,406 @@ describe("Isolated Real-MongoDB Full-Stack Integration Suite (GAP-009)", () => {
                 .send({ categoryId: emptyCatId });
             expect(deleteEmptyRes.status).toBe(200);
             expect(await Category.findById(emptyCatId)).toBeNull();
+        });
+    });
+
+    describe("9. Database-Backed Cart, Order Security, Replay Protection & Order History (GAP-008 Real MongoDB)", () => {
+        test("BE-DB-10: persists cart in MongoDB, merges on login, updates on price changes, and prunes unavailable courses", async () => {
+            // Create a fresh student + 2 published courses + 1 draft course for clean cart lifecycle verification
+            const cartProfile = await Profile.create({});
+            const cartStudent = await User.create({
+                firstName: "Cart",
+                lastName: "Tester",
+                email: "cart.tester@isolated.test",
+                password: await require("bcrypt").hash(fixturePassword, 10),
+                accountType: "Student",
+                image: "https://api.dicebear.com/5.x/initials/svg?seed=Cart%20Tester",
+                additionalDetails: cartProfile._id,
+            });
+            const cartToken = (await loginAs(cartStudent.email)).token;
+
+            const courseA = await Course.create({
+                courseName: "Cart Persistence Course A",
+                courseDescription: "Paid course A",
+                instructor: seeded.users.instructorId,
+                whatYouWillLearn: "Cart persistence",
+                price: 800,
+                tag: ["Cart"],
+                category: seeded.categories.webDevId,
+                status: "Published",
+            });
+            const courseB = await Course.create({
+                courseName: "Cart Persistence Course B",
+                courseDescription: "Paid course B",
+                instructor: seeded.users.instructorId,
+                whatYouWillLearn: "Cart merge",
+                price: 600,
+                tag: ["Cart"],
+                category: seeded.categories.webDevId,
+                status: "Published",
+            });
+            const draftCourse = await Course.create({
+                courseName: "Cart Draft Course",
+                courseDescription: "Unpublished",
+                instructor: seeded.users.instructorId,
+                whatYouWillLearn: "Hidden",
+                price: 500,
+                tag: ["Draft"],
+                category: seeded.categories.webDevId,
+                status: "Draft",
+            });
+
+            // 1. Add published course A -> persisted in MongoDB
+            const addRes = await request(app)
+                .post("/api/v1/cart/add")
+                .set("Authorization", `Bearer ${cartToken}`)
+                .send({ courseId: courseA._id.toString() });
+            expect(addRes.status).toBe(200);
+            expect(addRes.body.data.total).toBe(800);
+            expect(addRes.body.data.totalItems).toBe(1);
+
+            // 2. Duplicate add rejected (409) & Draft add rejected (400)
+            const dupAdd = await request(app)
+                .post("/api/v1/cart/add")
+                .set("Authorization", `Bearer ${cartToken}`)
+                .send({ courseId: courseA._id.toString() });
+            expect(dupAdd.status).toBe(409);
+
+            const draftAdd = await request(app)
+                .post("/api/v1/cart/add")
+                .set("Authorization", `Bearer ${cartToken}`)
+                .send({ courseId: draftCourse._id.toString() });
+            expect(draftAdd.status).toBe(400);
+
+            // 3. Sync/merge anonymous local cart [courseA (dup), courseB (new), draftCourse (invalid)]
+            const syncRes = await request(app)
+                .post("/api/v1/cart/sync")
+                .set("Authorization", `Bearer ${cartToken}`)
+                .send({
+                    courseIds: [
+                        courseA._id.toString(),
+                        courseB._id.toString(),
+                        draftCourse._id.toString(),
+                        "bad-id",
+                    ],
+                });
+            expect(syncRes.status).toBe(200);
+            expect(syncRes.body.data.mergedCount).toBe(1);
+            expect(syncRes.body.data.totalItems).toBe(2);
+            expect(syncRes.body.data.total).toBe(1400);
+
+            // 4. Authoritative price update in MongoDB immediately reflected on GET /cart
+            await Course.findByIdAndUpdate(courseA._id, { $set: { price: 1000 } });
+            const afterPriceUpdate = await request(app)
+                .get("/api/v1/cart")
+                .set("Authorization", `Bearer ${cartToken}`);
+            expect(afterPriceUpdate.status).toBe(200);
+            expect(afterPriceUpdate.body.data.total).toBe(1600);
+
+            // 5. Unpublishing courseB causes GET /cart to self-heal and prune unavailable course
+            await Course.findByIdAndUpdate(courseB._id, { $set: { status: "Draft" } });
+            const afterUnpublish = await request(app)
+                .get("/api/v1/cart")
+                .set("Authorization", `Bearer ${cartToken}`);
+            expect(afterUnpublish.status).toBe(200);
+            expect(afterUnpublish.body.data.totalItems).toBe(1);
+            expect(afterUnpublish.body.data.removedUnavailableCount).toBe(1);
+            expect(afterUnpublish.body.data.total).toBe(1000);
+
+            // 6. Remove courseA -> cart empty in MongoDB
+            const removeRes = await request(app)
+                .delete(`/api/v1/cart/remove/${courseA._id.toString()}`)
+                .set("Authorization", `Bearer ${cartToken}`);
+            expect(removeRes.status).toBe(200);
+            expect(removeRes.body.data.totalItems).toBe(0);
+            expect(removeRes.body.data.total).toBe(0);
+        });
+
+        test("BE-DB-11: enforces Order unique indexes, mixed free+paid checkout, replay protection, interrupted recovery & cross-user isolation", async () => {
+            // Verify unique partial indexes exist on Order collection in real MongoDB
+            await Order.init();
+            const orderIndexes = await Order.collection.indexes();
+            const orderIndexNames = orderIndexes.map((idx) => idx.name);
+            expect(orderIndexNames).toContain("unique_razorpay_order_id");
+            expect(orderIndexNames).toContain("unique_razorpay_payment_id");
+
+            const buyerProfile = await Profile.create({});
+            const buyer = await User.create({
+                firstName: "Order",
+                lastName: "Buyer",
+                email: "order.buyer@isolated.test",
+                password: await require("bcrypt").hash(fixturePassword, 10),
+                accountType: "Student",
+                image: "https://api.dicebear.com/5.x/initials/svg?seed=Order%20Buyer",
+                additionalDetails: buyerProfile._id,
+            });
+            const buyerToken = (await loginAs(buyer.email)).token;
+
+            const otherProfile = await Profile.create({});
+            const otherStudent = await User.create({
+                firstName: "Other",
+                lastName: "Student",
+                email: "order.other@isolated.test",
+                password: await require("bcrypt").hash(fixturePassword, 10),
+                accountType: "Student",
+                image: "https://api.dicebear.com/5.x/initials/svg?seed=Other%20Student",
+                additionalDetails: otherProfile._id,
+            });
+            const otherToken = (await loginAs(otherStudent.email)).token;
+
+            const freeCourse = await Course.create({
+                courseName: "Mixed Cart Free Course",
+                courseDescription: "Free component",
+                instructor: seeded.users.instructorId,
+                whatYouWillLearn: "Free basics",
+                price: 0,
+                tag: ["Free"],
+                category: seeded.categories.webDevId,
+                status: "Published",
+            });
+            const paidCourse = await Course.create({
+                courseName: "Mixed Cart Paid Course",
+                courseDescription: "Paid component",
+                instructor: seeded.users.instructorId,
+                whatYouWillLearn: "Paid mastery",
+                price: 1250,
+                tag: ["Paid"],
+                category: seeded.categories.webDevId,
+                status: "Published",
+            });
+            const secondPaidCourse = await Course.create({
+                courseName: "Second Paid Course",
+                courseDescription: "For replay and recovery tests",
+                instructor: seeded.users.instructorId,
+                whatYouWillLearn: "Idempotency",
+                price: 750,
+                tag: ["Paid"],
+                category: seeded.categories.devopsId,
+                status: "Published",
+            });
+
+            // Put mixed Free + Paid courses in buyer's persistent MongoDB cart
+            await request(app)
+                .post("/api/v1/cart/add")
+                .set("Authorization", `Bearer ${buyerToken}`)
+                .send({ courseId: freeCourse._id.toString() });
+            await request(app)
+                .post("/api/v1/cart/add")
+                .set("Authorization", `Bearer ${buyerToken}`)
+                .send({ courseId: paidCourse._id.toString() });
+
+            // 1. Capture mixed Free + Paid order -> charges ONLY ₹1250 (125000 paise), creates PENDING Order
+            const captureRes = await request(app)
+                .post("/api/v1/payment/capturePayment")
+                .set("Authorization", `Bearer ${buyerToken}`)
+                .send({ courses: [freeCourse._id.toString(), paidCourse._id.toString()] });
+            expect(captureRes.status).toBe(200);
+            expect(captureRes.body.message.amount).toBe(125000);
+            const rzpOrderId = captureRes.body.message.id;
+            const dbOrderId = captureRes.body.data.orderId;
+
+            const pendingOrder = await Order.findById(dbOrderId).lean();
+            expect(pendingOrder.status).toBe("PENDING");
+            expect(pendingOrder.amount).toBe(1250);
+            expect(pendingOrder.courseSnapshots).toHaveLength(2);
+
+            const makeSig = (oid, pid) =>
+                crypto
+                    .createHmac("sha256", process.env.RAZORPAY_SECRET)
+                    .update(`${oid}|${pid}`)
+                    .digest("hex");
+
+            // 2. Reject invalid signature, wrong amount, wrong currency & cross-user verification -> 0 enrollment
+            const payId1 = `pay_realdb_mixed_${Date.now()}`;
+            const validSig1 = makeSig(rzpOrderId, payId1);
+
+            expect(
+                (
+                    await request(app)
+                        .post("/api/v1/payment/verifyPayment")
+                        .set("Authorization", `Bearer ${buyerToken}`)
+                        .send({
+                            razorpay_order_id: rzpOrderId,
+                            razorpay_payment_id: payId1,
+                            razorpay_signature: "bad_sig",
+                        })
+                ).status
+            ).toBe(400);
+
+            expect(
+                (
+                    await request(app)
+                        .post("/api/v1/payment/verifyPayment")
+                        .set("Authorization", `Bearer ${otherToken}`)
+                        .send({
+                            razorpay_order_id: rzpOrderId,
+                            razorpay_payment_id: payId1,
+                            razorpay_signature: validSig1,
+                        })
+                ).status
+            ).toBe(403);
+
+            expect(
+                (
+                    await request(app)
+                        .post("/api/v1/payment/verifyPayment")
+                        .set("Authorization", `Bearer ${buyerToken}`)
+                        .send({
+                            razorpay_order_id: rzpOrderId,
+                            razorpay_payment_id: payId1,
+                            razorpay_signature: validSig1,
+                            amount: 100,
+                        })
+                ).status
+            ).toBe(400);
+
+            // Confirm buyer is STILL NOT enrolled after failed attempts
+            const buyerBeforeVerify = await User.findById(buyer._id).lean();
+            expect(buyerBeforeVerify.courses).toHaveLength(0);
+
+            // 3. Valid verification -> marks PAID, enrolls in BOTH free & paid courses, removes both from DB cart
+            const verifyRes = await request(app)
+                .post("/api/v1/payment/verifyPayment")
+                .set("Authorization", `Bearer ${buyerToken}`)
+                .send({
+                    razorpay_order_id: rzpOrderId,
+                    razorpay_payment_id: payId1,
+                    razorpay_signature: validSig1,
+                    amount: 125000,
+                    currency: "INR",
+                });
+            expect(verifyRes.status).toBe(200);
+            expect(verifyRes.body.data.order.status).toBe("PAID");
+            expect(verifyRes.body.data.order.enrollmentCompleted).toBe(true);
+
+            const buyerAfterVerify = await User.findById(buyer._id).lean();
+            expect(buyerAfterVerify.courses.map(String)).toEqual(
+                expect.arrayContaining([freeCourse._id.toString(), paidCourse._id.toString()])
+            );
+            expect(buyerAfterVerify.cart).toHaveLength(0);
+
+            // 4. Repeated verification idempotency -> 200 alreadyProcessed, zero duplicate CourseProgress docs
+            const repeatVerifyRes = await request(app)
+                .post("/api/v1/payment/verifyPayment")
+                .set("Authorization", `Bearer ${buyerToken}`)
+                .send({
+                    razorpay_order_id: rzpOrderId,
+                    razorpay_payment_id: payId1,
+                    razorpay_signature: validSig1,
+                });
+            expect(repeatVerifyRes.status).toBe(200);
+            expect(repeatVerifyRes.body.alreadyProcessed).toBe(true);
+            const progCount = await CourseProgress.countDocuments({
+                userId: buyer._id,
+                courseID: paidCourse._id,
+            });
+            expect(progCount).toBe(1);
+
+            // 5. Duplicate razorpay_payment_id replay on a SECOND order -> rejected with 409!
+            const cap2 = await request(app)
+                .post("/api/v1/payment/capturePayment")
+                .set("Authorization", `Bearer ${buyerToken}`)
+                .send({ courses: [secondPaidCourse._id.toString()] });
+            expect(cap2.status).toBe(200);
+            const rzpOrderId2 = cap2.body.message.id;
+            const replaySig = makeSig(rzpOrderId2, payId1);
+
+            const replayRes = await request(app)
+                .post("/api/v1/payment/verifyPayment")
+                .set("Authorization", `Bearer ${buyerToken}`)
+                .send({
+                    razorpay_order_id: rzpOrderId2,
+                    razorpay_payment_id: payId1,
+                    razorpay_signature: replaySig,
+                });
+            expect(replayRes.status).toBe(409);
+
+            // Mark second order CANCELLED -> does not enroll
+            const cancelRes = await request(app)
+                .post("/api/v1/payment/markPaymentFailed")
+                .set("Authorization", `Bearer ${buyerToken}`)
+                .send({
+                    razorpay_order_id: rzpOrderId2,
+                    status: "CANCELLED",
+                    reason: "User closed checkout",
+                });
+            expect(cancelRes.status).toBe(200);
+            expect(cancelRes.body.data.order.status).toBe("CANCELLED");
+
+            // 6. Interrupted request recovery: PAID order with enrollmentCompleted=false completes enrollment safely on retry
+            const recoveredOrderId = `order_recover_${Date.now()}`;
+            const recoveredPayId = `pay_recover_${Date.now()}`;
+            await Order.create({
+                user: buyer._id,
+                courses: [secondPaidCourse._id],
+                courseSnapshots: [
+                    {
+                        course: secondPaidCourse._id,
+                        courseName: secondPaidCourse.courseName,
+                        priceAtPurchase: 750,
+                    },
+                ],
+                amount: 750,
+                amountInSubunits: 75000,
+                currency: "INR",
+                receipt: `rcpt_recover_${Date.now()}`,
+                razorpayOrderId: recoveredOrderId,
+                razorpayPaymentId: recoveredPayId,
+                status: "PAID",
+                paidAt: new Date(),
+                enrollmentCompleted: false,
+            });
+
+            const recoverRes = await request(app)
+                .post("/api/v1/payment/verifyPayment")
+                .set("Authorization", `Bearer ${buyerToken}`)
+                .send({
+                    razorpay_order_id: recoveredOrderId,
+                    razorpay_payment_id: recoveredPayId,
+                    razorpay_signature: makeSig(recoveredOrderId, recoveredPayId),
+                });
+            expect(recoverRes.status).toBe(200);
+            expect(recoverRes.body.data.order.enrollmentCompleted).toBe(true);
+            const buyerAfterRecovery = await User.findById(buyer._id).lean();
+            expect(buyerAfterRecovery.courses.map(String)).toContain(
+                secondPaidCourse._id.toString()
+            );
+
+            // 7. Order History pagination, snapshot preservation after course rename, and strict cross-user 403
+            await Course.findByIdAndUpdate(paidCourse._id, {
+                $set: { courseName: "Renamed Later Course", price: 2999 },
+            });
+
+            const histRes = await request(app)
+                .get("/api/v1/payment/orders?page=1&limit=2")
+                .set("Authorization", `Bearer ${buyerToken}`);
+            expect(histRes.status).toBe(200);
+            expect(histRes.body.data.orders).toHaveLength(2);
+            expect(histRes.body.data.pagination.totalOrders).toBe(3);
+            expect(histRes.body.data.pagination.totalPages).toBe(2);
+
+            const detailRes = await request(app)
+                .get(`/api/v1/payment/orders/${dbOrderId}`)
+                .set("Authorization", `Bearer ${buyerToken}`);
+            expect(detailRes.status).toBe(200);
+            // Historical snapshot retains original title & purchase price despite later course edit!
+            expect(
+                detailRes.body.data.order.courseSnapshots.some(
+                    (s) => s.courseName === "Mixed Cart Paid Course" && s.priceAtPurchase === 1250
+                )
+            ).toBe(true);
+
+            // Cross-user isolation: otherStudent gets 403 on buyer's order and 0 orders on own history
+            const crossDetailRes = await request(app)
+                .get(`/api/v1/payment/orders/${dbOrderId}`)
+                .set("Authorization", `Bearer ${otherToken}`);
+            expect(crossDetailRes.status).toBe(403);
+
+            const otherHistRes = await request(app)
+                .get("/api/v1/payment/orders")
+                .set("Authorization", `Bearer ${otherToken}`);
+            expect(otherHistRes.status).toBe(200);
+            expect(otherHistRes.body.data.orders).toHaveLength(0);
         });
     });
 });
