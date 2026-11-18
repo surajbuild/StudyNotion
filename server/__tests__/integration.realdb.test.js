@@ -1502,4 +1502,219 @@ describe("Isolated Real-MongoDB Full-Stack Integration Suite (GAP-009)", () => {
             expect(otherHistRes.body.data.orders).toHaveLength(0);
         });
     });
+
+    describe("10. Consistent Password Policy Enforcement (GAP-007 Real MongoDB)", () => {
+        test("BE-DB-12: enforces 8-char minimum across signup, changePassword, and resetPassword while preserving legacy login and single-use reset tokens", async () => {
+            const bcrypt = require("bcrypt");
+
+            // 1. Direct API Signup bypass attempts (Student & Instructor) with 7-char password -> 400
+            for (const role of ["Student", "Instructor"]) {
+                const email = `policy.${role.toLowerCase()}@isolated.test`;
+                const otpRes = await request(app).post("/api/v1/auth/sendotp").send({ email });
+                expect(otpRes.status).toBe(200);
+                const otpDoc = await OTP.findOne({ email }).sort({ createdAt: -1 }).lean();
+                expect(otpDoc?.otp).toHaveLength(6);
+
+                const shortSignup = await request(app).post("/api/v1/auth/signup").send({
+                    firstName: "Policy",
+                    lastName: role,
+                    email,
+                    password: "short7!",
+                    confirmPassword: "short7!",
+                    accountType: role,
+                    otp: otpDoc.otp,
+                });
+                expect(shortSignup.status).toBe(400);
+                expect(shortSignup.body.message).toMatch(/at least 8 characters/i);
+                expect(await User.findOne({ email })).toBeNull();
+
+                // Exact 8-char password succeeds
+                const validSignup = await request(app).post("/api/v1/auth/signup").send({
+                    firstName: "Policy",
+                    lastName: role,
+                    email,
+                    password: "Valid8Ch",
+                    confirmPassword: "Valid8Ch",
+                    accountType: role,
+                    otp: otpDoc.otp,
+                });
+                expect(validSignup.status).toBe(200);
+                expect(validSignup.body.success).toBe(true);
+
+                // Login succeeds with newly created 8-char password
+                const loginCheck = await request(app)
+                    .post("/api/v1/auth/login")
+                    .send({ email, password: "Valid8Ch" });
+                expect(loginCheck.status).toBe(200);
+            }
+
+            // 2. Legacy user with historical 5-char password MUST NOT be locked out of login
+            const legacyEmail = "legacy.shortpass@isolated.test";
+            const legacyProfile = await Profile.create({});
+            await User.create({
+                firstName: "Legacy",
+                lastName: "Account",
+                email: legacyEmail,
+                password: await bcrypt.hash("old5!", 10),
+                accountType: "Student",
+                image: "https://api.dicebear.com/5.x/initials/svg?seed=Legacy%20Account",
+                additionalDetails: legacyProfile._id,
+            });
+
+            const legacyLogin = await request(app)
+                .post("/api/v1/auth/login")
+                .send({ email: legacyEmail, password: "old5!" });
+            expect(legacyLogin.status).toBe(200);
+            const legacyToken = legacyLogin.body.token;
+
+            // Change password rejects 7-char new password (400), wrong old password (401), mismatch (400)
+            const shortChange = await request(app)
+                .post("/api/v1/auth/changepassword")
+                .set("Authorization", `Bearer ${legacyToken}`)
+                .send({
+                    oldPassword: "old5!",
+                    newPassword: "1234567",
+                    confirmNewPassword: "1234567",
+                });
+            expect(shortChange.status).toBe(400);
+            expect(shortChange.body.message).toMatch(/at least 8 characters/i);
+
+            const wrongOldChange = await request(app)
+                .post("/api/v1/auth/changepassword")
+                .set("Authorization", `Bearer ${legacyToken}`)
+                .send({
+                    oldPassword: "wrong",
+                    newPassword: "Upgraded8!",
+                    confirmNewPassword: "Upgraded8!",
+                });
+            expect(wrongOldChange.status).toBe(401);
+
+            const mismatchChange = await request(app)
+                .post("/api/v1/auth/changepassword")
+                .set("Authorization", `Bearer ${legacyToken}`)
+                .send({
+                    oldPassword: "old5!",
+                    newPassword: "Upgraded8!",
+                    confirmNewPassword: "Different8!",
+                });
+            expect(mismatchChange.status).toBe(400);
+
+            // Legacy user upgrades 5-char password -> 8-char password (200)
+            const okChange = await request(app)
+                .post("/api/v1/auth/changepassword")
+                .set("Authorization", `Bearer ${legacyToken}`)
+                .send({
+                    oldPassword: "old5!",
+                    newPassword: "Upgraded8",
+                    confirmNewPassword: "Upgraded8",
+                });
+            expect(okChange.status).toBe(200);
+
+            // Old password no longer works; new password works
+            expect(
+                (
+                    await request(app)
+                        .post("/api/v1/auth/login")
+                        .send({ email: legacyEmail, password: "old5!" })
+                ).status
+            ).toBe(401);
+            expect(
+                (
+                    await request(app)
+                        .post("/api/v1/auth/login")
+                        .send({ email: legacyEmail, password: "Upgraded8" })
+                ).status
+            ).toBe(200);
+
+            // 3. Forgot Password -> Reset Password policy, invalid/null/expired token & single-use invalidation
+            const tokenReq = await request(app)
+                .post("/api/v1/auth/reset-password-token")
+                .send({ email: legacyEmail });
+            expect(tokenReq.status).toBe(200);
+
+            const userWithToken = await User.findOne({ email: legacyEmail }).lean();
+            const realResetToken = userWithToken.token;
+            expect(typeof realResetToken).toBe("string");
+            expect(realResetToken.length).toBeGreaterThan(10);
+
+            // Reject null/empty token (400), 7-char password (400), mismatch (401), invalid token (401)
+            expect(
+                (
+                    await request(app).post("/api/v1/auth/reset-password").send({
+                        password: "ResetValid8",
+                        confirmPassword: "ResetValid8",
+                        token: null,
+                    })
+                ).status
+            ).toBe(400);
+
+            const shortReset = await request(app).post("/api/v1/auth/reset-password").send({
+                password: "short7!",
+                confirmPassword: "short7!",
+                token: realResetToken,
+            });
+            expect(shortReset.status).toBe(400);
+            expect(shortReset.body.message).toMatch(/at least 8 characters/i);
+
+            expect(
+                (
+                    await request(app).post("/api/v1/auth/reset-password").send({
+                        password: "ResetValid8",
+                        confirmPassword: "Mismatch88",
+                        token: realResetToken,
+                    })
+                ).status
+            ).toBe(401);
+
+            expect(
+                (
+                    await request(app).post("/api/v1/auth/reset-password").send({
+                        password: "ResetValid8",
+                        confirmPassword: "ResetValid8",
+                        token: "invalid-token-xyz",
+                    })
+                ).status
+            ).toBe(401);
+
+            // Force expiry -> rejected (401), then restore expiry and complete valid reset (200)
+            await User.updateOne(
+                { email: legacyEmail },
+                { $set: { resetPasswordExpires: new Date(Date.now() - 60_000) } }
+            );
+            expect(
+                (
+                    await request(app).post("/api/v1/auth/reset-password").send({
+                        password: "ResetValid8",
+                        confirmPassword: "ResetValid8",
+                        token: realResetToken,
+                    })
+                ).status
+            ).toBe(401);
+
+            await User.updateOne(
+                { email: legacyEmail },
+                { $set: { resetPasswordExpires: new Date(Date.now() + 300_000) } }
+            );
+            const okReset = await request(app).post("/api/v1/auth/reset-password").send({
+                password: "ResetValid8",
+                confirmPassword: "ResetValid8",
+                token: realResetToken,
+            });
+            expect(okReset.status).toBe(200);
+
+            // Single-use check: reusing the same reset token MUST fail (401)
+            const reuseReset = await request(app).post("/api/v1/auth/reset-password").send({
+                password: "AnotherValid9",
+                confirmPassword: "AnotherValid9",
+                token: realResetToken,
+            });
+            expect(reuseReset.status).toBe(401);
+
+            // Subsequent login with the reset password succeeds
+            const postResetLogin = await request(app)
+                .post("/api/v1/auth/login")
+                .send({ email: legacyEmail, password: "ResetValid8" });
+            expect(postResetLogin.status).toBe(200);
+        });
+    });
 });

@@ -1822,6 +1822,226 @@ async function runAuthenticatedE2E() {
         }
 
         // =========================================================================
+        // E2E-33 (GAP-007): Password Policy on Signup (Instructor) & Settings Change Password
+        // =========================================================================
+        const policyEmail = "e2e33.policy.instructor@isolated.test";
+        const initial8CharPwd = "InitPwd8";
+        const changedValidPwd = "ChangedPwd9!";
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                let sendOtpCalls = 0;
+                let changePwdCalls = 0;
+                page.on("request", (req) => {
+                    if (req.url().includes("/auth/sendotp")) sendOtpCalls += 1;
+                    if (req.url().includes("/auth/changepassword")) changePwdCalls += 1;
+                });
+
+                await page.goto(`${FRONTEND_URL}/#/signup`, { waitUntil: "networkidle" });
+                // Switch to Instructor tab
+                await page.getByRole("button", { name: /^Instructor$/i }).click();
+                await page.fill('input[name="firstName"]', "Policy");
+                await page.fill('input[name="lastName"]', "Instructor");
+                await page.fill('input[name="email"]', policyEmail);
+
+                // 1. 7-char password blocked client-side with zero /auth/sendotp network requests
+                await page.fill('input[name="password"]', "short7!");
+                await page.fill('input[name="confirmPassword"]', "short7!");
+                await page.getByRole("button", { name: /Create Account/i }).click();
+                await page.waitForTimeout(300);
+                const shortSignupAlert = await page.locator('[role="alert"]').first().innerText();
+                const shortSignupBlocked =
+                    shortSignupAlert.includes("at least 8 characters") && sendOtpCalls === 0;
+
+                // 2. Exact 8-char password proceeds through OTP -> signup -> login
+                await page.fill('input[name="password"]', initial8CharPwd);
+                await page.fill('input[name="confirmPassword"]', initial8CharPwd);
+                const [otpResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/auth/sendotp"), { timeout: 15000 }),
+                    page.getByRole("button", { name: /Create Account/i }).click(),
+                ]);
+                await waitForHash(page, "/verify-email");
+
+                const otpRes = await fetchJson(
+                    `${API_BASE_URL}/__test__/otp?email=${encodeURIComponent(policyEmail)}`
+                );
+                const otp = otpRes.data?.otp || "";
+                const otpInputs = page.locator('form input[placeholder="-"]');
+                await otpInputs.first().click();
+                await page.keyboard.type(otp, { delay: 35 });
+
+                const [signupResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/auth/signup"), { timeout: 15000 }),
+                    page.getByRole("button", { name: /Verify Email/i }).click(),
+                ]);
+                await waitForHash(page, "/login");
+
+                const firstLoginStatus = await uiLogin(page, policyEmail, initial8CharPwd);
+                await waitForHash(page, "/dashboard/my-profile");
+
+                // 3. Settings Change Password rejects 7-char new password with 0 network requests
+                await page.goto(`${FRONTEND_URL}/#/dashboard/settings`, { waitUntil: "networkidle" });
+                await page.waitForSelector("#oldPassword", { timeout: 15000 });
+                await page.fill("#oldPassword", initial8CharPwd);
+                await page.fill("#newPassword", "short7!");
+                await page.fill("#confirmNewPassword", "short7!");
+                await page.locator('button[type="submit"]:has-text("Update")').click();
+                await page.waitForTimeout(300);
+                const settingsBody = await page.locator("body").innerText();
+                const shortChangeBlocked =
+                    settingsBody.includes("at least 8 characters") && changePwdCalls === 0;
+
+                // 4. Wrong current password rejected by backend (401)
+                await page.fill("#oldPassword", "WrongOld8");
+                await page.fill("#newPassword", changedValidPwd);
+                await page.fill("#confirmNewPassword", changedValidPwd);
+                const [wrongOldResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/auth/changepassword"), {
+                        timeout: 15000,
+                    }),
+                    page.locator('button[type="submit"]:has-text("Update")').click(),
+                ]);
+                await page.waitForTimeout(300);
+
+                // 5. Valid current password + valid >=8-char new password succeeds (200) & re-login works
+                await page.fill("#oldPassword", initial8CharPwd);
+                await page.fill("#newPassword", changedValidPwd);
+                await page.fill("#confirmNewPassword", changedValidPwd);
+                const [validChangeResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/auth/changepassword"), {
+                        timeout: 15000,
+                    }),
+                    page.locator('button[type="submit"]:has-text("Update")').click(),
+                ]);
+                await waitForHash(page, "/dashboard/my-profile");
+
+                await uiLogout(page);
+                const reloginStatus = await uiLogin(page, policyEmail, changedValidPwd);
+
+                record(
+                    "E2E-33",
+                    "GAP-007 Signup (Instructor) & Settings Change Password Policy Enforcement",
+                    shortSignupBlocked &&
+                        otpResp.status() === 200 &&
+                        signupResp.status() === 200 &&
+                        firstLoginStatus === 200 &&
+                        shortChangeBlocked &&
+                        wrongOldResp.status() === 401 &&
+                        validChangeResp.status() === 200 &&
+                        reloginStatus === 200,
+                    `shortSignupBlocked=${shortSignupBlocked}, signup=${signupResp.status()}, firstLogin=${firstLoginStatus}, shortChangeBlocked=${shortChangeBlocked}, wrongOld=${wrongOldResp.status()}, validChange=${validChangeResp.status()}, relogin=${reloginStatus}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-34 (GAP-007): Forgot Password -> Reset Password Policy, Single-Use Token & Login
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                let resetApiCalls = 0;
+                page.on("request", (req) => {
+                    if (req.url().includes("/auth/reset-password") && !req.url().includes("-token")) {
+                        resetApiCalls += 1;
+                    }
+                });
+
+                // 1. Request password reset link from /#/forgot-password
+                await page.goto(`${FRONTEND_URL}/#/forgot-password`, { waitUntil: "networkidle" });
+                await page.fill('input[name="email"]', policyEmail);
+                const [tokenResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/auth/reset-password-token"), {
+                        timeout: 15000,
+                    }),
+                    page.getByRole("button", { name: /Reset Password/i }).click(),
+                ]);
+                await page.waitForSelector("text=Check your email", { timeout: 10000 });
+
+                // 2. Capture reset token from isolated mock email outbox
+                const emailsRes = await fetchJson(`${API_BASE_URL}/__test__/emails`);
+                const resetEmails = (emailsRes.data?.emails || []).filter(
+                    (m) => m.email === policyEmail && m.title === "Password Reset Link"
+                );
+                const latestResetEmail = resetEmails[resetEmails.length - 1];
+                const tokenMatch = (latestResetEmail?.body || "").match(
+                    /\/#\/update-password\/([a-zA-Z0-9-]+)/
+                );
+                const resetToken = tokenMatch ? tokenMatch[1] : "";
+
+                // 3. Open reset password page & verify <8-char and mismatch are blocked client-side
+                await page.goto(`${FRONTEND_URL}/#/update-password/${resetToken}`, {
+                    waitUntil: "networkidle",
+                });
+                await page.waitForSelector('input[name="password"]', { timeout: 15000 });
+
+                await page.fill('input[name="password"]', "1234567");
+                await page.fill('input[name="confirmPassword"]', "1234567");
+                await page.getByRole("button", { name: /Reset Password/i }).click();
+                await page.waitForTimeout(300);
+                const shortResetAlert = await page.locator('[role="alert"]').first().innerText();
+                const shortResetBlocked =
+                    shortResetAlert.includes("at least 8 characters") && resetApiCalls === 0;
+
+                await page.fill('input[name="password"]', "ResetFinal9!");
+                await page.fill('input[name="confirmPassword"]', "Mismatch99!");
+                await page.getByRole("button", { name: /Reset Password/i }).click();
+                await page.waitForTimeout(300);
+                const mismatchBlocked = resetApiCalls === 0;
+
+                // 4. Submit valid >=8-char password -> 200 & confirmation screen
+                await page.fill('input[name="password"]', "ResetFinal9!");
+                await page.fill('input[name="confirmPassword"]', "ResetFinal9!");
+                const [validResetResp] = await Promise.all([
+                    page.waitForResponse(
+                        (r) => r.url().includes("/auth/reset-password") && !r.url().includes("-token"),
+                        { timeout: 15000 }
+                    ),
+                    page.getByRole("button", { name: /Reset Password/i }).click(),
+                ]);
+                await page.waitForSelector("text=Password Reset Successfully", { timeout: 10000 });
+                const successScreenShown = (await page.locator("body").innerText()).includes(
+                    "Password Reset Successfully"
+                );
+
+                // 5. Single-use token verification: reusing the token returns 401
+                await page.goto(`${FRONTEND_URL}/#/update-password/${resetToken}`, {
+                    waitUntil: "networkidle",
+                });
+                await page.fill('input[name="password"]', "AnotherNew9!");
+                await page.fill('input[name="confirmPassword"]', "AnotherNew9!");
+                const [reuseResp] = await Promise.all([
+                    page.waitForResponse(
+                        (r) => r.url().includes("/auth/reset-password") && !r.url().includes("-token"),
+                        { timeout: 15000 }
+                    ),
+                    page.getByRole("button", { name: /Reset Password/i }).click(),
+                ]);
+
+                // 6. Login succeeds with the newly reset password
+                const postResetLogin = await uiLogin(page, policyEmail, "ResetFinal9!");
+
+                record(
+                    "E2E-34",
+                    "GAP-007 Forgot/Reset Password Policy, Single-Use Token & Post-Reset Login",
+                    tokenResp.status() === 200 &&
+                        Boolean(resetToken) &&
+                        shortResetBlocked &&
+                        mismatchBlocked &&
+                        validResetResp.status() === 200 &&
+                        successScreenShown &&
+                        reuseResp.status() === 401 &&
+                        postResetLogin === 200,
+                    `tokenReq=${tokenResp.status()}, tokenCaptured=${Boolean(resetToken)}, shortBlocked=${shortResetBlocked}, mismatchBlocked=${mismatchBlocked}, reset=${validResetResp.status()}, successUI=${successScreenShown}, reuseStatus=${reuseResp.status()}, postResetLogin=${postResetLogin}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
         // Regression Checks against Isolated Environment (Footer, 404, 401 Interceptor, Mobile)
         // =========================================================================
         {
