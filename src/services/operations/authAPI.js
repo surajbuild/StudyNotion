@@ -213,6 +213,7 @@ export const resetPassword =
       }
 
       toast.success("Password Reset Successfully.", { id: toastId });
+      return true;
 
     } catch (error) {
       const errorMessage =
@@ -220,6 +221,7 @@ export const resetPassword =
         error.message ||
         "Failed to reset password. Please try again.";
       toast.error(errorMessage, { id: toastId });
+      return false;
     } finally {
       dispatch(setLoading(false));
     }

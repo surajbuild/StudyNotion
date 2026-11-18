@@ -4,6 +4,7 @@ const { resetPasswordEmail } = require("../mail/templates/resetPasswordEmail");
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 require('dotenv').config();
+
 //reset password token
 exports.resetPasswordToken = async (req, res) => {
     try{
@@ -28,9 +29,19 @@ exports.resetPasswordToken = async (req, res) => {
                                     },
                                     {new: true}
                                 );
-        //create url (use FRONTEND_URL env var)
-        const frontend = process.env.FRONTEND_URL || 'http://localhost:3000';
-        const url = `${frontend.replace(/\/$/, '')}/update-password/${token}`;
+        // Determine frontend base URL: prefer requesting origin header (works in both localhost and production),
+        // fallback to FRONTEND_URL env var, then localhost:3000
+        let origin = req.headers?.origin;
+        if (!origin && req.headers?.referer) {
+            try {
+                origin = new URL(req.headers.referer).origin;
+            } catch (e) {
+                origin = null;
+            }
+        }
+        const frontend = origin || process.env.FRONTEND_URL || 'http://localhost:3000';
+        // Frontend uses HashRouter (src/index.js), so routes must be prefixed with /#/
+        const url = `${frontend.replace(/\/$/, '')}/#/update-password/${token}`;
         await mailSender(email, "Password Reset Link", resetPasswordEmail(url));
         //return response
         return res.status(200).json({ success: true, message: 'Email sent successfully, please check email and change password' });

@@ -48,9 +48,10 @@ const UpdatePassword = () => {
       return;
     }
 
-    dispatch(resetPassword(password, confirmPassword, token));
-    // Show the success screen after dispatching (the thunk shows its own toast)
-    setResetSuccess(true);
+    const success = await dispatch(resetPassword(password, confirmPassword, token));
+    if (success) {
+      setResetSuccess(true);
+    }
   };
 
   // Simple password-strength calculator for the visual indicator
