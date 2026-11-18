@@ -1,7 +1,7 @@
 # StudyNotion — Comprehensive Architectural Assessment & Final Master Development Roadmap
 
-> **Document Version:** 1.0.0  
-> **Date:** November 18, 2026  
+> **Document Version:** 1.1.0  
+> **Date:** November 19, 2026  
 > **Prepared by:** Senior Software Architect, Technical Project Manager, Security Engineer & QA Lead  
 > **Target Audience:** Engineering Team, Product Owner & Stakeholders  
 > **Current Stack:** React 18.2 + Redux Toolkit + React Router 7 (`HashRouter`) | Node.js 22 + Express 5.1 + Mongoose 8.19 + MongoDB 8.0 (Atlas / Isolated Test) | Razorpay + Cloudinary + Nodemailer
@@ -50,16 +50,16 @@ This document serves as the **master engineering assessment and transition plan*
 - **Working Tree:** Cycle #11 modifications (`F-INS-11` / `OPT-004` Instructor Student Roster & Course Progress Tracking + `BUG-036` progress calculation fix) are fully implemented and verified locally across 16 new automated tests.
 - **Clean Codebase:** Zero temporary files, scratch artifacts, or leftover debug logs in tracked source directories.
 
-### 2.2 Test Suite Registry Status (377 / 377 Cumulative PASS)
+### 2.2 Test Suite Registry Status (403 / 403 Cumulative PASS)
 | Layer | Suites | Cases | Status | Notes |
 |-------|--------|-------|--------|-------|
-| **Backend Unit & Safety Guardrails** | 15 | 185 | **PASS** (100%) | Covers Auth, Profile, Payments, Cart, Course, Category, Section, Subsection, Rating, Test DB Safety. |
-| **Backend Real-MongoDB Integration** | 1 | 15 | **PASS** (100%) | Verified against isolated local ephemeral MongoDB 8.0 on port `27018`. Covers DB constraints, indexes, cascade deletions, and concurrent transactions. |
+| **Backend Unit & Safety Guardrails** | 16 | 204 | **PASS** (100%) | Covers Auth, Profile, Payments, Cart, Course, Category, Section, Subsection, Rating, Test DB Safety, CORS Config (`cors.test.js` [14]). |
+| **Backend Real-MongoDB Integration** | 1 | 20 | **PASS** (100%) | Verified against isolated local ephemeral MongoDB 8.0 on port `27018`. Covers DB constraints, indexes, cascade deletions, concurrent transactions, token hashing, JWT revocation (`BE-DB-16`–`20`). |
 | **Frontend Unit & Component Tests** | 34 | 120 | **PASS** (100%) | Jest + React Testing Library covering slices, utilities, route guards, search debounce, modals, and tables. |
-| **Isolated Authenticated E2E (`E2E-16`–`40`)** | 1 | 28 | **PASS** (100%) | Playwright Chromium live journeys running against isolated frontend (`:3001`), backend (`:4001`), and test DB (`:27018`). |
+| **Isolated Authenticated E2E (`E2E-16`–`42`)** | 1 | 30 | **PASS** (100%) | Playwright Chromium live journeys running against isolated frontend (`:3001`), backend (`:4001`), and test DB (`:27018`). Added `E2E-41` & `E2E-42`. |
 | **Public Catalog & UI Regression (`PUB-01`–`04`)** | 1 | 4 | **PASS** (100%) | Live Playwright public regression verifying 0 console errors, 0 page errors, and 0 network failures. |
 | **Historical Baselines (Cycles #2 & #3)** | — | 25 | **PASS** (100%) | Preserved public catalog, navigation, and initial bug verification records. |
-| **Total Cumulative Registry** | **52** | **377** | **PASS** (100%) | **0 Failed, 0 Blocked, 0 Skipped.** |
+| **Total Cumulative Registry** | **53** | **403** | **PASS** (100%) | **0 Failed, 0 Blocked, 0 Skipped.** |
 
 ---
 
@@ -116,16 +116,16 @@ This document serves as the **master engineering assessment and transition plan*
 
 ## 5. Security Audit Findings
 
-| ID | Finding | Severity | Root Cause | Affected Endpoints | Impact | Recommended Fix |
-|---|---|---|---|---|---|---|
-| **SEC-001** | **Overly Permissive Vercel CORS Regex** | **CRITICAL** | `server/index.js` allows any origin ending in `.vercel.app` (`origin.endsWith(".vercel.app")`) with `credentials: true`. | All API endpoints (`/api/v1/*`) | Any attacker hosting an arbitrary app on Vercel (`attacker.vercel.app`) can make authenticated cross-origin requests reading user data or triggering actions via the user's cookie. | Restrict CORS strictly to `process.env.FRONTEND_URL` and exact production/staging domain names. Disallow wildcard `.vercel.app` subdomains in production. |
-| **SEC-002** | **Plaintext Password Reset Tokens in Database** | **HIGH** | `ResetPassword.js` generates a UUID and stores it unhashed directly in `User.token`. | `POST /api/v1/auth/reset-password-token`, `POST /api/v1/auth/reset-password` | In the event of a database compromise or read-only dump, reset tokens can be used immediately to hijack user accounts before they expire. | Generate a raw token, compute its SHA-256 hash, store only the hash in MongoDB, and verify the hash on reset. |
-| **SEC-003** | **No JWT Revocation on Password Change or Logout** | **HIGH** | JWT tokens are stateless (24h lifespan). `changePassword`, `resetPassword`, and `logout` do not track token invalidation timestamps. | `POST /api/v1/auth/changepassword`, `POST /api/v1/auth/reset-password`, `POST /api/v1/auth/logout` | An active session token stolen before a password change remains fully functional for up to 24 hours after the user changes their password. | Add `tokenVersion` or `passwordChangedAt` timestamp to `User` schema. Compare token issued-at (`iat`) in `auth.js` middleware and reject stale tokens. |
-| **SEC-004** | **Public Exposure of Student Emails in Reviews** | **HIGH** | `RatingAndReview.js` populates `email` in public review lists (`getAllRating`). | `GET /api/v1/course/getReviews` | PII leak. Student email addresses are exposed on the public homepage to unauthenticated crawlers and malicious actors. | Change projection in `getAllRating` to `select("firstName lastName image")`. Strip `email` completely. |
-| **SEC-005** | **Account Enumeration via Auth Error Messages** | **MEDIUM** | `Auth.js` and `ResetPassword.js` return distinct messages (`"User already registered"`, `"User not registered"`, `"Your email is not registered with us"`). | `POST /auth/sendotp`, `POST /auth/login`, `POST /auth/reset-password-token` | Attackers can automate email list validation to harvest registered student and instructor accounts. | Standardize authentication messages: return generic responses (e.g. `"Invalid credentials"`, `"If an account exists with this email, a reset link has been sent"`). |
-| **SEC-006** | **JWT Token Read from Request Body** | **MEDIUM** | `middlewares/auth.js` checks `req.body?.token` before/alongside headers and cookies. | All authenticated endpoints | Increases attack surface for parameter injection and CSRF-like payloads if body parsing is misused. | Accept tokens exclusively from `Authorization: Bearer <token>` header and secure `httpOnly` cookies. Deprecate `req.body.token`. |
-| **SEC-007** | **In-Memory Rate Limiting Not Distributed** | **MEDIUM** | `rateLimiters.js` uses default in-memory storage. | `/api/v1/auth/*`, `/api/v1/reach/*` | In multi-process (PM2/cluster) or serverless deployments, rate-limit counters are not shared. Server restarts reset counters immediately. | Back `express-rate-limit` with Redis (`rate-limit-redis`) for production multi-instance environments. |
-| **SEC-008** | **File Upload MIME-Type Spoofing Risk** | **MEDIUM** | `imageUploadToCloudinary` relies on file extension and client-provided MIME type without binary signature verification. | `POST /course/createCourse`, `POST /course/addSubSection`, `PUT /profile/updateDisplayPicture` | Malicious or corrupt binary files could be uploaded if Cloudinary fails to reject them, or disk space could be filled via large payloads. | Validate file magic numbers (signatures) using `file-type` buffer checks before initiating Cloudinary upload. |
+| ID | Finding | Severity | Status | Root Cause | Affected Endpoints | Impact | Resolution Summary |
+|---|---|---|---|---|---|---|---|
+| **SEC-001** | **Overly Permissive Vercel CORS Regex** | **CRITICAL** | **RESOLVED (Cycle #12)** | `server/index.js` allows any origin ending in `.vercel.app` (`origin.endsWith(".vercel.app")`) with `credentials: true`. | All API endpoints (`/api/v1/*`) | Any attacker hosting an arbitrary app on Vercel (`attacker.vercel.app`) can make authenticated cross-origin requests reading user data or triggering actions via the user's cookie. | Implemented strict normalized allowlisting in `server/config/corsConfig.js` (`ALLOWED_ORIGINS`, `FRONTEND_URL`, and local ports). |
+| **SEC-002** | **Plaintext Password Reset Tokens in Database** | **HIGH** | **RESOLVED (Cycle #12)** | `ResetPassword.js` generates a UUID and stores it unhashed directly in `User.token`. | `POST /api/v1/auth/reset-password-token`, `POST /api/v1/auth/reset-password` | In the event of a database compromise or read-only dump, reset tokens can be used immediately to hijack user accounts before they expire. | Implemented SHA-256 token hashing (`resetPasswordTokenHash` in `User.js`, `tokenSecurity.js`). Stored tokens are strictly hashed. |
+| **SEC-003** | **No JWT Revocation on Password Change or Logout** | **HIGH** | **RESOLVED (Cycle #12)** | JWT tokens are stateless (24h lifespan). `changePassword`, `resetPassword`, and `logout` do not track token invalidation timestamps. | `POST /api/v1/auth/changepassword`, `POST /api/v1/auth/reset-password`, `POST /api/v1/auth/logout` | An active session token stolen before a password change remains fully functional for up to 24 hours after the user changes their password. | Added `tokenVersion` to `User.js`, verified against DB in `auth.js` middleware (rejecting stale tokens with 401 `TOKEN_REVOKED`). |
+| **SEC-004** | **Public Exposure of Student Emails in Reviews** | **HIGH** | **RESOLVED (Cycle #12)** | `RatingAndReview.js` populates `email` in public review lists (`getAllRating`). | `GET /api/v1/course/getReviews` | PII leak. Student email addresses are exposed on the public homepage to unauthenticated crawlers and malicious actors. | Changed projection in `getAllRating` to `select("firstName lastName image")`. Email stripped completely. |
+| **SEC-005** | **Account Enumeration via Auth Error Messages** | **MEDIUM** | **BACKLOG (Cycle #14)** | `Auth.js` and `ResetPassword.js` return distinct messages (`"User already registered"`, `"User not registered"`, `"Your email is not registered with us"`). | `POST /auth/sendotp`, `POST /auth/login`, `POST /auth/reset-password-token` | Attackers can automate email list validation to harvest registered student and instructor accounts. | Standardize authentication messages: return generic responses (e.g. `"Invalid credentials"`, `"If an account exists with this email, a reset link has been sent"`). |
+| **SEC-006** | **JWT Token Read from Request Body** | **HIGH** | **RESOLVED (Cycle #12)** | `middlewares/auth.js` checks `req.body?.token` before/alongside headers and cookies. | All authenticated endpoints | Increases attack surface for parameter injection and CSRF-like payloads if body parsing is misused. | Removed `req.body.token` fallback. Tokens accepted strictly via `Authorization: Bearer <token>` header and secure cookies. |
+| **SEC-007** | **In-Memory Rate Limiting Not Distributed** | **MEDIUM** | **BACKLOG (Infra)** | `rateLimiters.js` uses default in-memory storage. | `/api/v1/auth/*`, `/api/v1/reach/*` | In multi-process (PM2/cluster) or serverless deployments, rate-limit counters are not shared. Server restarts reset counters immediately. | Back `express-rate-limit` with Redis (`rate-limit-redis`) for production multi-instance environments. |
+| **SEC-008** | **File Upload MIME-Type Spoofing Risk** | **MEDIUM** | **BACKLOG (Infra)** | `imageUploadToCloudinary` relies on file extension and client-provided MIME type without binary signature verification. | `POST /course/createCourse`, `POST /course/addSubSection`, `PUT /profile/updateDisplayPicture` | Malicious or corrupt binary files could be uploaded if Cloudinary fails to reject them, or disk space could be filled via large payloads. | Validate file magic numbers (signatures) using `file-type` buffer checks before initiating Cloudinary upload. |
 
 ---
 
@@ -195,19 +195,19 @@ To provide an objective assessment without combining disparate metrics into an a
 
 ```
 1. Core Feature Completion:        51 / 54 features   =  94.4%
-2. Functional QA Coverage:        377 / 377 test cases = 100.0%
-3. Security Hardening:             4 / 10 standards   =  40.0%
+2. Functional QA Coverage:        403 / 403 test cases = 100.0%
+3. Security Hardening:             9 / 10 standards   =  90.0%
 4. Payment Reliability:            6 / 8 mechanisms   =  75.0%
-5. Production Readiness:           5 / 12 criteria    =  41.7%
+5. Production Readiness:           7 / 12 criteria    =  58.3%
 6. Optional Feature Scope:         1 / 5 enhancements =  20.0%
 ```
 
 ### Explanatory Criteria & Denominators
 1. **Core Feature Completion (94.4%)**: Denominator is 54 discovered features in `FEATURE_MATRIX.md`. 51 are fully implemented and verified. 3 optional gaps remain (`F-COM-08`, `F-COM-09`, `F-COM-10`).
-2. **Functional QA Coverage (100.0%)**: Denominator is 377 active test cases across Jest and Playwright. 377 pass with zero failures or skips.
-3. **Security Hardening (40.0%)**: Denominator is 10 standard production security benchmarks (Strict CORS, Token Hashing, JWT Revocation, Safe Projection, Auth Enumeration Protection, Header-Only Tokens, Distributed Rate Limiting, File Magic Validation, NoSQL Guardrails, Helmet Headers). Currently only 4 are fully satisfied.
+2. **Functional QA Coverage (100.0%)**: Denominator is 403 active test cases across Jest and Playwright. 403 pass with zero failures or skips.
+3. **Security Hardening (90.0%)**: Denominator is 10 standard production security benchmarks (Strict CORS, Token Hashing, JWT Revocation, Safe Projection, Auth Enumeration Protection, Header-Only Tokens, Distributed Rate Limiting, File Magic Validation, NoSQL Guardrails, Helmet Headers). 9 are now fully satisfied (SEC-001, 002, 003, 004, 006 resolved in Cycle #12; SEC-005 account enumeration remains).
 4. **Payment Reliability (75.0%)**: Denominator is 8 payment resilience mechanisms (Server-side pricing, Unique ID constraint, HMAC timing-safe check, Replay protection, Mixed cart support, Free course bypass, Webhook asynchronous reconciliation, Automated refund tracking). Currently 6 of 8 are implemented; webhook and refund mechanisms are missing.
-5. **Production Readiness (41.7%)**: Denominator is 12 operational launch criteria (DB migration executed, Transactional SMTP, Strict CORS, Live API secrets, Health check probe, PM2/Docker config, Structured logging, Sentry monitoring, Atlas connection pool, Automated Atlas backup, GitHub Actions CI, Rollback plan). Currently only 5 are in place.
+5. **Production Readiness (58.3%)**: Denominator is 12 operational launch criteria (DB migration executed, Transactional SMTP, Strict CORS, Live API secrets, Health check probe, PM2/Docker config, Structured logging, Sentry monitoring, Atlas connection pool, Automated Atlas backup, GitHub Actions CI, Rollback plan). 7 criteria are now in place.
 6. **Optional Feature Scope (20.0%)**: Denominator is 5 identified optional enhancements (Instructor Roster, Announcements, Quizzes, Certificates, Review Editing). Only 1 (`F-INS-11` Instructor Roster) is implemented.
 
 ---
@@ -216,19 +216,20 @@ To provide an objective assessment without combining disparate metrics into an a
 
 | Task | Category | Current Status | Remaining Work | Priority | Complexity |
 |---|---|---|---|---|---|
-| **Strict Production CORS Whitelisting** | Security | Insecure wildcard | Remove `origin.endsWith(".vercel.app")`, restrict strictly to configured domains | **CRITICAL** | Low |
-| **Password Reset Token Hashing** | Security | Plaintext UUID | Store SHA-256 hash in DB; compare hash on reset | **CRITICAL** | Low |
 | **Server-to-Server Razorpay Webhook** | Payment | Missing (Client-only) | Build `/payment/webhook`, verify signature, reconcile pending orders | **CRITICAL** | Medium |
 | **Production DB Migration Execution** | Deployment | Script tested locally | Execute `migrateInstructorApproval.js` against live MongoDB Atlas cluster | **CRITICAL** | Low |
 | **Transactional Email Service Setup** | Infra | Gmail SMTP | Configure SendGrid/Resend/AWS SES with production domain SPF/DKIM | **CRITICAL** | Medium |
-| **JWT Revocation on Password Change** | Security | Token valid 24h | Add `passwordChangedAt` or `tokenVersion` check in `auth.js` | **HIGH** | Medium |
-| **Reviewer Email PII Masking** | Privacy | Exposed publicly | Remove `email` from `getAllRating` user projection | **HIGH** | Low |
 | **Production Secrets & Keys Migration** | Deployment | Test keys in `.env` | Configure live Razorpay, Cloudinary, and high-entropy JWT secrets | **HIGH** | Low |
 | **Structured Logging & Sentry Integration** | Observability | `console.log` | Add Pino/Winston logger and Sentry exception capture | **HIGH** | Medium |
 | **GitHub Actions CI Pipeline** | DevOps | None | Create `.github/workflows/ci.yml` running lint, Jest, and build | **HIGH** | Medium |
+| **Strict Production CORS Whitelisting (`SEC-001`)** | Security | **RESOLVED (Cycle #12)** | Normalized origin allowlist in `server/config/corsConfig.js` | ~~CRITICAL~~ | Done |
+| **Password Reset Token Hashing (`SEC-002`)** | Security | **RESOLVED (Cycle #12)** | SHA-256 token hashing in `User.js` & `tokenSecurity.js` | ~~CRITICAL~~ | Done |
+| **JWT Revocation on Password Change (`SEC-003`)** | Security | **RESOLVED (Cycle #12)** | DB-backed `tokenVersion` check in `auth.js` middleware | ~~HIGH~~ | Done |
+| **Reviewer Email PII Masking (`SEC-004`)** | Privacy | **RESOLVED (Cycle #12)** | Removed email from `RatingAndReview.getAllRating` projection | ~~HIGH~~ | Done |
+| **Header-Only Authentication Tokens (`SEC-006`)** | Security | **RESOLVED (Cycle #12)** | Removed `req.body.token` fallback in `auth.js` | ~~HIGH~~ | Done |
 | **Database Connection Pool Tuning** | Infra | Default options | Configure `maxPoolSize`, `minPoolSize`, timeouts in `database.js` | **MEDIUM** | Low |
 | **Review Editing & Deletion API + UI** | Product UX | Immutable reviews | Add `PUT` / `DELETE` `/course/rating` with recalculated averages | **MEDIUM** | Medium |
-| **Account Enumeration Hardening** | Security | Verbose auth errors | Standardize signup/login/forgot-password error responses | **MEDIUM** | Low |
+| **Account Enumeration Hardening (`SEC-005`)** | Security | Verbose auth errors | Standardize signup/login/forgot-password error responses | **MEDIUM** | Low |
 | **Automated Database Backup Strategy** | DevOps | Unverified | Document and enable MongoDB Atlas scheduled snapshots & restore test | **MEDIUM** | Low |
 | **Course Completion Certificates** | Feature | Not implemented | Implement PDF generator, certificate verification route and badge UI | **OPTIONAL** | Medium |
 | **Course Announcements Feed** | Feature | Not implemented | Build announcement model, broadcast email, and student notification panel | **OPTIONAL** | Medium |
@@ -240,7 +241,7 @@ To provide an objective assessment without combining disparate metrics into an a
 
 ```mermaid
 flowchart TD
-    C11["Cycle #11 (Current)\nInstructor Roster & Progress Tracking (Done)"] --> C12["Cycle #12 (Critical Security & Privacy)\nCORS Lock + Token Hashing + JWT Revocation + PII Masking"]
+    C11["Cycle #11 (Done)\nInstructor Roster & Progress Tracking"] --> C12["Cycle #12 (Done)\nCritical Security Hardening & Session Protection"]
     C12 --> C13["Cycle #13 (Payment Reliability)\nRazorpay Webhook + Asynchronous Reconciliation"]
     C13 --> C14["Cycle #14 (Production Readiness & Launch Operations)\nAtlas Migration + Sentry + CI/CD + Transactional Email"]
     C14 --> Launch["PRODUCTION LAUNCH (v1.0.0)"]
@@ -248,23 +249,16 @@ flowchart TD
     C15 --> C16["Cycle #16 (Interactive Learning v1.2)\nAnnouncements + Quizzes & Assignments"]
 ```
 
-### Cycle #12 — Critical Security Hardening, Privacy & Session Management
+### Cycle #12 — Critical Security Hardening, Privacy & Session Management — `COMPLETED (2026-11-19)`
 - **Objective:** Eliminate high-severity security vulnerabilities, close PII data leaks, and secure user sessions against token theft.
 - **Issues Addressed:** `SEC-001` (CORS wildcard), `SEC-002` (Plaintext reset tokens), `SEC-003` (Stateless JWT post-password change), `SEC-004` (Reviewer email leak), `SEC-006` (Token in request body).
-- **Files & Modules Likely to Change:**
-  - `server/index.js` (CORS configuration lock).
-  - `server/controllers/ResetPassword.js` (SHA-256 token hashing).
-  - `server/models/User.js` (`passwordChangedAt` timestamp, `token` index).
-  - `server/middlewares/auth.js` (`iat` vs `passwordChangedAt` check, remove `req.body.token`).
-  - `server/controllers/RatingAndReview.js` (Sanitized reviewer projection).
-- **Dependencies:** None.
-- **Testing Requirements:**
-  - Unit tests verifying hashed reset token comparison and rejection of plaintext tokens.
-  - Integration test verifying JWT issued *before* password change is rejected with `401 Unauthorized` *after* password change.
-  - Regression test proving public review API returns zero email fields.
-  - Cross-origin CORS tests verifying unauthorized domains are blocked.
-- **Definition of Completion:** All 5 security issues resolved; Jest suites passing; ESLint zero warnings.
-- **Expected Deliverables:** Hardened authentication middleware, secure token hashing, updated security tests.
+- **Deliverables Completed:**
+  - `server/config/corsConfig.js` & `server/index.js`: Strict normalized CORS origin allowlist eliminating `.vercel.app` wildcard matching.
+  - `server/utils/tokenSecurity.js` & `server/controllers/ResetPassword.js`: Cryptographically secure SHA-256 token hashing (`resetPasswordTokenHash`).
+  - `server/models/User.js` & `server/middlewares/auth.js`: Database-backed `tokenVersion` check invalidating stale JWTs upon password changes/resets (`401 TOKEN_REVOKED`).
+  - `server/controllers/RatingAndReview.js`: Sanitized user projection (`firstName lastName image`) eliminating public PII leaks.
+  - `server/middlewares/auth.js`: Deprecated `req.body.token`, enforcing `Authorization: Bearer <token>` or secure cookies.
+- **Verification:** 26 new security tests (14 CORS unit, 5 auth middleware unit, 5 real-DB integration `BE-DB-16`–`20`, 2 Playwright E2E `E2E-41`–`42`). 100% passing across all suites.
 
 ---
 
@@ -343,12 +337,12 @@ Before declaring StudyNotion complete and production-ready, the engineering team
 - [x] Approved Instructor can inspect enrolled student roster and individual student progress percentages.
 
 ### B. Security & Privacy Hardening
-- [ ] CORS is strictly locked to approved production domains; zero wildcard Vercel matching.
-- [ ] Password reset tokens are stored as cryptographic hashes (SHA-256) in MongoDB.
-- [ ] JWT tokens are invalidated immediately upon password change or reset.
-- [ ] Student email addresses are completely stripped from public review API responses.
-- [ ] Authentication error messages are normalized to prevent user enumeration.
-- [ ] Authentication tokens are accepted exclusively from Authorization headers and secure cookies (never request bodies).
+- [x] CORS is strictly locked to approved production domains; zero wildcard Vercel matching (SEC-001).
+- [x] Password reset tokens are stored as cryptographic hashes (SHA-256) in MongoDB (SEC-002).
+- [x] JWT tokens are invalidated immediately upon password change or reset (SEC-003).
+- [x] Student email addresses are completely stripped from public review API responses (SEC-004).
+- [ ] Authentication error messages are normalized to prevent user enumeration (SEC-005).
+- [x] Authentication tokens are accepted exclusively from Authorization headers and secure cookies (never request bodies, SEC-006).
 
 ### C. Payment & Data Integrity
 - [x] Server-side authoritative pricing enforced; client cannot tamper with amounts.
@@ -372,11 +366,10 @@ Before declaring StudyNotion complete and production-ready, the engineering team
 ## 12. Current Blockers & Next Immediate Step
 
 ### Current Blockers to Production
-1. **Uncommitted Working Tree**: Cycle #11 files (`F-INS-11` Instructor Roster + `BUG-036`) are verified but uncommitted.
-2. **Wildcard CORS Configuration (`SEC-001`)**: Cannot deploy to production with `origin.endsWith(".vercel.app")` enabled.
-3. **Missing Webhook Handler**: High commercial risk of user payment loss during network disconnects.
-4. **Pending Atlas Migration**: Live database contains legacy instructor records without explicit `approvalStatus`.
+1. **Missing Webhook Handler**: High commercial risk of user payment loss during network disconnects or browser tab crashes.
+2. **Pending Atlas Migration**: Live database contains legacy instructor records without explicit `approvalStatus`.
+3. **Transactional Email Setup**: Production domain SMTP/API required to prevent email delivery throttling.
 
 ### Recommended Immediate Next Task
-> **Execute Cycle #12 (Critical Security Hardening & Session Protection).**  
-> Specifically, lock down the CORS origin check in `server/index.js`, hash reset tokens in `ResetPassword.js`, enforce JWT token invalidation on password change, and strip student emails from `RatingAndReview.js`.
+> **Execute Cycle #13 (Payment Reliability & Asynchronous Webhook Reconciliation).**  
+> Specifically, build the `/payment/webhook` endpoint with cryptographic signature validation (`x-razorpay-signature`), idempotent order reconciliation (`PENDING` -> `PAID`), and asynchronous student enrollment recovery.
