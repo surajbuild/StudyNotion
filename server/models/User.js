@@ -31,6 +31,10 @@ const userSchema = new mongoose.Schema({
         required: true,
         ref: "Profile",
     },
+    contactNumber: {
+        type: String,
+        trim: true,
+    },
     courses: [
         {
             type: mongoose.Schema.Types.ObjectId,
@@ -47,6 +51,12 @@ const userSchema = new mongoose.Schema({
     resetPasswordExpires: {
         type: Date,
     },
+    courseProgress: [
+        {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "CourseProgress",
+        }
+    ],
     coursesProgress: [
         {
             type: mongoose.Schema.Types.ObjectId,
