@@ -1963,10 +1963,10 @@ async function runAuthenticatedE2E() {
                 // 2. Capture reset token from isolated mock email outbox
                 const emailsRes = await fetchJson(`${API_BASE_URL}/__test__/emails`);
                 const resetEmails = (emailsRes.data?.emails || []).filter(
-                    (m) => m.email === policyEmail && m.title === "Password Reset Link"
+                    (m) => m.to === policyEmail && m.subject === "Password Reset Link"
                 );
                 const latestResetEmail = resetEmails[resetEmails.length - 1];
-                const tokenMatch = (latestResetEmail?.body || "").match(
+                const tokenMatch = (latestResetEmail?.html || "").match(
                     /\/#\/update-password\/([a-zA-Z0-9-]+)/
                 );
                 const resetToken = tokenMatch ? tokenMatch[1] : "";
