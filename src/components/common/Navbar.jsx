@@ -316,6 +316,13 @@ const Navbar = () => {
                   >
                     <span>Wishlist ({totalItems})</span>
                   </Link>
+                  <Link
+                    to="/dashboard/order-history"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-x-2 py-2 text-sm text-richblack-200 hover:text-yellow-25"
+                  >
+                    <span>Order History</span>
+                  </Link>
                 </>
               )}
 

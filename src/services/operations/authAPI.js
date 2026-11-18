@@ -2,6 +2,7 @@ import { toast } from "react-hot-toast";
 import { setLoading, setToken } from "../../slices/authSlice";
 import { resetCart } from "../../slices/cartSlice";
 import { setUser } from "../../slices/profileSlice";
+import { syncCartOnLogin } from "./cartAPI";
 import { apiConnector } from "../apiconnector";
 import { endpoints } from "../apis";
 
@@ -130,6 +131,15 @@ export const login = (email, password, navigate) => async (dispatch) => {
     // Authorization header later.
     localStorage.setItem("token", response.data.token);
     localStorage.setItem("user", JSON.stringify(response.data.user));
+
+    // Merge any anonymous/local cart items with the student's persistent MongoDB cart on login
+    if (response.data.user?.accountType === "Student") {
+      try {
+        await syncCartOnLogin(response.data.token, dispatch);
+      } catch {
+        // Non-blocking: login succeeds even if cart sync encounters a transient error
+      }
+    }
 
     if (response.data.user?.accountType === "Admin") {
       navigate("/dashboard/admin");

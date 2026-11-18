@@ -6,7 +6,7 @@ import { FaShareSquare } from "react-icons/fa"
 import { useDispatch, useSelector } from "react-redux"
 import { useNavigate } from "react-router-dom"
 
-import { addToCart } from "../../../slices/cartSlice"
+import { addCourseToCart } from "../../../services/operations/cartAPI"
 import { ACCOUNT_TYPE } from "../../../utils/constants"
 
 
@@ -39,12 +39,12 @@ function CourseDetailsCard({
   }
 
   const handleAddToCart = () => {
-    if (user && user?.accountType === ACCOUNT_TYPE.INSTRUCTOR) {
-      toast.error("You are an Instructor. You can't buy a course.")
+    if (user && user?.accountType !== ACCOUNT_TYPE.STUDENT) {
+      toast.error("Only students can add courses to the cart.")
       return
     }
     if (token) {
-      dispatch(addToCart(course))
+      addCourseToCart(course, token, dispatch)
       return
     }
     setConfirmationModal({

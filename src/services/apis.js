@@ -27,9 +27,20 @@ export const profileEndpoints = {
 export const studentEndpoints = {
   COURSE_PAYMENT_API: BASE_URL + "/payment/capturePayment",
   COURSE_VERIFY_API: BASE_URL + "/payment/verifyPayment",
+  MARK_PAYMENT_FAILED_API: BASE_URL + "/payment/markPaymentFailed",
   ENROLL_FREE_COURSE_API: BASE_URL + "/payment/enrollFreeCourse",
   SEND_PAYMENT_SUCCESS_EMAIL_API:
     BASE_URL + "/payment/sendPaymentSuccessEmail",
+  GET_ORDER_HISTORY_API: BASE_URL + "/payment/orders",
+  GET_ORDER_DETAILS_API: BASE_URL + "/payment/orders",
+};
+
+// ---------- PERSISTENT SHOPPING CART ENDPOINTS ----------
+export const cartEndpoints = {
+  GET_CART_API: BASE_URL + "/cart",
+  ADD_TO_CART_API: BASE_URL + "/cart/add",
+  REMOVE_FROM_CART_API: BASE_URL + "/cart/remove",
+  SYNC_CART_API: BASE_URL + "/cart/sync",
 };
 
 // ---------- COURSE ENDPOINTS ----------

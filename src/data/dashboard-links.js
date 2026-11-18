@@ -48,6 +48,13 @@ export const sidebarLinks = [
     icon: "VscArchive",
   },
   {
+    id: 9,
+    name: "Order History",
+    path: "/dashboard/order-history",
+    type: ACCOUNT_TYPE.STUDENT,
+    icon: "VscHistory",
+  },
+  {
     id: 7,
     name: "Admin Dashboard",
     path: "/dashboard/admin",

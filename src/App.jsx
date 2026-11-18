@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import "./App.css";
 import { Route, Routes } from "react-router-dom";
 import Navbar from "./components/common/Navbar";
@@ -6,7 +6,8 @@ import OpenRoute from "./components/core/Auth/OpenRoute";
 import PrivateRoute from "./components/core/Auth/PrivateRoute";
 import AdminRoute from "./components/core/Auth/AdminRoute";
 import { ACCOUNT_TYPE } from "./utils/constants";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
+import { fetchUserCart } from "./services/operations/cartAPI";
 
 const Home = lazy(() => import("./pages/Home"));
 const Login = lazy(() => import("./pages/Login"));
@@ -24,6 +25,7 @@ const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Settings = lazy(() => import("./components/core/Dashboard/Settings"));
 const EnrolledCourses = lazy(() => import("./components/core/Dashboard/EnrolledCourses"));
 const Cart = lazy(() => import("./components/core/Dashboard/Cart"));
+const OrderHistory = lazy(() => import("./components/core/Dashboard/OrderHistory"));
 const MyCourses = lazy(() => import("./components/core/Dashboard/MyCourses"));
 const AddCourse = lazy(() => import("./components/core/Dashboard/AddCourse"));
 const EditCourse = lazy(() => import("./components/core/Dashboard/EditCourse"));
@@ -44,7 +46,16 @@ function PageLoader() {
 }
 
 function App() {
+  const dispatch = useDispatch();
   const { user } = useSelector((state) => state.profile);
+  const { token } = useSelector((state) => state.auth);
+
+  // Hydrate persistent MongoDB cart on page reload / multi-device student session
+  useEffect(() => {
+    if (token && user?.accountType === ACCOUNT_TYPE.STUDENT) {
+      fetchUserCart(token, dispatch);
+    }
+  }, [token, user?.accountType, dispatch]);
   return (
     <div className="flex min-h-screen w-full overflow-x-hidden flex-col bg-richblack-900 font-inter">
       <Navbar />
@@ -83,6 +94,7 @@ function App() {
               <>
                 <Route path="cart" element={<Cart />} />
                 <Route path="enrolled-courses" element={<EnrolledCourses />} />
+                <Route path="order-history" element={<OrderHistory />} />
               </>
             )}
 
