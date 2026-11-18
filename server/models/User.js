@@ -51,11 +51,24 @@ const userSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
+    // Deprecated legacy plaintext reset token (cleared and retained for backward compatibility)
     token: {
         type: String,
+        default: null,
+    },
+    // Cryptographically hashed password reset token (SHA-256) - SEC-002
+    resetPasswordTokenHash: {
+        type: String,
+        default: null,
+        index: true,
     },
     resetPasswordExpires: {
         type: Date,
+    },
+    // Monotonically increasing token version for JWT revocation on password changes/resets - SEC-003
+    tokenVersion: {
+        type: Number,
+        default: 0,
     },
     courseProgress: [
         {
