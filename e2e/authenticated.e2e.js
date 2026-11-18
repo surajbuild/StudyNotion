@@ -683,10 +683,16 @@ async function runAuthenticatedE2E() {
                 await page.waitForSelector(`text=${seeded.courses.freeCourseName}`, { timeout: 15000 });
 
                 // Verify course access works in ViewCourse
-                await page.goto(
-                    `${FRONTEND_URL}/#/view-course/${seeded.courses.freeCourseId}/section/${seeded.courses.freeCourseSectionId}/sub-section/${seeded.courses.freeCourseSubSectionId}`,
-                    { waitUntil: "networkidle" }
-                );
+                await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/course/getFullCourseDetails"), {
+                        timeout: 15000,
+                    }),
+                    page.goto(
+                        `${FRONTEND_URL}/#/view-course/${seeded.courses.freeCourseId}/section/${seeded.courses.freeCourseSectionId}/sub-section/${seeded.courses.freeCourseSubSectionId}`,
+                        { waitUntil: "networkidle" }
+                    ),
+                ]);
+                await page.waitForSelector("video", { timeout: 15000 });
                 await page.waitForSelector("text=Lesson 1: Free JS Primer", { timeout: 15000 });
                 const canAccessLesson = (await page.locator("body").innerText()).includes(
                     "Lesson 1: Free JS Primer"

@@ -30,7 +30,9 @@ function CourseDetailsCard({
 
   const isFreeCourse = Number(CurrentPrice) === 0
   const isAlreadyEnrolled = Boolean(
-    user && course?.studentEnrolled?.some((id) => String(id) === String(user._id))
+    user &&
+      (course?.studentEnrolled?.some((id) => String(id) === String(user._id)) ||
+        user?.courses?.some((id) => String(id?._id || id) === String(course?._id)))
   )
 
   const handleShare = () => {
