@@ -1,15 +1,36 @@
 # StudyNotion — Bug Tracker & Root Cause Analysis
 
 > **Last Updated:** 2026-11-18  
-> **Audit Cycle:** Cycle #7 (`GAP-001` + `BUG-030`)  
+> **Audit Cycle:** Cycle #8 (`GAP-008` + `BUG-031`)  
 > **Severity Levels:** `CRITICAL` | `HIGH` | `MEDIUM` | `LOW`  
-> **Total Logged:** 28 (`BUG-001`–`BUG-030`, excluding unused gap) | **Fixed & Verified:** 28 | **Open:** 0
+> **Total Logged:** 29 (`BUG-001`–`BUG-031`, excluding unused gap) | **Fixed & Verified:** 29 | **Open:** 0
 
 ---
 
 ## Open Bugs
 
-*None — all tracked bugs across Cycles #1–#7 have been fixed and verified.*
+*None — all tracked bugs across Cycles #1–#8 have been fixed and verified.*
+
+---
+
+## Cycle #8 — Newly Discovered & Fixed Bug + Feature Delivery (`GAP-008`)
+
+### `BUG-031` — Isolated Ephemeral `mongod` Deadlocked After ~64 KB of JSON Logs Due to Unconsumed `stdout` Pipe
+- **Module:** Backend Test Infrastructure (`mongoInstance.js`)
+- **Severity:** `HIGH` | **Priority:** P1 | **Status:** `FIXED & VERIFIED`
+- **Location:** [`server/test-env/mongoInstance.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/test-env/mongoInstance.js#L120-L125)
+- **How Discovered:** Expanding `integration.realdb.test.js` to 11 real-MongoDB integration tests (`BE-DB-10`, `BE-DB-11`) caused `afterAll` (`dropDatabase()`) to time out at 45s despite all 11 tests passing in ~5s.
+- **Root Cause:** `ensureIsolatedMongo` spawned `mongod` with `stdio: ["ignore", "pipe", "pipe"]` and attached a listener only to `child.stderr` while never draining `child.stdout`. MongoDB 8.0 writes structured JSON log lines to `stdout`; once logs exceeded the Windows OS pipe buffer (~64 KB), the kernel blocked `mongod`'s main thread, deadlocking subsequent DB operations and teardown.
+- **Resolution:** Changed `stdio` to `["ignore", "ignore", "pipe"]` so `mongod` stdout logs never fill an unread pipe buffer while `stderr` remains captured for startup error diagnostics.
+- **Regression Verification:** `server/__tests__/integration.realdb.test.js` dropped from 50s timeout to **5.8s** (`11/11 PASS`); all 20 isolated Playwright E2E journeys passed cleanly (`20/20 PASS`).
+
+### `GAP-008` *(Tracked Separately)* — Database-Backed Shopping Cart, Order Security & Order History
+- **Module:** Student Shopping Cart, Razorpay Payment Verification & Order History
+- **Status:** `RESOLVED & VERIFIED`
+- **Additional Payment Hygiene Fixed:**
+  1. `src/services/operations/studentFeatureAPI.js` previously fired `sendPaymentSuccessEmail` inside Razorpay's frontend `handler` *before* backend `verifyPayment` succeeded; moved receipt email dispatch strictly *after* confirmed `200` backend verification (and skipped on duplicate idempotent replays).
+  2. `src/components/core/Dashboard/Cart/renderCartCourses.jsx` previously displayed a hardcoded `4.5` rating on every cart item; updated to compute actual ratings via `GetAvgRating(course?.ratingAndReviews)`.
+- **Verification:** `cart.test.js` (6/6), `payment.test.js` (18/18), `integration.realdb.test.js` (`BE-DB-10` & `BE-DB-11`), `cartAPI.test.js` (3/3), `OrderHistory.test.jsx` (2/2), Playwright `E2E-30`–`E2E-32` (3/3).
 
 ---
 

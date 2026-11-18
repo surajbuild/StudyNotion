@@ -1,8 +1,62 @@
 # StudyNotion — Detailed QA Test Report
 
-> **Latest Cycle:** Cycle #7 — `GAP-001` Admin Dashboard & Category Management + `BUG-030` Fix  
+> **Latest Cycle:** Cycle #8 — `GAP-008` Database-Backed Shopping Cart, Order Security & Order History + `BUG-031` Fix  
 > **Date:** 2026-11-18  
 > **Environment:** Windows 11 | Node.js v22.16.0 | React 18 (CRA 5) | Express 5 | Mongoose 8 | MongoDB 8.0 (Isolated Local Ephemeral on `127.0.0.1:27018`) | Chromium 1208 (Playwright)
+
+---
+
+## Cycle #8 — Execution Summary (2026-11-18)
+
+| Test Suite / Verification Gate | Command | Suites | Tests | Passed | Failed | Blocked | Result |
+|-------------------------------|---------|--------|-------|--------|--------|---------|--------|
+| **Frontend Unit & Component Tests** | `npm test` | 25 | 89 | 89 | 0 | 0 | **PASS** (7.79s, +2 suites / +5 tests) |
+| **Backend Unit, API & Safety Guardrails** | `npm run test:server` | 13 | 130 | 130 | 0 | 0 | **PASS** (+10 tests: `cart.test.js` [6], `payment.test.js` [+4]) |
+| **Backend Real-MongoDB Full-Stack Integration** | `npm run test:server` (`integration.realdb.test.js`) | 1 | 11 | 11 | 0 | 0 | **PASS** (5.82s after `BUG-031` fix, +2 suites: `BE-DB-10`, `BE-DB-11`) |
+| **Isolated Authenticated & Feature Playwright E2E (`E2E-16`–`32` + `REG-01`–`03`)** | `npm run test:e2e:isolated` | 1 | 20 | 20 | 0 | 0 | **PASS** (+3 new `E2E-30`–`E2E-32`, 0 page errors, 0 Swiper warnings) |
+| **Public Catalog & Console/Network Regression (`PUB-01`–`PUB-04`)** | `node scratch/public_regression.js` | 1 | 4 | 4 | 0 | 0 | **PASS** (0 console errors, 0 page errors, 0 failed network requests) |
+| **Cycle #8 Live-Executed Subtotal** | — | **41** | **254** | **254** | **0** | **0** | **PASS (`254 / 254` live + `25` historical Cycle #2–#3 = `279 / 279` cumulative)** |
+| **Strict Frontend ESLint** | `npx eslint src --max-warnings=0` | — | — | 0 errors, 0 warnings | — | — | **PASS** (Exit 0) |
+| **Frontend Production Build** | `npm run build` | — | — | Exit 0 (0 ESLint warnings) | — | — | **PASS** |
+
+### Cycle #8 Actual Verification Outputs
+
+#### A. Automated Unit & Real-MongoDB Integration Suites
+```text
+Frontend (npm test):
+Test Suites: 25 passed, 25 total
+Tests:       89 passed, 89 total (added cartAPI.test.js [3], OrderHistory.test.jsx [2])
+Time:        7.793 s
+
+Backend (npm run test:server):
+PASS __tests__/integration.realdb.test.js (5.818 s) — 11/11 PASS (incl. BE-DB-10 & BE-DB-11)
+Test Suites: 14 passed, 14 total
+Tests:       141 passed, 141 total (added cart.test.js [6], payment.test.js [+4], integration.realdb.test.js [+2])
+Time:        24.682 s
+```
+
+#### B. Isolated Playwright E2E Run (`e2e/authenticated.e2e.js`) & Public Regression Audit
+```text
+[PASS] E2E-16..E2E-21 Authenticated Student, Razorpay Payment, ViewCourse, Instructor CRUD & Settings
+[PASS] E2E-22..E2E-23 GAP-005 Free Course Direct Enrollment & Publishing
+[PASS] E2E-24..E2E-26 GAP-004 Global Search, Filters, Sorting, Pagination & Mobile Search
+[PASS] E2E-27..E2E-29 GAP-001 Admin Security, Dashboard, Category CRUD & Consistency
+[PASS] E2E-30 GAP-008 Persistent DB Cart (Refresh, Logout/Login, Multi-Browser, Remove & Merge): add=200, refresh=true, logout=true, secondBrowser=true, remove=200, mergeAuthoritative=true
+[PASS] E2E-31 GAP-008 Payment Cancellation, Order History, Details Modal & Mobile 375px: cancel=200, cartIntact=true, paidAndCancelled=true, modalOk=true, mobileOverflow=false
+[PASS] E2E-32 GAP-008 Mixed Free+Paid Cart Checkout & Cross-User Order Isolation: emptyHist=true, cross403=403, mixedNotice=true, verify=200, rzpAmount=129900, bothEnrolled=true
+[PASS] REG-01..REG-03 Footer, Error Page & Mobile 375px Regressions
+
+PAGE ERRORS: 0 [] | SWIPER WARNINGS: 0 | TOTAL: 20 PASSED: 20 FAILED: 0
+
+Public Catalog & Console/Network Regression:
+[PASS] PUB-01..PUB-04 | CONSOLE_ERRORS: 0 [] | PAGE_ERRORS: 0 [] | FAILED_REQUESTS: 0 []
+```
+
+#### C. Strict ESLint & Production Build
+```text
+$ npx eslint src --max-warnings=0 -> Exit 0 (0 errors, 0 warnings)
+$ npm run build -> Exit 0 (0 [eslint] warnings; only 2 pre-existing third-party swiper PostCSS CSS-nesting notices)
+```
 
 ---
 

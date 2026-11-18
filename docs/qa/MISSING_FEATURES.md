@@ -64,11 +64,12 @@
 - **Required Changes:** Enforce consistent minimum password length (e.g., ≥ 8 chars) on both frontend forms and backend controllers (`Auth.js`, `ResetPassword.js`).
 - **Priority:** Medium | **Complexity:** `LOW`
 
-### `GAP-008` — Database-Backed Shopping Cart & Order History
-- **What is missing:** Cart lives exclusively in browser `localStorage` (`cartSlice.js`), and there is no `Order` / `Payment` MongoDB collection recording transaction history, receipts, or refunds.
-- **Why it is important:** Clearing browser storage loses cart items; students and admins cannot view past invoices/payments; duplicate Razorpay webhook/callback protection has no idempotency record.
-- **Required Changes:** Add `Order` model in `server/models/Order.js`, persist verified payment IDs in `Payments.js` (checking `razorpay_payment_id` uniqueness to prevent replay), and add a "Purchase History" tab in Student Dashboard.
-- **Priority:** Medium | **Complexity:** `MEDIUM`
+### `GAP-008` — Database-Backed Shopping Cart & Order History — `RESOLVED (Cycle #8)`
+- **Resolution (Cycle #8):**
+  - **Persistent Cart (`User.cart` + `/api/v1/cart`):** Added `cart` course references on `server/models/User.js`, created `server/controllers/Cart.js` & `server/routes/Cart.js` (`GET /`, `POST /add`, `DELETE /remove/:courseId`, `POST /sync` strictly behind `auth, isStudent`), with authoritative DB price calculation, duplicate prevention (`409`), Draft/unpublished blocking (`400`), self-healing pruning of unavailable/already-enrolled courses, automatic `$pull` on enrollment & course deletion, and login merge via `syncCartOnLogin` without erasing server carts on logout.
+  - **Order Management & Payment Security (`Order.js` + `Payments.js`):** Created `server/models/Order.js` with historical `courseSnapshots`, `PENDING`/`PAID`/`FAILED`/`CANCELLED`/`REFUNDED` lifecycle, and unique partial indexes on `razorpayOrderId` & `razorpayPaymentId`. Hardened `capturePayment` (creates `PENDING` order charging ONLY paid course amounts, supporting mixed Free+Paid carts), `verifyPayment` (timing-safe HMAC-SHA256, server-side Order ownership/amount/currency/course validation, duplicate payment ID `409` replay protection, atomic `PENDING -> PAID` transition, idempotent repeated-callback handling & interrupted-enrollment recovery), `markPaymentFailed`, `GET /payment/orders` (paginated), and `GET /payment/orders/:orderId` (strict owner check `403`).
+  - **Frontend Order History & Cart Sync:** Added `src/services/operations/cartAPI.js`, `src/components/core/Dashboard/OrderHistory.jsx` (`/dashboard/order-history`), Redux `setCartState`/loading/error states, `App.jsx` reload hydration, `authAPI.js` login merge, real `GetAvgRating` in `renderCartCourses.jsx`, mixed-cart breakdown in `renderTotalAmount.jsx`, and post-verification receipt emails + cancel/failure reporting in `studentFeatureAPI.js`.
+  - **Verification:** `cart.test.js` (6/6), `payment.test.js` (18/18), `integration.realdb.test.js` (`BE-DB-10` & `BE-DB-11`), `cartAPI.test.js` (3/3), `OrderHistory.test.jsx` (2/2), and Playwright `E2E-30`–`E2E-32` (3/3).
 
 ### `GAP-009` — Dedicated Isolated MongoDB Test Environment + Authenticated E2E Seed Script — `RESOLVED (Cycle #4)`
 - **Resolution (Cycle #4):**
