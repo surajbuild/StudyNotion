@@ -45,6 +45,9 @@
   "scripts": {
     "start": "node --openssl-legacy-provider node_modules/react-scripts/bin/react-scripts.js start",
     "build": "node --openssl-legacy-provider node_modules/react-scripts/bin/react-scripts.js build",
+    "test": "node --openssl-legacy-provider node_modules/react-scripts/bin/react-scripts.js test --watchAll=false",
+    "test:server": "cd server && npm test",
+    "test:all": "npm test && npm run test:server",
     "eject": "react-scripts eject",
     "server": "node --watch server/index.js",
     "dev": "node dev.js"
