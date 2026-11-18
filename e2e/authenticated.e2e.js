@@ -43,6 +43,9 @@ function findChromeExecutable() {
             "chrome-win64",
             "chrome.exe"
         ),
+        "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+        "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
     ].filter(Boolean);
     for (const candidate of candidates) {
         if (fs.existsSync(candidate)) return candidate;
@@ -2218,6 +2221,7 @@ async function runAuthenticatedE2E() {
                     .first()
                     .click();
                 await page.waitForSelector('div[role="dialog"]', { timeout: 10000 });
+                await page.waitForSelector(`text=${pendingInstEmail}`, { timeout: 10000 });
                 const detailsText = await page.locator('div[role="dialog"]').innerText();
                 const detailsModalOk =
                     detailsText.includes("Aarav Applicant") &&
@@ -2638,6 +2642,164 @@ async function runAuthenticatedE2E() {
                         rejectedUiBlocked &&
                         rejectedApi403,
                     `otherInstUi=${otherInstUiBlocked}, otherInstApi403=${otherInstApi403}, studentApi403=${studentApi403}, rejectedUi=${rejectedUiBlocked}, rejectedApi403=${rejectedApi403}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-41 (SEC-003): Immediate JWT Revocation after Password Change
+        // =========================================================================
+        let e2e41FreshToken = null;
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                const secEmail = "e2e41.security@isolated.test";
+                const initialPass = "OldPassword@1234";
+                const updatedPass = "NewPassword@5678";
+
+                // 1. Create a dedicated user via API
+                await fetchJson(`${API_BASE_URL}/auth/sendotp`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email: secEmail }),
+                });
+                const otpRes = await fetchJson(
+                    `${API_BASE_URL}/__test__/otp?email=${encodeURIComponent(secEmail)}`
+                );
+                const otp = otpRes.data?.otp || "";
+                await fetchJson(`${API_BASE_URL}/auth/signup`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        firstName: "Sec",
+                        lastName: "Tester",
+                        email: secEmail,
+                        password: initialPass,
+                        confirmPassword: initialPass,
+                        accountType: "Student",
+                        otp,
+                    }),
+                });
+
+                // 2. UI Login and capture Token A
+                await uiLogin(page, secEmail, initialPass);
+                await waitForHash(page, "/dashboard/my-profile");
+                const tokenA = await page.evaluate(() => localStorage.getItem("token"));
+
+                // 3. Verify Token A is initially valid
+                const initialCheck = await page.evaluate(async ({ apiBase, tok }) => {
+                    const res = await fetch(`${apiBase}/profile/getUserDetails`, {
+                        headers: { Authorization: `Bearer ${tok}` },
+                    });
+                    return res.status;
+                }, { apiBase: API_BASE_URL, tok: tokenA });
+                const tokenAInitiallyValid = initialCheck === 200;
+
+                // 4. Navigate to Settings and update password
+                await page.goto(`${FRONTEND_URL}/#/dashboard/settings`, { waitUntil: "networkidle" });
+                await page.fill("#oldPassword", initialPass);
+                await page.fill("#newPassword", updatedPass);
+                await page.fill("#confirmNewPassword", updatedPass);
+                const [pwResp] = await Promise.all([
+                    page.waitForResponse((r) => r.url().includes("/auth/changepassword"), {
+                        timeout: 15000,
+                    }),
+                    page.getByRole("button", { name: /^Update$/i }).click(),
+                ]);
+                const pwChangeOk = pwResp.status() === 200;
+                await waitForHash(page, "/dashboard/my-profile");
+
+                // 5. SEC-003: Token A MUST be immediately revoked by the backend (401 TOKEN_REVOKED)
+                const staleTokenCheck = await page.evaluate(async ({ apiBase, tok }) => {
+                    const res = await fetch(`${apiBase}/profile/getUserDetails`, {
+                        headers: { Authorization: `Bearer ${tok}` },
+                    });
+                    const json = await res.json();
+                    return { status: res.status, code: json?.code };
+                }, { apiBase: API_BASE_URL, tok: tokenA });
+
+                const staleTokenRevoked =
+                    staleTokenCheck.status === 401 && staleTokenCheck.code === "TOKEN_REVOKED";
+
+                // 6. UI Logout and login with the new password
+                await uiLogout(page);
+                const newLoginStatus = await uiLogin(page, secEmail, updatedPass);
+                await waitForHash(page, "/dashboard/my-profile");
+                const tokenB = await page.evaluate(() => localStorage.getItem("token"));
+                e2e41FreshToken = tokenB;
+
+                // 7. Token B is valid
+                const freshCheck = await page.evaluate(async ({ apiBase, tok }) => {
+                    const res = await fetch(`${apiBase}/profile/getUserDetails`, {
+                        headers: { Authorization: `Bearer ${tok}` },
+                    });
+                    return res.status;
+                }, { apiBase: API_BASE_URL, tok: tokenB });
+                const tokenBValid = freshCheck === 200;
+
+                record(
+                    "E2E-41",
+                    "SEC-003 Immediate JWT Revocation after Password Change (Stale Token 401 TOKEN_REVOKED, Re-login 200)",
+                    tokenAInitiallyValid && pwChangeOk && staleTokenRevoked && newLoginStatus === 200 && tokenBValid,
+                    `tokenAValid=${tokenAInitiallyValid}, pwChange=${pwChangeOk}, staleRevoked=${staleTokenRevoked}, reLogin=${newLoginStatus}, tokenBValid=${tokenBValid}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-42 (SEC-001, SEC-004, SEC-006): Review Email Privacy, Body JWT Rejection & CORS
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                // Navigate to frontend origin so evaluate runs within the approved origin
+                await page.goto(`${FRONTEND_URL}/#/`, { waitUntil: "networkidle" });
+
+                // 1. SEC-004: Public reviews endpoint MUST NOT expose student email
+                const reviewsCheck = await page.evaluate(async (apiBase) => {
+                    const res = await fetch(`${apiBase}/course/getReviews`);
+                    const json = await res.json();
+                    const reviews = json.data || [];
+                    const emailExposed = reviews.some((r) => r.user && r.user.email);
+                    return {
+                        status: res.status,
+                        count: reviews.length,
+                        emailExposed,
+                    };
+                }, API_BASE_URL);
+
+                const reviewEmailProtected = reviewsCheck.status === 200 && !reviewsCheck.emailExposed;
+
+                // 2. SEC-006: Passing token ONLY in request body MUST be rejected with 401
+                const bodyTokenCheck = await page.evaluate(async ({ apiBase, tok }) => {
+                    const res = await fetch(`${apiBase}/profile/updateProfile`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            token: tok,
+                            gender: "Other",
+                            contactNumber: "9876543210",
+                        }),
+                    });
+                    const json = await res.json();
+                    return {
+                        status: res.status,
+                        message: json.message,
+                    };
+                }, { apiBase: API_BASE_URL, tok: e2e41FreshToken });
+
+                const bodyTokenRejected =
+                    bodyTokenCheck.status === 401 && /token is missing/i.test(bodyTokenCheck.message);
+
+                record(
+                    "E2E-42",
+                    "SEC-004 Student Review Privacy (No Email) & SEC-006 Request Body JWT Rejection",
+                    reviewEmailProtected && bodyTokenRejected,
+                    `reviewsStatus=${reviewsCheck.status}, emailExposed=${reviewsCheck.emailExposed}, bodyTokenStatus=${bodyTokenCheck.status}, msg="${bodyTokenCheck.message}"`
                 );
             } finally {
                 await ctx.close();
