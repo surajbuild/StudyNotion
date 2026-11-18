@@ -35,14 +35,19 @@ app.use(cookieParser());
 
 const allowedOrigins = [
     "http://localhost:3000",
+    "http://127.0.0.1:3000",
     process.env.FRONTEND_URL,
 ].filter(Boolean); // removes undefined/empty values
 
 app.use(
     cors({
         origin: (origin, callback) => {
-            // Allow server-to-server requests (no origin) and listed origins
-            if (!origin || allowedOrigins.includes(origin)) {
+            // Allow server-to-server requests (no origin), listed origins, and vercel.app domains
+            if (
+                !origin ||
+                allowedOrigins.includes(origin) ||
+                origin.endsWith(".vercel.app")
+            ) {
                 callback(null, true);
             } else {
                 callback(new Error(`CORS blocked for origin: ${origin}`));
@@ -110,4 +115,9 @@ const start = async () => {
     }
 };
 
-start();
+if (require.main === module) {
+    start();
+}
+
+module.exports = app;
+
