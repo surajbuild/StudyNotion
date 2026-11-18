@@ -235,11 +235,12 @@ exports.login = async (req, res) => {
             });
         }
 
-        // Build JWT payload (email, id, role — no sensitive data)
+        // Build JWT payload (email, id, role, tokenVersion — no sensitive data)
         const payload = {
             email: user.email,
             id: user._id,
             accountType: user.accountType,
+            tokenVersion: user.tokenVersion ?? 0,
         };
 
         const token = jwt.sign(payload, process.env.JWT_SECRET, {
@@ -253,6 +254,7 @@ exports.login = async (req, res) => {
         responseUser.token = token;
         delete responseUser.password;
         delete responseUser.resetPasswordExpires;
+        delete responseUser.resetPasswordTokenHash;
 
         if (responseUser.accountType === "Instructor") {
             responseUser.approvalStatus = resolveInstructorApprovalStatus(responseUser);
@@ -266,6 +268,8 @@ exports.login = async (req, res) => {
         const cookieOptions = {
             expires: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
             httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
         };
 
         res.cookie("token", token, cookieOptions).status(200).json({
@@ -423,9 +427,17 @@ exports.changePassword = async (req, res) => {
             });
         }
 
-        // Hash and store the new password
+        // Hash and store the new password, incrementing tokenVersion to immediately revoke active JWTs (SEC-003)
         user.password = await bcrypt.hash(newPassword, 10);
-        await user.save();
+        user.tokenVersion = (typeof user.tokenVersion === "number" ? user.tokenVersion : 0) + 1;
+        if (typeof user.save === "function") {
+            await user.save();
+        } else {
+            await User.findByIdAndUpdate(userId, {
+                password: user.password,
+                $inc: { tokenVersion: 1 },
+            });
+        }
 
         // Send a security-notification email (best-effort — does not fail the request)
         try {
@@ -458,6 +470,8 @@ exports.logout = async (req, res) => {
     try {
         res.clearCookie("token", {
             httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
         });
         return res.status(200).json({
             success: true,
