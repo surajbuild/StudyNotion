@@ -2,9 +2,9 @@ const User = require("../models/User");
 const mailSender = require("../utils/mailSender");
 const { resetPasswordEmail } = require("../mail/templates/resetPasswordEmail");
 const bcrypt = require('bcrypt');
-const crypto = require('crypto');
 const { isTestMode } = require("../config/testSafety");
 const { validateNewPassword } = require("../utils/passwordPolicy");
+const { generateSecureResetToken, hashToken } = require("../utils/tokenSecurity");
 if (!isTestMode()) {
     require('dotenv').config();
 }
@@ -22,13 +22,16 @@ exports.resetPasswordToken = async (req, res) => {
                 message: 'Your email is not registered with us',
             })
         }
-        //generate token
-        const token = crypto.randomUUID();
-        //update user by adding token and expiration time
+        //generate cryptographically secure raw token and persist only its SHA-256 hash (SEC-002)
+        const rawToken = generateSecureResetToken();
+        const tokenHash = hashToken(rawToken);
+
+        //update user by adding hashed token and expiration time, clearing legacy plaintext token
         const updatedDetails = await User.findOneAndUpdate(
                                     {email: email},
                                     {
-                                        token: token,
+                                        resetPasswordTokenHash: tokenHash,
+                                        token: null,
                                         resetPasswordExpires: Date.now() + 5*60*1000,
                                     },
                                     {new: true}
@@ -45,7 +48,8 @@ exports.resetPasswordToken = async (req, res) => {
         }
         const frontend = origin || process.env.FRONTEND_URL || 'http://localhost:3000';
         // Frontend uses HashRouter (src/index.js), so routes must be prefixed with /#/
-        const url = `${frontend.replace(/\/$/, '')}/#/update-password/${token}`;
+        // Raw token is provided only in the email link; the database never stores it in plaintext
+        const url = `${frontend.replace(/\/$/, '')}/#/update-password/${rawToken}`;
         await mailSender(email, "Password Reset Link", resetPasswordEmail(url));
         //return response
         return res.status(200).json({ success: true, message: 'Email sent successfully, please check email and change password' });
@@ -64,7 +68,7 @@ exports.resetPassword = async (req, res) => {
         //data fetch
         const {password, confirmPassword, token} = req.body;
 
-        // Guard missing/empty/non-string token so User.findOne({ token: null }) can never match cleared tokens
+        // Guard missing/empty/non-string token so User.findOne cannot match null or empty values
         if(!token || typeof token !== "string" || !token.trim()){
             return res.status(400).json({
                 success: false,
@@ -97,8 +101,10 @@ exports.resetPassword = async (req, res) => {
         }
 
         const trimmedToken = token.trim();
-        //get user details from db using token
-        const userDetails = await User.findOne({token: trimmedToken});
+        const tokenHash = hashToken(trimmedToken);
+
+        //get user details from db using hashed token (SEC-002)
+        const userDetails = await User.findOne({ resetPasswordTokenHash: tokenHash });
         //if no entry - invalid token
         if(!userDetails){
             return res.status(401).json({
@@ -115,10 +121,17 @@ exports.resetPassword = async (req, res) => {
         }
 
         //hash password and clear token fields (single-use token invalidation)
+        //and increment tokenVersion to revoke outstanding JWTs immediately (SEC-003)
         const hashedPassword = await bcrypt.hash(password, 10);
         await User.findOneAndUpdate(
-            { _id: userDetails._id, token: trimmedToken },
-            { password: hashedPassword, token: null, resetPasswordExpires: null },
+            { _id: userDetails._id, resetPasswordTokenHash: tokenHash },
+            {
+                password: hashedPassword,
+                resetPasswordTokenHash: null,
+                token: null,
+                resetPasswordExpires: null,
+                $inc: { tokenVersion: 1 },
+            },
             { new: true }
         );
 
