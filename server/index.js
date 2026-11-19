@@ -16,6 +16,9 @@ if (isTestMode()) {
     if (!process.env.RAZORPAY_SECRET) {
         process.env.RAZORPAY_SECRET = "studynotion-isolated-test-razorpay-secret";
     }
+    if (!process.env.RAZORPAY_WEBHOOK_SECRET) {
+        process.env.RAZORPAY_WEBHOOK_SECRET = "studynotion-isolated-test-webhook-secret";
+    }
 } else {
     // Load .env variables before anything else references process.env
     dotenv.config({ path: path.join(__dirname, ".env") });
@@ -47,6 +50,13 @@ const app = express();
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
 app.use(compression());
+
+// Webhook endpoint receives raw Buffer body for cryptographic HMAC signature verification BEFORE express.json
+app.use(
+    "/api/v1/payment/webhook",
+    express.raw({ type: "*/*", limit: "2mb" })
+);
+
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 
@@ -149,11 +159,13 @@ app.use((err, req, res, next) => {
 });
 
 // ─── Startup ─────────────────────────────────────────────────────────────────
+const { startWebhookWorker, stopWebhookWorker } = require("./workers/webhookWorker");
 
 const start = async () => {
     try {
         await database.connect();
         startSweeper();
+        startWebhookWorker({ intervalMs: isTestMode() ? 500 : 3000 });
         return app.listen(PORT, () => {
             console.log(`Server running on port ${PORT}${isTestMode() ? " [ISOLATED TEST MODE]" : ""}`);
         });
@@ -169,3 +181,4 @@ if (require.main === module) {
 
 module.exports = app;
 module.exports.start = start;
+module.exports.stopWebhookWorker = stopWebhookWorker;

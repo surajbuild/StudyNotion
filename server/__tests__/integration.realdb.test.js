@@ -3,6 +3,7 @@ process.env.STUDYNOTION_TEST_MODE = "true";
 process.env.TEST_MOCK_EXTERNAL_SERVICES = "true";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "studynotion-isolated-test-jwt-secret";
 process.env.RAZORPAY_SECRET = process.env.RAZORPAY_SECRET || "studynotion-isolated-test-razorpay-secret";
+process.env.RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || "studynotion-isolated-test-webhook-secret";
 process.env.FOLDER_NAME = "studynotion_test_uploads";
 
 const crypto = require("crypto");
@@ -31,7 +32,13 @@ const CourseProgress = require("../models/CourseProgress");
 const RatingAndReview = require("../models/RatingAndReview");
 const OTP = require("../models/OTP");
 const Order = require("../models/Order");
+const WebhookEvent = require("../models/WebhookEvent");
 const mailSender = require("../utils/mailSender");
+const {
+    claimNextEvent,
+    processEvent,
+    processPendingEvents,
+} = require("../workers/webhookWorker");
 
 const app = require("../index");
 
@@ -2561,6 +2568,792 @@ describe("Isolated Real-MongoDB Full-Stack Integration Suite (GAP-009)", () => {
             expect(allowedOriginRes.status).toBe(200);
             expect(allowedOriginRes.headers["access-control-allow-origin"]).toBe("http://localhost:3001");
             expect(allowedOriginRes.headers["access-control-allow-credentials"]).toBe("true");
+        });
+    });
+
+    describe("10. Razorpay Webhook Ingress & Asynchronous Payment Reconciliation (Cycle #13)", () => {
+        let webhookCategory;
+
+        beforeAll(() => {
+            process.env.STUDYNOTION_DISABLE_AUTO_WORKER = "true";
+        });
+
+        afterAll(() => {
+            delete process.env.STUDYNOTION_DISABLE_AUTO_WORKER;
+        });
+
+        beforeEach(async () => {
+            await WebhookEvent.deleteMany({});
+        });
+
+        const signWebhook = (payload, secret = process.env.RAZORPAY_WEBHOOK_SECRET) => {
+            const rawBody = typeof payload === "string" ? payload : JSON.stringify(payload);
+            const signature = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+            return { rawBody, signature };
+        };
+
+        const createTestCourse = async (nameSuffix, price = 500) => {
+            if (!webhookCategory) {
+                webhookCategory = await Category.create({
+                    name: "Webhook Category " + Date.now(),
+                    description: "Category for webhook tests",
+                });
+            }
+            return await Course.create({
+                courseName: `Webhook Course ${nameSuffix} ${Date.now()}`,
+                courseDescription: `Testing Webhooks ${nameSuffix}`,
+                instructor: seeded.users.instructorId,
+                whatYouWillLearn: "Asynchronous Payment Reconciliation",
+                price,
+                thumbnail: "https://example.com/thumb.jpg",
+                category: webhookCategory._id,
+                status: "Published",
+            });
+        };
+
+        test("BE-DB-21: Durable Webhook Event Persistence (Status: RECEIVED)", async () => {
+            const course = await createTestCourse("DB21", 499);
+            const captureRes = await request(app)
+                .post("/api/v1/payment/capturePayment")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({ courses: [course._id.toString()] });
+            expect(captureRes.status).toBe(200);
+            const rzpOrderId = captureRes.body.message.id;
+
+            const eventId = `evt_test_db21_${Date.now()}`;
+            const paymentId = `pay_test_db21_${Date.now()}`;
+            const payload = {
+                entity: "event",
+                account_id: "acc_test",
+                event: "order.paid",
+                contains: ["payment", "order"],
+                payload: {
+                    payment: {
+                        entity: {
+                            id: paymentId,
+                            entity: "payment",
+                            amount: 49900,
+                            currency: "INR",
+                            status: "captured",
+                            order_id: rzpOrderId,
+                        },
+                    },
+                    order: {
+                        entity: {
+                            id: rzpOrderId,
+                            entity: "order",
+                            amount: 49900,
+                            currency: "INR",
+                            status: "paid",
+                        },
+                    },
+                },
+                created_at: Math.floor(Date.now() / 1000),
+            };
+
+            const { rawBody, signature } = signWebhook(payload);
+
+            const res = await request(app)
+                .post("/api/v1/payment/webhook")
+                .set("Content-Type", "application/json")
+                .set("X-Razorpay-Signature", signature)
+                .set("x-razorpay-event-id", eventId)
+                .send(rawBody);
+
+            expect(res.status).toBe(200);
+            expect(res.body.success).toBe(true);
+            expect(res.body.status).toBe("RECEIVED");
+
+            const savedEvent = await WebhookEvent.findOne({ eventId });
+            expect(savedEvent).toBeTruthy();
+            expect(savedEvent.status).toBe("RECEIVED");
+            expect(savedEvent.eventType).toBe("order.paid");
+            expect(savedEvent.razorpayOrderId).toBe(rzpOrderId);
+            expect(savedEvent.razorpayPaymentId).toBe(paymentId);
+            expect(savedEvent.attempts).toBe(0);
+        });
+
+        test("BE-DB-22: Webhook Idempotency & Duplicate Delivery Protection", async () => {
+            const course = await createTestCourse("DB22", 399);
+            const captureRes = await request(app)
+                .post("/api/v1/payment/capturePayment")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({ courses: [course._id.toString()] });
+            const rzpOrderId = captureRes.body.message.id;
+
+            const eventId = `evt_test_db22_${Date.now()}`;
+            const paymentId = `pay_test_db22_${Date.now()}`;
+            const payload = {
+                entity: "event",
+                account_id: "acc_test",
+                event: "payment.captured",
+                contains: ["payment"],
+                payload: {
+                    payment: {
+                        entity: {
+                            id: paymentId,
+                            entity: "payment",
+                            amount: 39900,
+                            currency: "INR",
+                            status: "captured",
+                            order_id: rzpOrderId,
+                        },
+                    },
+                },
+                created_at: Math.floor(Date.now() / 1000),
+            };
+
+            const { rawBody, signature } = signWebhook(payload);
+
+            // First delivery
+            const res1 = await request(app)
+                .post("/api/v1/payment/webhook")
+                .set("Content-Type", "application/json")
+                .set("X-Razorpay-Signature", signature)
+                .set("x-razorpay-event-id", eventId)
+                .send(rawBody);
+            expect(res1.status).toBe(200);
+            expect(res1.body.success).toBe(true);
+            expect(res1.body.status).toBe("RECEIVED");
+            expect(res1.body.duplicate).toBeUndefined();
+
+            // Duplicate delivery
+            const res2 = await request(app)
+                .post("/api/v1/payment/webhook")
+                .set("Content-Type", "application/json")
+                .set("X-Razorpay-Signature", signature)
+                .set("x-razorpay-event-id", eventId)
+                .send(rawBody);
+            expect(res2.status).toBe(200);
+            expect(res2.body.success).toBe(true);
+            expect(res2.body.duplicate).toBe(true);
+
+            // Exactly 1 document exists in DB
+            const count = await WebhookEvent.countDocuments({ eventId });
+            expect(count).toBe(1);
+        });
+
+        test("BE-DB-23: Asynchronous Worker Reconciliation (Browser Crash / Disconnect Simulation)", async () => {
+            const course = await createTestCourse("DB23", 550);
+            mailSender.clearSentEmails();
+
+            const captureRes = await request(app)
+                .post("/api/v1/payment/capturePayment")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({ courses: [course._id.toString()] });
+            const rzpOrderId = captureRes.body.message.id;
+
+            // Student browser crashes here: NO verifyPayment API is ever called!
+            const eventId = `evt_test_db23_${Date.now()}`;
+            const paymentId = `pay_test_db23_${Date.now()}`;
+            const payload = {
+                entity: "event",
+                account_id: "acc_test",
+                event: "payment.captured",
+                contains: ["payment"],
+                payload: {
+                    payment: {
+                        entity: {
+                            id: paymentId,
+                            entity: "payment",
+                            amount: 55000,
+                            currency: "INR",
+                            status: "captured",
+                            order_id: rzpOrderId,
+                        },
+                    },
+                },
+                created_at: Math.floor(Date.now() / 1000),
+            };
+
+            const { rawBody, signature } = signWebhook(payload);
+            const webhookRes = await request(app)
+                .post("/api/v1/payment/webhook")
+                .set("Content-Type", "application/json")
+                .set("X-Razorpay-Signature", signature)
+                .set("x-razorpay-event-id", eventId)
+                .send(rawBody);
+            expect(webhookRes.status).toBe(200);
+
+            // Worker claims and processes the pending event
+            const claimed = await claimNextEvent();
+            expect(claimed).toBeTruthy();
+            expect(claimed.eventId).toBe(eventId);
+            expect(claimed.status).toBe("PROCESSING");
+
+            const processResult = await processEvent(claimed);
+            expect(processResult.status).toBe("PROCESSED");
+
+            // Verify Order is PAID and enrollmentCompleted is true
+            const updatedOrder = await Order.findOne({ razorpayOrderId: rzpOrderId });
+            expect(updatedOrder.status).toBe("PAID");
+            expect(updatedOrder.razorpayPaymentId).toBe(paymentId);
+            expect(updatedOrder.enrollmentCompleted).toBe(true);
+            expect(updatedOrder.receiptEmailSent).toBe(true);
+
+            // Verify Student has course
+            const updatedStudent = await User.findById(seeded.users.studentId);
+            expect(updatedStudent.courses.some((c) => c.toString() === course._id.toString())).toBe(true);
+
+            // Verify Course has student
+            const updatedCourse = await Course.findById(course._id);
+            expect(updatedCourse.studentEnrolled.some((s) => s.toString() === seeded.users.studentId.toString())).toBe(true);
+
+            // Verify CourseProgress created
+            const progress = await CourseProgress.findOne({ courseID: course._id, userId: seeded.users.studentId });
+            expect(progress).toBeTruthy();
+            expect(progress.completedVideos).toHaveLength(0);
+
+            // Verify receipt email sent
+            expect(mailSender.getSentEmails().some((e) => e.to === seeded.users.studentEmail)).toBe(true);
+        });
+
+        test("BE-DB-24: Concurrent Webhook Delivery & Frontend Verification Race Condition", async () => {
+            const course = await createTestCourse("DB24", 600);
+            mailSender.clearSentEmails();
+
+            const captureRes = await request(app)
+                .post("/api/v1/payment/capturePayment")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({ courses: [course._id.toString()] });
+            const rzpOrderId = captureRes.body.message.id;
+
+            const eventId = `evt_test_db24_${Date.now()}`;
+            const paymentId = `pay_test_db24_${Date.now()}`;
+
+            // Ingest webhook
+            const payload = {
+                entity: "event",
+                account_id: "acc_test",
+                event: "order.paid",
+                contains: ["payment", "order"],
+                payload: {
+                    payment: {
+                        entity: {
+                            id: paymentId,
+                            entity: "payment",
+                            amount: 60000,
+                            currency: "INR",
+                            status: "captured",
+                            order_id: rzpOrderId,
+                        },
+                    },
+                    order: {
+                        entity: {
+                            id: rzpOrderId,
+                            entity: "order",
+                            amount: 60000,
+                            currency: "INR",
+                            status: "paid",
+                        },
+                    },
+                },
+                created_at: Math.floor(Date.now() / 1000),
+            };
+
+            const { rawBody, signature } = signWebhook(payload);
+            const webhookRes = await request(app)
+                .post("/api/v1/payment/webhook")
+                .set("Content-Type", "application/json")
+                .set("X-Razorpay-Signature", signature)
+                .set("x-razorpay-event-id", eventId)
+                .send(rawBody);
+            expect(webhookRes.status).toBe(200);
+
+            const clientSignature = crypto
+                .createHmac("sha256", process.env.RAZORPAY_SECRET)
+                .update(`${rzpOrderId}|${paymentId}`)
+                .digest("hex");
+
+            // Execute client verifyPayment AND worker processing concurrently
+            const [clientRes, workerResults] = await Promise.all([
+                request(app)
+                    .post("/api/v1/payment/verifyPayment")
+                    .set("Authorization", `Bearer ${studentToken}`)
+                    .send({
+                        razorpay_order_id: rzpOrderId,
+                        razorpay_payment_id: paymentId,
+                        razorpay_signature: clientSignature,
+                        courses: [course._id.toString()],
+                    }),
+                processPendingEvents(5),
+            ]);
+
+            expect(clientRes.status).toBe(200);
+            expect(clientRes.body.success).toBe(true);
+
+            // Order must be PAID
+            const orderDoc = await Order.findOne({ razorpayOrderId: rzpOrderId });
+            expect(orderDoc.status).toBe("PAID");
+            expect(orderDoc.enrollmentCompleted).toBe(true);
+
+            // Exactly 1 enrollment in course and user
+            const enrolledCourse = await Course.findById(course._id);
+            const studentOccurrences = enrolledCourse.studentEnrolled.filter(
+                (s) => s.toString() === seeded.users.studentId.toString()
+            ).length;
+            expect(studentOccurrences).toBe(1);
+
+            const userDoc = await User.findById(seeded.users.studentId);
+            const courseOccurrences = userDoc.courses.filter(
+                (c) => c.toString() === course._id.toString()
+            ).length;
+            expect(courseOccurrences).toBe(1);
+
+            // Exactly 1 CourseProgress document
+            const progressCount = await CourseProgress.countDocuments({
+                courseID: course._id,
+                userId: seeded.users.studentId,
+            });
+            expect(progressCount).toBe(1);
+        });
+
+        test("BE-DB-25: Replay Attack Defense (Used razorpayPaymentId on Different Order)", async () => {
+            const courseA = await createTestCourse("DB25_A", 300);
+            const courseB = await createTestCourse("DB25_B", 300);
+
+            // Order A is paid legitimately
+            const capA = await request(app)
+                .post("/api/v1/payment/capturePayment")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({ courses: [courseA._id.toString()] });
+            const rzpOrderA = capA.body.message.id;
+            const sharedPaymentId = `pay_replay_${Date.now()}`;
+
+            const sigA = crypto
+                .createHmac("sha256", process.env.RAZORPAY_SECRET)
+                .update(`${rzpOrderA}|${sharedPaymentId}`)
+                .digest("hex");
+
+            const verA = await request(app)
+                .post("/api/v1/payment/verifyPayment")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({
+                    razorpay_order_id: rzpOrderA,
+                    razorpay_payment_id: sharedPaymentId,
+                    razorpay_signature: sigA,
+                    courses: [courseA._id.toString()],
+                });
+            expect(verA.status).toBe(200);
+
+            // Order B is created
+            const capB = await request(app)
+                .post("/api/v1/payment/capturePayment")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({ courses: [courseB._id.toString()] });
+            const rzpOrderB = capB.body.message.id;
+
+            // Attacker / duplicate attempts to reuse sharedPaymentId on Order B via webhook
+            const eventId = `evt_replay_${Date.now()}`;
+            const payload = {
+                entity: "event",
+                account_id: "acc_test",
+                event: "payment.captured",
+                contains: ["payment"],
+                payload: {
+                    payment: {
+                        entity: {
+                            id: sharedPaymentId,
+                            entity: "payment",
+                            amount: 30000,
+                            currency: "INR",
+                            status: "captured",
+                            order_id: rzpOrderB,
+                        },
+                    },
+                },
+                created_at: Math.floor(Date.now() / 1000),
+            };
+
+            const { rawBody, signature } = signWebhook(payload);
+            const webhookRes = await request(app)
+                .post("/api/v1/payment/webhook")
+                .set("Content-Type", "application/json")
+                .set("X-Razorpay-Signature", signature)
+                .set("x-razorpay-event-id", eventId)
+                .send(rawBody);
+            expect(webhookRes.status).toBe(200);
+
+            // Worker tries to process event
+            const claimed = await claimNextEvent();
+            expect(claimed).toBeTruthy();
+            expect(claimed.eventId).toBe(eventId);
+
+            const result = await processEvent(claimed);
+            // Must be escalated to NEEDS_REVIEW or FAILED due to payment ID replay
+            expect(["NEEDS_REVIEW", "FAILED"]).toContain(result.status);
+            expect(result.lastError).toMatch(/already[_\s]?used|duplicate/i);
+
+            // Order B remains PENDING
+            const orderB = await Order.findOne({ razorpayOrderId: rzpOrderB });
+            expect(orderB.status).toBe("PENDING");
+
+            // Course B must NOT have student enrolled
+            const updatedCourseB = await Course.findById(courseB._id);
+            expect(updatedCourseB.studentEnrolled.some((s) => s.toString() === seeded.users.studentId.toString())).toBe(false);
+        });
+
+        test("BE-DB-26: Amount & Currency Mismatch Detection -> Escalation to NEEDS_REVIEW", async () => {
+            const course = await createTestCourse("DB26", 750); // 75000 subunits
+            const cap = await request(app)
+                .post("/api/v1/payment/capturePayment")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({ courses: [course._id.toString()] });
+            const rzpOrderId = cap.body.message.id;
+
+            // Webhook arrives with mismatched amount (underpayment: 100 subunits instead of 75000)
+            const eventId = `evt_mismatch_${Date.now()}`;
+            const paymentId = `pay_mismatch_${Date.now()}`;
+            const payload = {
+                entity: "event",
+                account_id: "acc_test",
+                event: "payment.captured",
+                contains: ["payment"],
+                payload: {
+                    payment: {
+                        entity: {
+                            id: paymentId,
+                            entity: "payment",
+                            amount: 100, // Mismatched!
+                            currency: "INR",
+                            status: "captured",
+                            order_id: rzpOrderId,
+                        },
+                    },
+                },
+                created_at: Math.floor(Date.now() / 1000),
+            };
+
+            const { rawBody, signature } = signWebhook(payload);
+            const webhookRes = await request(app)
+                .post("/api/v1/payment/webhook")
+                .set("Content-Type", "application/json")
+                .set("X-Razorpay-Signature", signature)
+                .set("x-razorpay-event-id", eventId)
+                .send(rawBody);
+            expect(webhookRes.status).toBe(200);
+
+            const claimed = await claimNextEvent();
+            expect(claimed).toBeTruthy();
+            expect(claimed.eventId).toBe(eventId);
+
+            const result = await processEvent(claimed);
+            expect(result.status).toBe("NEEDS_REVIEW");
+            expect(result.lastError).toBe("AMOUNT_MISMATCH");
+
+            // Order remains PENDING
+            const order = await Order.findOne({ razorpayOrderId: rzpOrderId });
+            expect(order.status).toBe("PENDING");
+
+            // Student NOT enrolled
+            const updatedCourse = await Course.findById(course._id);
+            expect(updatedCourse.studentEnrolled.some((s) => s.toString() === seeded.users.studentId.toString())).toBe(false);
+        });
+
+        test("BE-DB-27: Worker Crash & Expired Lease Recovery", async () => {
+            const course = await createTestCourse("DB27", 450);
+            const cap = await request(app)
+                .post("/api/v1/payment/capturePayment")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({ courses: [course._id.toString()] });
+            const rzpOrderId = cap.body.message.id;
+            const eventId = `evt_crash_${Date.now()}`;
+            const paymentId = `pay_crash_${Date.now()}`;
+
+            // Create an event that was claimed by a previous worker process that crashed 2 minutes ago
+            await WebhookEvent.create({
+                eventId,
+                eventType: "payment.captured",
+                razorpayOrderId: rzpOrderId,
+                razorpayPaymentId: paymentId,
+                status: "PROCESSING",
+                attempts: 1,
+                leaseUntil: new Date(Date.now() - 120000), // Expired 2 minutes ago
+                receivedAt: new Date(Date.now() - 120000),
+                payload: {
+                    payment: {
+                        entity: {
+                            id: paymentId,
+                            amount: 45000,
+                            currency: "INR",
+                            status: "captured",
+                            order_id: rzpOrderId,
+                        },
+                    },
+                },
+            });
+
+            // claimNextEvent should recover this expired leased event
+            const claimed = await claimNextEvent();
+            expect(claimed).toBeTruthy();
+            expect(claimed.eventId).toBe(eventId);
+            expect(claimed.attempts).toBe(2);
+            expect(claimed.status).toBe("PROCESSING");
+            expect(new Date(claimed.leaseUntil).getTime()).toBeGreaterThan(Date.now());
+
+            // Process it successfully
+            const result = await processEvent(claimed);
+            expect(result.status).toBe("PROCESSED");
+
+            // Order is now PAID
+            const order = await Order.findOne({ razorpayOrderId: rzpOrderId });
+            expect(order.status).toBe("PAID");
+            expect(order.enrollmentCompleted).toBe(true);
+        });
+
+        test("BE-DB-28: Out-of-Order Delivery: payment.failed Followed by Successful Capture", async () => {
+            const course = await createTestCourse("DB28", 500);
+            const cap = await request(app)
+                .post("/api/v1/payment/capturePayment")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({ courses: [course._id.toString()] });
+            const rzpOrderId = cap.body.message.id;
+
+            // 1. Send payment.failed webhook
+            const failedEventId = `evt_failed_${Date.now()}`;
+            const failedPayload = {
+                entity: "event",
+                account_id: "acc_test",
+                event: "payment.failed",
+                contains: ["payment"],
+                payload: {
+                    payment: {
+                        entity: {
+                            id: `pay_failed_${Date.now()}`,
+                            amount: 50000,
+                            currency: "INR",
+                            status: "failed",
+                            order_id: rzpOrderId,
+                            error_code: "BAD_REQUEST_ERROR",
+                            error_description: "Payment failed due to card decline",
+                        },
+                    },
+                },
+                created_at: Math.floor(Date.now() / 1000),
+            };
+
+            const signedFailed = signWebhook(failedPayload);
+            await request(app)
+                .post("/api/v1/payment/webhook")
+                .set("Content-Type", "application/json")
+                .set("X-Razorpay-Signature", signedFailed.signature)
+                .set("x-razorpay-event-id", failedEventId)
+                .send(signedFailed.rawBody);
+
+            const claimedFailed = await claimNextEvent();
+            expect(claimedFailed.eventId).toBe(failedEventId);
+            const failedResult = await processEvent(claimedFailed);
+            expect(failedResult.status).toBe("PROCESSED");
+
+            // Order is now FAILED
+            const orderFailed = await Order.findOne({ razorpayOrderId: rzpOrderId });
+            expect(orderFailed.status).toBe("FAILED");
+
+            // 2. Later, student retries or delayed payment.captured arrives
+            const captureEventId = `evt_captured_after_fail_${Date.now()}`;
+            const successPaymentId = `pay_success_retry_${Date.now()}`;
+            const capturedPayload = {
+                entity: "event",
+                account_id: "acc_test",
+                event: "payment.captured",
+                contains: ["payment"],
+                payload: {
+                    payment: {
+                        entity: {
+                            id: successPaymentId,
+                            amount: 50000,
+                            currency: "INR",
+                            status: "captured",
+                            order_id: rzpOrderId,
+                        },
+                    },
+                },
+                created_at: Math.floor(Date.now() / 1000),
+            };
+
+            const signedCaptured = signWebhook(capturedPayload);
+            await request(app)
+                .post("/api/v1/payment/webhook")
+                .set("Content-Type", "application/json")
+                .set("X-Razorpay-Signature", signedCaptured.signature)
+                .set("x-razorpay-event-id", captureEventId)
+                .send(signedCaptured.rawBody);
+
+            const claimedCaptured = await claimNextEvent();
+            expect(claimedCaptured.eventId).toBe(captureEventId);
+            const capturedResult = await processEvent(claimedCaptured);
+            expect(capturedResult.status).toBe("PROCESSED");
+
+            // Order transitioned from FAILED -> PAID
+            const orderPaid = await Order.findOne({ razorpayOrderId: rzpOrderId });
+            expect(orderPaid.status).toBe("PAID");
+            expect(orderPaid.enrollmentCompleted).toBe(true);
+
+            // Student is enrolled
+            const enrolledCourse = await Course.findById(course._id);
+            expect(enrolledCourse.studentEnrolled.some((s) => s.toString() === seeded.users.studentId.toString())).toBe(true);
+        });
+
+        test("BE-DB-29: Out-of-Order Delivery: payment.failed Arriving AFTER PAID Order", async () => {
+            const course = await createTestCourse("DB29", 520);
+            const cap = await request(app)
+                .post("/api/v1/payment/capturePayment")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({ courses: [course._id.toString()] });
+            const rzpOrderId = cap.body.message.id;
+            const validPaymentId = `pay_valid_${Date.now()}`;
+
+            // First mark order PAID via successful payment
+            const clientSig = crypto
+                .createHmac("sha256", process.env.RAZORPAY_SECRET)
+                .update(`${rzpOrderId}|${validPaymentId}`)
+                .digest("hex");
+
+            const ver = await request(app)
+                .post("/api/v1/payment/verifyPayment")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({
+                    razorpay_order_id: rzpOrderId,
+                    razorpay_payment_id: validPaymentId,
+                    razorpay_signature: clientSig,
+                    courses: [course._id.toString()],
+                });
+            expect(ver.status).toBe(200);
+
+            const orderBefore = await Order.findOne({ razorpayOrderId: rzpOrderId });
+            expect(orderBefore.status).toBe("PAID");
+
+            // Delayed payment.failed webhook arrives
+            const delayedFailEventId = `evt_delayed_fail_${Date.now()}`;
+            const failedPayload = {
+                entity: "event",
+                account_id: "acc_test",
+                event: "payment.failed",
+                contains: ["payment"],
+                payload: {
+                    payment: {
+                        entity: {
+                            id: `pay_declined_attempt_${Date.now()}`,
+                            amount: 52000,
+                            currency: "INR",
+                            status: "failed",
+                            order_id: rzpOrderId,
+                            error_code: "PAYMENT_FAILED",
+                            error_description: "Previous declined attempt",
+                        },
+                    },
+                },
+                created_at: Math.floor(Date.now() / 1000),
+            };
+
+            const signedFailed = signWebhook(failedPayload);
+            await request(app)
+                .post("/api/v1/payment/webhook")
+                .set("Content-Type", "application/json")
+                .set("X-Razorpay-Signature", signedFailed.signature)
+                .set("x-razorpay-event-id", delayedFailEventId)
+                .send(signedFailed.rawBody);
+
+            const claimed = await claimNextEvent();
+            expect(claimed.eventId).toBe(delayedFailEventId);
+            const result = await processEvent(claimed);
+            expect(result.status).toBe("PROCESSED");
+
+            // Crucial: Order status must REMAIN "PAID" and NOT be downgraded to "FAILED"
+            const orderAfter = await Order.findOne({ razorpayOrderId: rzpOrderId });
+            expect(orderAfter.status).toBe("PAID");
+            expect(orderAfter.enrollmentCompleted).toBe(true);
+
+            // Enrollment remains intact
+            const courseDoc = await Course.findById(course._id);
+            expect(courseDoc.studentEnrolled.some((s) => s.toString() === seeded.users.studentId.toString())).toBe(true);
+        });
+
+        test("BE-DB-30: Admin Webhook Events Querying and Manual Retry", async () => {
+            const course = await createTestCourse("DB30", 800);
+            const cap = await request(app)
+                .post("/api/v1/payment/capturePayment")
+                .set("Authorization", `Bearer ${studentToken}`)
+                .send({ courses: [course._id.toString()] });
+            const rzpOrderId = cap.body.message.id;
+
+            const eventId = `evt_admin_test_${Date.now()}`;
+            const paymentId = `pay_admin_test_${Date.now()}`;
+
+            // Create event in NEEDS_REVIEW status
+            const eventDoc = await WebhookEvent.create({
+                eventId,
+                eventType: "payment.captured",
+                razorpayOrderId: rzpOrderId,
+                razorpayPaymentId: paymentId,
+                status: "NEEDS_REVIEW",
+                attempts: 3,
+                lastError: "SIMULATED_GATEWAY_TIMEOUT",
+                leaseUntil: new Date(Date.now() - 5000),
+                payload: {
+                    payment: {
+                        entity: {
+                            id: paymentId,
+                            amount: 80000,
+                            currency: "INR",
+                            status: "captured",
+                            order_id: rzpOrderId,
+                        },
+                    },
+                },
+            });
+
+            // 1. Unauthenticated request to GET /api/v1/admin/webhook-events fails (401)
+            const unauthGet = await request(app).get("/api/v1/admin/webhook-events");
+            expect(unauthGet.status).toBe(401);
+
+            // 2. Student request fails with 403 (Protected Route for Admin only)
+            const studentGet = await request(app)
+                .get("/api/v1/admin/webhook-events")
+                .set("Authorization", `Bearer ${studentToken}`);
+            expect(studentGet.status).toBe(403);
+
+            // 3. Admin request succeeds (200) with event list
+            const adminGet = await request(app)
+                .get("/api/v1/admin/webhook-events")
+                .set("Authorization", `Bearer ${adminToken}`);
+            expect(adminGet.status).toBe(200);
+            expect(adminGet.body.success).toBe(true);
+            expect(Array.isArray(adminGet.body.data.events)).toBe(true);
+            const foundEvent = adminGet.body.data.events.find((e) => e.eventId === eventId);
+            expect(foundEvent).toBeDefined();
+            expect(foundEvent.status).toBe("NEEDS_REVIEW");
+
+            // 4. Student request to retry fails with 403
+            const studentRetry = await request(app)
+                .post(`/api/v1/admin/webhook-events/${eventId}/retry`)
+                .set("Authorization", `Bearer ${studentToken}`);
+            expect(studentRetry.status).toBe(403);
+
+            // 5. Admin request to retry succeeds
+            const adminRetry = await request(app)
+                .post(`/api/v1/admin/webhook-events/${eventId}/retry`)
+                .set("Authorization", `Bearer ${adminToken}`);
+            expect(adminRetry.status).toBe(200);
+            expect(adminRetry.body.success).toBe(true);
+
+            // 6. Event state in DB is reset to RECEIVED with 0 attempts and lease cleared
+            const resetEvent = await WebhookEvent.findOne({ eventId });
+            expect(resetEvent.status).toBe("RECEIVED");
+            expect(resetEvent.attempts).toBe(0);
+            expect(resetEvent.leaseUntil).toBeNull();
+            expect(new Date(resetEvent.nextRetryAt).getTime()).toBeLessThanOrEqual(Date.now() + 1000);
+
+            // 7. Worker can now claim and process the reset event successfully
+            const claimed = await claimNextEvent();
+            expect(claimed).toBeTruthy();
+            expect(claimed.eventId).toBe(eventId);
+            const result = await processEvent(claimed);
+            expect(result.status).toBe("PROCESSED");
+
+            const order = await Order.findOne({ razorpayOrderId: rzpOrderId });
+            expect(order.status).toBe("PAID");
+            expect(order.enrollmentCompleted).toBe(true);
         });
     });
 });

@@ -1,9 +1,9 @@
 # StudyNotion — Continuous QA Dashboard
 
 > **Last Audit Date:** 2026-11-19  
-> **Audit Cycle:** Cycle #12 (Critical Security Hardening, Privacy & Session Protection: `SEC-001`, `SEC-002`, `SEC-003`, `SEC-004`, `SEC-006` Resolution)  
+> **Audit Cycle:** Cycle #13 (Razorpay Webhooks & Asynchronous Payment Reconciliation: Dual-Secret HMAC-SHA256, MongoDB Durable Event Inbox, Atomic Distributed Worker Leases, Shared Authoritative Finalization)  
 > **Application Stack:** React 18 + Redux Toolkit + React Router 7 (HashRouter) | Express 5 + Mongoose 8 + MongoDB 8 (Isolated Test) / Atlas (Prod)  
-> **External Integrations:** Razorpay (Paid Courses Only; Mocked/Sandbox in Test), Cloudinary (Mocked in Test), Nodemailer (In-Memory Capture in Test)
+> **External Integrations:** Razorpay (Paid Courses Only; Webhook Endpoint, Standalone Worker & Client Verification; Mocked/Sandbox in Test), Cloudinary (Mocked in Test), Nodemailer (In-Memory Capture in Test)
 
 ---
 
@@ -17,25 +17,25 @@
 | ↳ Implemented But Broken | **0** | `0 / 54 = 0.0%` |
 | ↳ Not Implemented (Optional Gaps) | **3** | `3 / 54 = 5.6%` (Announcements, Quizzes, Certificates) |
 | ↳ Blocked / Not Live-Verified | **0** | `0 / 54 = 0.0%` |
-| **Tracked Security Findings Resolved** | **5 / 5** | **100%** assigned Cycle #12 deliverables (`SEC-001`, `SEC-002`, `SEC-003`, `SEC-004`, `SEC-006` fully fixed & verified) |
+| **Tracked Security & Architecture Findings Resolved** | **6 / 6** | **100%** (`SEC-001`–`004`, `SEC-006`, and Cycle #13 Asynchronous Payment Reconciliation fully verified) |
 
 ---
 
 ## 2. Test Execution Status (0 Blocked, 100% Pass Rate)
 
-> **Count Reconciliation Note:** Active Cycle #12 live-executed suites total **378 / 378** (up +26 from Cycle #11's 352 live-executed tests). Including the **25** preserved historical Cycle #2 (`18`) & Cycle #3 (`7`) browser verification cases brings the cumulative QA registry total to **403 / 403**.
+> **Count Reconciliation Note:** Active Cycle #13 live-executed suites total **417 / 417** (up +39 from Cycle #12's 378 live-executed tests: +23 webhook unit tests, +10 real MongoDB integration tests `BE-DB-21`–`30`, +6 isolated Playwright E2E tests `E2E-43`–`48`). Including the **25** preserved historical Cycle #2 (`18`) & Cycle #3 (`7`) browser verification cases brings the cumulative QA registry total to **442 / 442**.
 
 | Test Layer | Tool | Total Cases | Passed | Failed | Blocked | Pending | Pass Rate |
 |------------|------|-------------|--------|--------|---------|---------|-----------|
-| **Backend Unit, API & Safety Guardrails** | Jest + Supertest | 204 | 204 | 0 | 0 | 0 | `204 / 204 = 100.0%` (+19 in Cycle #12 across `cors.test.js` & `authMiddleware.test.js`) |
-| **Backend Real-MongoDB Integration** | Jest + Supertest + Local MongoDB 8.0 | 20 | 20 | 0 | 0 | 0 | `20 / 20 = 100.0%` (+5 in Cycle #12: `BE-DB-16`–`BE-DB-20`) |
+| **Backend Unit, API & Safety Guardrails** | Jest + Supertest | 227 | 227 | 0 | 0 | 0 | `227 / 227 = 100.0%` (+23 in Cycle #13 across `webhook.unit.test.js`) |
+| **Backend Real-MongoDB Integration** | Jest + Supertest + Local MongoDB 8.0 | 30 | 30 | 0 | 0 | 0 | `30 / 30 = 100.0%` (+10 in Cycle #13: `BE-DB-21`–`BE-DB-30`) |
 | **Frontend Unit & Component Tests** | Jest (CRA) | 120 | 120 | 0 | 0 | 0 | `120 / 120 = 100.0%` (34/34 suites passing) |
-| **Isolated Authenticated & Feature E2E (`E2E-16`–`E2E-42` + `REG-01`–`03`)** | Playwright (Chromium) + Isolated MongoDB | 30 | 30 | 0 | 0 | 0 | `30 / 30 = 100.0%` (+2 in Cycle #12: `E2E-41`–`E2E-42`) |
-| **Live Public Catalog & Console/Network Regression (`PUB-01`–`PUB-04`)** | Playwright (Chromium) | 4 | 4 | 0 | 0 | 0 | `4 / 4 = 100.0%` (re-verified Cycle #12) |
-| **Subtotal — Cycle #12 Live-Executed Suites** | — | **378** | **378** | **0** | **0** | **0** | **`378 / 378 = 100.0%`** |
+| **Isolated Authenticated & Feature E2E (`E2E-16`–`E2E-48` + `REG-01`–`03`)** | Playwright (Chromium) + Isolated MongoDB | 36 | 36 | 0 | 0 | 0 | `36 / 36 = 100.0%` (+6 in Cycle #13: `E2E-43`–`E2E-48`) |
+| **Live Public Catalog & Console/Network Regression (`PUB-01`–`PUB-04`)** | Playwright (Chromium) | 4 | 4 | 0 | 0 | 0 | `4 / 4 = 100.0%` (re-verified Cycle #13) |
+| **Subtotal — Cycle #13 Live-Executed Suites** | — | **417** | **417** | **0** | **0** | **0** | **`417 / 417 = 100.0%`** |
 | *Historical Browser E2E (Cycle #2 Public & Auth: `E2E-01`–`E2E-15`)* | Playwright (Chromium) | *18* | *18* | *0* | *0* | *0* | *`18 / 18 = 100.0%` (Cycle #2 baseline)* |
 | *Historical Browser E2E (Cycle #3 Bug & Regression: `C3-E2E-01`–`07`)* | Playwright (Chromium) | *7* | *7* | *0* | *0* | *0* | *`7 / 7 = 100.0%` (Cycle #3 baseline)* |
-| **CUMULATIVE REGISTRY TOTAL** | — | **403** | **403** | **0** | **0** | **0** | **`403 / 403 = 100.0%`** |
+| **CUMULATIVE REGISTRY TOTAL** | — | **442** | **442** | **0** | **0** | **0** | **`442 / 442 = 100.0%`** |
 
 ---
 
@@ -73,12 +73,12 @@
 | Module | Total Features | Fully Impl. | Partial | Broken | Not Impl. | Blocked | Open Bugs | Security Status |
 |--------|---------------|-------------|---------|--------|-----------|---------|-----------|-----------------|
 | **A. Authentication & Security** | 12 | 12 | 0 | 0 | 0 | 0 | **0** | **Hardened**: SHA-256 reset tokens, JWT tokenVersion revocation, no body tokens, SameSite cookies |
-| **B. Student Module** | 14 | 14 | 0 | 0 | 0 | 0 | **0** | **Secure**: RBAC guarded, unexposed email in reviews |
+| **B. Student Module** | 14 | 14 | 0 | 0 | 0 | 0 | **0** | **Secure & Asynchronous**: Authoritative webhook reconciliation, atomic enrollment, duplicate email guard, cart sync |
 | **C. Instructor Module** | 12 | 12 | 0 | 0 | 0 | 0 | **0** | **Secure**: Authoritative approval workflow, ownership verified |
-| **D. Admin & Categories** | 3 | 3 | 0 | 0 | 0 | 0 | **0** | **Secure**: Strict admin RBAC, cascade guards |
+| **D. Admin & Categories** | 3 | 3 | 0 | 0 | 0 | 0 | **0** | **Secure**: Strict admin RBAC, cascade guards, webhook monitoring & retry APIs |
 | **E. Common / Public UI** | 10 | 7 | 0 | 0 | 3 | 0 | **0** | **Hardened**: Strict origin CORS allowlist, no wildcards |
-| **F. Backend Infra & Build** | 3 | 3 | 0 | 0 | 0 | 0 | **0** | **Production-Ready**: Passing lint, build, real-DB integration |
-| **TOTAL** | **54** | **51** | **0** | **0** | **3** | **0** | **0** | **All 5 assigned security findings resolved** |
+| **F. Backend Infra & Build** | 3 | 3 | 0 | 0 | 0 | 0 | **0** | **Production-Ready**: Webhook worker CLI, raw-body verification, passing lint, build, real-DB integration |
+| **TOTAL** | **54** | **51** | **0** | **0** | **3** | **0** | **0** | **All payment & security findings resolved** |
 
 ---
 
@@ -88,9 +88,10 @@
 |-------|---------|--------|
 | **Frontend ESLint (Strict)** | `npx eslint src --max-warnings=0` | **PASS** — 0 errors, 0 warnings |
 | **Frontend Production Build** | `npm run build` | **PASS** — Exit 0, 0 ESLint warnings |
-| **Backend Unit & Safety Suite** | `npm --prefix server run test:unit` | **PASS** — 16/16 suites, 204/204 tests |
-| **Real MongoDB Integration** | `npm --prefix server run test:integration` | **PASS** — 20/20 real DB tests on `127.0.0.1:27018` |
-| **Isolated Playwright E2E** | `npm run test:e2e:isolated` | **PASS** — 30/30 live journeys on `:3001` + `:4001` |
+| **Backend Unit & Safety Suite** | `npm --prefix server run test:unit` | **PASS** — 17 suites, 227 tests |
+| **Real MongoDB Integration** | `npm --prefix server run test:integration` | **PASS** — 30/30 real DB tests on `127.0.0.1:27018` |
+| **Webhook Worker CLI** | `npm --prefix server run worker:webhook` | **PASS** — Production standalone background processor |
+| **Isolated Playwright E2E** | `npm run test:e2e:isolated` | **PASS** — 36/36 live journeys on `:3001` + `:4001` |
 
 ---
 

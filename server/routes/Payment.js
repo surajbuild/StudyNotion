@@ -11,7 +11,11 @@ const {
     getOrderHistory,
     getOrderDetails,
 } = require("../controllers/Payments");
+const { handleRazorpayWebhook } = require("../controllers/Webhook");
 const { auth, isStudent } = require("../middlewares/auth");
+
+// Public Razorpay server-to-server webhook route (signature-verified, no JWT)
+router.post("/webhook", handleRazorpayWebhook);
 
 router.post("/capturePayment", auth, isStudent, capturePayment);
 router.post("/verifyPayment", auth, isStudent, verifyPayment);

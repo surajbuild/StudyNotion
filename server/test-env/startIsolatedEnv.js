@@ -13,12 +13,14 @@ process.env.FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3001";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "studynotion-isolated-test-jwt-secret";
 process.env.RAZORPAY_KEY = process.env.RAZORPAY_KEY || "rzp_test_isolated_mock_key";
 process.env.RAZORPAY_SECRET = process.env.RAZORPAY_SECRET || "studynotion-isolated-test-razorpay-secret";
+process.env.RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || "studynotion-isolated-test-webhook-secret";
 process.env.FOLDER_NAME = process.env.FOLDER_NAME || "studynotion_test_uploads";
 
 const { ensureIsolatedMongo } = require("./mongoInstance");
 const database = require("../config/database");
 const { seedTestDatabase, teardownTestDatabase } = require("./seed");
 const { clear: clearCache, startSweeper } = require("../utils/cache");
+const { startWebhookWorker, stopWebhookWorker } = require("../workers/webhookWorker");
 const mailSender = require("../utils/mailSender");
 
 const startIsolatedBackend = async () => {
@@ -44,6 +46,7 @@ const startIsolatedBackend = async () => {
     await database.connect();
     const seeded = await seedTestDatabase();
     startSweeper();
+    startWebhookWorker({ intervalMs: 500 });
 
     const port = Number(process.env.PORT);
     const server = await new Promise((resolve) => {
@@ -58,6 +61,7 @@ const startIsolatedBackend = async () => {
         if (shuttingDown) return;
         shuttingDown = true;
         console.log("[ISOLATED-ENV] Shutting down isolated test server & tearing down test DB...");
+        stopWebhookWorker();
         await new Promise((resolve) => server.close(resolve));
         try {
             await teardownTestDatabase({ dropDb: true });

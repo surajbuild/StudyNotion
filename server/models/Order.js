@@ -101,6 +101,10 @@ const orderSchema = new mongoose.Schema(
             type: Boolean,
             default: false,
         },
+        receiptEmailSent: {
+            type: Boolean,
+            default: false,
+        },
         metadata: {
             type: Map,
             of: String,

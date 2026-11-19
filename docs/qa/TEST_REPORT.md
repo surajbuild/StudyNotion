@@ -1,8 +1,66 @@
 # StudyNotion — Detailed QA Test Report
 
-> **Latest Cycle:** Cycle #12 — Critical Security Hardening, Privacy & Session Protection (`SEC-001`, `SEC-002`, `SEC-003`, `SEC-004`, `SEC-006`)  
+> **Latest Cycle:** Cycle #13 — Razorpay Webhooks & Asynchronous Payment Reconciliation (`GAP-010`)  
 > **Date:** 2026-11-19  
 > **Environment:** Windows 11 | Node.js v22.16.0 | React 18 (CRA 5) | Express 5 | Mongoose 8 | MongoDB 8.0 (Isolated Local Ephemeral on `127.0.0.1:27018`) | Chromium 1208 (Playwright)
+
+---
+
+## Cycle #13 — Execution Summary (2026-11-19)
+
+| Test Suite / Verification Gate | Command | Suites | Tests | Passed | Failed | Blocked | Result |
+|-------------------------------|---------|--------|-------|--------|--------|---------|--------|
+| **Frontend Unit & Component Tests** | `npm test -- --watchAll=false` | 34 | 120 | 120 | 0 | 0 | **PASS** (11.25s, 34/34 suites passing) |
+| **Backend Unit, API & Safety Guardrails** | `npx jest --testPathIgnorePatterns=integration.realdb.test.js` | 17 | 227 | 227 | 0 | 0 | **PASS** (+1 suite / +23 tests: `webhook.unit.test.js` [23]) |
+| **Backend Real-MongoDB Full-Stack Integration** | `npx jest __tests__/integration.realdb.test.js --runInBand --forceExit` | 1 | 30 | 30 | 0 | 0 | **PASS** (+10 real DB webhook & worker tests: `BE-DB-21`–`BE-DB-30`) |
+| **Isolated Authenticated & Feature Playwright E2E (`E2E-16`–`48` + `REG-01`–`03`)** | `npm run test:e2e:isolated` | 1 | 36 | 36 | 0 | 0 | **PASS** (+6 new `E2E-43`–`E2E-48`, 0 page errors, 0 Swiper warnings) |
+| **Public Catalog & Console/Network Regression (`PUB-01`–`PUB-04`)** | `node scratch/public_regression.js` | 1 | 4 | 4 | 0 | 0 | **PASS** (0 console errors, 0 page errors, 0 failed network requests) |
+| **Cycle #13 Live-Executed Subtotal** | — | **54** | **417** | **417** | **0** | **0** | **PASS (`417 / 417` live + `25` historical Cycle #2–#3 = `442 / 442` cumulative)** |
+| **Strict Frontend ESLint** | `npx eslint src --max-warnings=0` | — | — | 0 errors, 0 warnings | — | — | **PASS** (Exit 0) |
+| **Frontend Production Build** | `npm run build` | — | — | Exit 0 (0 ESLint warnings) | — | — | **PASS** |
+
+### Cycle #13 Actual Verification Outputs
+
+#### A. Automated Unit & Real-MongoDB Integration Suites
+```text
+Frontend (npm test -- --watchAll=false):
+Test Suites: 34 passed, 34 total
+Tests:       120 passed, 120 total
+Time:        11.249 s
+
+Backend Unit & Integration Combined (server/npm test):
+Test Suites: 18 passed, 18 total
+Tests:       257 passed, 257 total (added webhook.unit.test.js [23], BE-DB-21..30 [10])
+Time:        68.486 s
+```
+
+#### B. Isolated Playwright E2E Run (`e2e/authenticated.e2e.js`)
+```text
+[PASS] E2E-16..E2E-21 Authenticated Student, Razorpay Payment, ViewCourse, Instructor CRUD & Settings
+[PASS] E2E-22..E2E-23 GAP-005 Free Course Direct Enrollment & Publishing
+[PASS] E2E-24..E2E-26 GAP-004 Global Search, Filters, Sorting, Pagination & Mobile Search
+[PASS] E2E-27..E2E-29 GAP-001 Admin Security, Dashboard, Category CRUD & Consistency
+[PASS] E2E-30..E2E-32 GAP-008 Persistent DB Cart, Order History, Mixed Checkout & Cross-User Isolation
+[PASS] E2E-33..E2E-34 GAP-007 Password Policy Consistency (Signup, Settings, Forgot/Reset)
+[PASS] E2E-35..E2E-38 GAP-002 Instructor Approval Enforcement & Admin User Management
+[PASS] E2E-39..E2E-40 F-INS-11 Instructor Student Roster, Search, Mobile 375px, Live Progress & RBAC
+[PASS] E2E-41 SEC-003 Immediate JWT Revocation after Password Change (Stale Token 401 TOKEN_REVOKED, Re-login 200)
+[PASS] E2E-42 SEC-004 Student Review Privacy (No Email) & SEC-006 Request Body JWT Rejection
+[PASS] E2E-43 Async Webhook Reconciliation After Browser Disconnect / Close (Course Enrolled & Accessible)
+[PASS] E2E-44 Student Browser Crash During Checkout Modal -> Webhook Worker Finalization
+[PASS] E2E-45 Race Condition: Concurrent Webhook & Client verifyPayment (Zero Duplicates)
+[PASS] E2E-46 Webhook Delivery Idempotency Across Repeated Retries (Acknowledge Duplicate = True)
+[PASS] E2E-47 Tampered Webhook Signature (400) & Underpayment Amount Mismatch (Access Denied)
+[PASS] E2E-48 Out-of-Order Recovery (payment.failed -> payment.captured) & Immunity to Late payment.failed
+[PASS] REG-01 Footer Internal Links Regression (Isolated Env): checked=8, broken=[]
+[PASS] REG-02 Error Page Direct Landing Regression: bodyOverflow=hidden auto, ctaNavigatedHome=true
+[PASS] REG-03 Mobile 375px Layout Regression: horizontalOverflow=false
+
+=== ISOLATED AUTHENTICATED E2E SUMMARY ===
+PAGE ERRORS: 0 []
+SWIPER WARNINGS: 0
+TOTAL: 36 PASSED: 36 FAILED: 0
+```
 
 ---
 

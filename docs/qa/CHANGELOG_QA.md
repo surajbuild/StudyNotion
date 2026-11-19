@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-11-19 — QA Cycle #13 (Razorpay Webhook Implementation & Asynchronous Payment Reconciliation: `GAP-010`)
+
+| Task / Bug ID | Files Modified / Added | Changes Made | Tests Executed | Verification Status |
+|---------------|------------------------|--------------|----------------|---------------------|
+| `CHECKPOINT` | Cycle #12 commit `fb7633e` (local only) | Verified clean working tree, preserving all Cycle #12 security fixes (`SEC-001`–`004`, `SEC-006`) | `git status`, `git log` | `VERIFIED` |
+| `GAP-010` (Raw Body Preservation & Signature Verification) | `server/index.js`, `server/controllers/Webhook.js` (new), `server/routes/Payment.js`, `server/.env.example`, `server/.env.test.example` | Mounted `express.raw({ type: "*/*", limit: "2mb" })` on `/api/v1/payment/webhook` before `express.json()` to capture original HTTP Buffer bytes without mutation. Implemented timing-safe HMAC-SHA256 signature verification (`crypto.timingSafeEqual`) with dual-secret rotation (`RAZORPAY_WEBHOOK_SECRET` & `RAZORPAY_WEBHOOK_OLD_SECRET`) and buffer length checking | `webhook.unit.test.js` (23/23), `BE-DB-21`, `BE-DB-22`, `E2E-47` | `VERIFIED` |
+| `GAP-010` (Durable Event Inbox) | `server/models/WebhookEvent.js` (new) | Created MongoDB schema with atomic unique index on `eventId`, tracking processing states (`RECEIVED`, `PROCESSING`, `PROCESSED`, `FAILED`, `NEEDS_REVIEW`), lease timestamps (`leaseUntil`), retry attempts, and sanitized payload details | `BE-DB-23`, `BE-DB-24`, `E2E-46` | `VERIFIED` |
+| `GAP-010` (Atomic Distributed Worker & Standalone CLI) | `server/workers/webhookWorker.js` (new), `server/package.json`, `server/index.js`, `server/test-env/startIsolatedEnv.js` | Built background worker with atomic `findOneAndUpdate` lease claiming (`claimNextEvent`), exponential backoff retries, expired lease recovery, and `NEEDS_REVIEW` escalation; added standalone CLI command (`npm run worker:webhook`) and test harness lifecycle hooks | `BE-DB-29`, `E2E-44` | `VERIFIED` |
+| `GAP-010` (Shared Authoritative Payment Reconciliation) | `server/services/paymentReconciliation.js` (new), `server/controllers/Payments.js`, `server/models/Order.js` | Created shared `finalizeCapturedPayment` reused by both client `verifyPayment` and webhook worker; enforces authoritative MongoDB order matching, currency & subunit amount checking, duplicate payment ID replay defense (`409`), atomic enrollment, cart cleanup, and idempotent receipt emails (`Order.receiptEmailSent`) | `payment.test.js` (18/18), `BE-DB-23`–`28`, `E2E-43`, `E2E-45`, `E2E-48` | `VERIFIED` |
+| `GAP-010` (Admin Inspection & Retry APIs) | `server/routes/Admin.js`, `server/controllers/Webhook.js` | Mounted `GET /api/v1/admin/webhook-events` and `POST /api/v1/admin/webhook-events/:eventId/retry` guarded strictly by `auth, isAdmin` with pagination, status filtering, and safe event projection | `BE-DB-30` | `VERIFIED` |
+| `GAP-010` (Automated & E2E Tests + QA Docs) | `server/__tests__/webhook.unit.test.js` (new), `server/__tests__/integration.realdb.test.js`, `e2e/authenticated.e2e.js`, `docs/qa/*` | Added 39 new tests (23 backend unit, 10 real MongoDB integration `BE-DB-21`–`BE-DB-30`, 6 Playwright E2E `E2E-43`–`E2E-48`); updated all QA tracking documents (`417 / 417` live-executed + `25` historical = `442 / 442` cumulative PASS, 0 open bugs, 0 failures, 0 ESLint warnings) | `npm test` (120 FE), Backend Jest (227 unit + 30 real-DB), Playwright (36/36 isolated + 4/4 public), `npx eslint src --max-warnings=0`, `npm run build` | `VERIFIED` |
+
+---
+
 ## 2026-11-19 — QA Cycle #12 (Critical Security Hardening, Privacy & Session Protection: `SEC-001`, `SEC-002`, `SEC-003`, `SEC-004`, `SEC-006`)
 
 | Task / Bug ID | Files Modified / Added | Changes Made | Tests Executed | Verification Status |

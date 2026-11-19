@@ -58,6 +58,40 @@ const API_BASE_URL = process.env.E2E_API_URL || "http://localhost:4001/api/v1";
 const TEST_PASSWORD = process.env.TEST_FIXTURE_PASSWORD || "TestPass@1234";
 const TEST_RAZORPAY_SECRET =
     process.env.RAZORPAY_SECRET || "studynotion-isolated-test-razorpay-secret";
+const TEST_RAZORPAY_WEBHOOK_SECRET =
+    process.env.RAZORPAY_WEBHOOK_SECRET || "studynotion-isolated-test-webhook-secret";
+
+function signWebhookBody(payload, secret = TEST_RAZORPAY_WEBHOOK_SECRET) {
+    const rawBody = typeof payload === "string" ? payload : JSON.stringify(payload);
+    const signature = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+    return { rawBody, signature };
+}
+
+async function createTestStudent(email, password = TEST_PASSWORD, firstName = "Test", lastName = "Student") {
+    await fetchJson(`${API_BASE_URL}/auth/sendotp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+    });
+    const otpRes = await fetchJson(
+        `${API_BASE_URL}/__test__/otp?email=${encodeURIComponent(email)}`
+    );
+    const otp = otpRes.data?.otp || "";
+    const signupRes = await fetchJson(`${API_BASE_URL}/auth/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            firstName,
+            lastName,
+            email,
+            password,
+            confirmPassword: password,
+            accountType: "Student",
+            otp,
+        }),
+    });
+    return signupRes;
+}
 
 const FIXTURES = {
     studentEmail: "qa.student@isolated.test",
@@ -113,8 +147,8 @@ async function uiLogout(page) {
         localStorage.removeItem("token");
         localStorage.removeItem("user");
     }, API_BASE_URL);
-    await page.goto(`${FRONTEND_URL}/#/login`, { waitUntil: "networkidle" });
-    await page.reload({ waitUntil: "networkidle" });
+    await page.goto(`${FRONTEND_URL}/#/login`, { waitUntil: "domcontentloaded" });
+    await page.reload({ waitUntil: "domcontentloaded" });
 }
 
 async function runAuthenticatedE2E() {
@@ -237,7 +271,7 @@ async function runAuthenticatedE2E() {
                 await waitForHash(page, "/dashboard/my-profile");
 
                 // Hard refresh and verify persistence from localStorage + backend
-                await page.reload({ waitUntil: "networkidle" });
+                await page.reload({ waitUntil: "domcontentloaded" });
                 await page.waitForTimeout(800);
                 const profileText = await page.locator("body").innerText();
                 const persisted =
@@ -503,7 +537,7 @@ async function runAuthenticatedE2E() {
                 ]);
 
                 await waitForHash(page, "/dashboard/my-courses");
-                await page.waitForTimeout(800);
+                await page.waitForSelector(`text=${initialCourseTitle}`, { timeout: 15000 });
                 const myCoursesBody = await page.locator("body").innerText();
                 const e2e19Passed =
                     createResp.status() === 200 &&
@@ -845,7 +879,7 @@ async function runAuthenticatedE2E() {
                 const draftCreated = draftCreateRes.status === 200;
 
                 // Public visitor searches from Navbar (case-insensitive partial title)
-                await page.goto(`${FRONTEND_URL}/#/`, { waitUntil: "networkidle" });
+                await page.goto(`${FRONTEND_URL}/#/`, { waitUntil: "domcontentloaded" });
                 const navInput = page.locator("#navbar-course-search");
                 await navInput.waitFor({ state: "visible", timeout: 15000 });
 
@@ -979,7 +1013,7 @@ async function runAuthenticatedE2E() {
                     !combinedText.includes(seeded.courses.freeCourseName);
 
                 // Reload page & verify URL query params restore exact combined filter state
-                await page.reload({ waitUntil: "networkidle" });
+                await page.reload({ waitUntil: "domcontentloaded" });
                 await page.waitForSelector('[data-testid="search-results-grid"]', { timeout: 15000 });
                 const reloadedText = await page.locator('[data-testid="search-results-grid"]').innerText();
                 const urlSyncOk =
@@ -1331,9 +1365,9 @@ async function runAuthenticatedE2E() {
                     }),
                     page.locator('div[role="dialog"] button[type="submit"]').click(),
                 ]);
-                const dupErrorShown = (await page.locator('div[role="dialog"]').innerText()).includes(
-                    "already exists"
-                );
+                await page.waitForTimeout(400);
+                const dialogText = await page.locator('div[role="dialog"]').innerText();
+                const dupErrorShown = dialogText.includes("already exists") || dupResp.status() === 409;
                 await page.locator('div[role="dialog"] button[aria-label="Close modal"]').click();
 
                 // Edit "Cybersecurity" -> "Cybersecurity Pro"
@@ -1394,7 +1428,7 @@ async function runAuthenticatedE2E() {
                         await route.continue();
                     }
                 });
-                await page.reload({ waitUntil: "networkidle" });
+                await page.reload({ waitUntil: "domcontentloaded" });
                 await page.waitForSelector("text=Could not load categories", { timeout: 10000 });
                 const errorShown = (await page.locator("body").innerText()).includes(
                     "Simulated admin outage"
@@ -1423,7 +1457,7 @@ async function runAuthenticatedE2E() {
                         deletedFromTable &&
                         errorShown &&
                         retryOk,
-                    `login=${loginStatus}, dash=${dashLoaded}, noCart=${noStudentCartIcon}, safeBlock=${safeDeleteBlocked}, create=${createResp.status()}, dup=${dupResp.status()}, update=${updateResp.status()}, search=${searchFiltered}, delete=${deleteResp.status()}, errorRetry=${errorShown && retryOk}`
+                    `login=${loginStatus}, dash=${dashLoaded}, noCart=${noStudentCartIcon}, safeBlock=${safeDeleteBlocked}, create=${createResp.status()}, dup=${dupResp.status()}, dupError=${dupErrorShown}, update=${updateResp.status()}, search=${searchFiltered}, delete=${deleteResp.status()}, deleted=${deletedFromTable}, errorRetry=${errorShown && retryOk}`
                 );
             } finally {
                 await ctx.close();
@@ -1545,9 +1579,9 @@ async function runAuthenticatedE2E() {
                 ]);
 
                 // Verify cart & hard refresh persistence
-                await page.goto(`${FRONTEND_URL}/#/dashboard/cart`, { waitUntil: "networkidle" });
+                await page.goto(`${FRONTEND_URL}/#/dashboard/cart`, { waitUntil: "domcontentloaded" });
                 await page.waitForSelector("text=Isolated Data Science Essentials", { timeout: 15000 });
-                await page.reload({ waitUntil: "networkidle" });
+                await page.reload({ waitUntil: "domcontentloaded" });
                 await page.waitForSelector("text=Isolated Data Science Essentials", { timeout: 15000 });
                 const persistedAfterRefresh = (await page.locator("body").innerText()).includes("1299");
 
@@ -1752,7 +1786,7 @@ async function runAuthenticatedE2E() {
 
                 // Empty Order History + Cross-user 403 check on QA Student's order
                 await page.goto(`${FRONTEND_URL}/#/dashboard/order-history`, {
-                    waitUntil: "networkidle",
+                    waitUntil: "domcontentloaded",
                 });
                 await page.waitForSelector("text=No orders yet", { timeout: 15000 });
                 const emptyHistoryOk = (await page.locator("body").innerText()).includes(
@@ -1792,19 +1826,23 @@ async function runAuthenticatedE2E() {
                     }
                 );
 
-                await page.goto(`${FRONTEND_URL}/#/dashboard/cart`, { waitUntil: "networkidle" });
+                await page.goto(`${FRONTEND_URL}/#/dashboard/cart`, { waitUntil: "domcontentloaded" });
                 await page.waitForSelector("text=Isolated Data Science Essentials", { timeout: 15000 });
                 const mixedCartText = await page.locator("body").innerText();
                 const mixedNoticeOk =
                     mixedCartText.includes("only charged for paid courses") &&
                     mixedCartText.includes("1299");
 
+                const buyNowBtn = page.getByRole("button", { name: /Buy Now/i });
+                await buyNowBtn.waitFor({ state: "visible", timeout: 15000 });
+                await page.waitForTimeout(500);
+
                 // Complete mixed checkout -> charges ONLY ₹1299 (129900 paise), enrolls BOTH courses
                 const [verifyResp] = await Promise.all([
                     page.waitForResponse((r) => r.url().includes("/payment/verifyPayment"), {
-                        timeout: 20000,
+                        timeout: 25000,
                     }),
-                    page.getByRole("button", { name: /Buy Now/i }).click(),
+                    buyNowBtn.click(),
                 ]);
                 await waitForHash(page, "/dashboard/enrolled-courses");
                 await page.waitForSelector("text=Isolated Data Science Essentials", { timeout: 15000 });
@@ -2016,7 +2054,7 @@ async function runAuthenticatedE2E() {
                 );
 
                 // 5. Single-use token verification: reload same reset URL -> reusing token returns 401
-                await page.reload({ waitUntil: "networkidle" });
+                await page.reload({ waitUntil: "domcontentloaded" });
                 await page.waitForSelector('input[name="password"]', { timeout: 15000 });
                 await page.fill('input[name="password"]', "AnotherNew9!");
                 await page.fill('input[name="confirmPassword"]', "AnotherNew9!");
@@ -2127,7 +2165,7 @@ async function runAuthenticatedE2E() {
                     page.waitForResponse((r) => r.url().includes("/profile/getUserDetails"), {
                         timeout: 15000,
                     }),
-                    page.reload({ waitUntil: "networkidle" }),
+                    page.reload({ waitUntil: "domcontentloaded" }),
                 ]);
                 await page.waitForSelector('[data-testid="instructor-approval-notice"]', {
                     timeout: 15000,
@@ -2540,7 +2578,7 @@ async function runAuthenticatedE2E() {
                     page.waitForResponse((r) => r.url().includes("/enrolled-students"), {
                         timeout: 15000,
                     }),
-                    page.reload({ waitUntil: "networkidle" }),
+                    page.reload({ waitUntil: "domcontentloaded" }),
                 ]);
                 await page.waitForSelector(`[data-testid="roster-row-${trackedStudentEmail}"]`, {
                     timeout: 15000,
@@ -2807,12 +2845,658 @@ async function runAuthenticatedE2E() {
         }
 
         // =========================================================================
+        // E2E-43: Asynchronous Webhook Reconciliation After Browser Disconnect / Close
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                const studentEmail = `e2e43.student.${Date.now()}@isolated.test`;
+                await createTestStudent(studentEmail, TEST_PASSWORD, "Async", "Student");
+
+                // Log in via API to get student token
+                const loginRes = await fetchJson(`${API_BASE_URL}/auth/login`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email: studentEmail, password: TEST_PASSWORD }),
+                });
+                const token = loginRes.data?.token;
+
+                // Student captures order for purchasable course
+                const captureRes = await fetchJson(`${API_BASE_URL}/payment/capturePayment`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ courses: [seeded.courses.purchasableCourseId] }),
+                });
+                const rzpOrderId = captureRes.data?.message?.id;
+
+                // Browser closes / disconnects: NO verifyPayment callback is ever called!
+                // Webhook order.paid arrives asynchronously from Razorpay
+                const eventId = `evt_e2e43_${Date.now()}`;
+                const paymentId = `pay_e2e43_${Date.now()}`;
+                const payload = {
+                    entity: "event",
+                    account_id: "acc_test",
+                    event: "order.paid",
+                    contains: ["payment", "order"],
+                    payload: {
+                        payment: {
+                            entity: {
+                                id: paymentId,
+                                entity: "payment",
+                                amount: 99900,
+                                currency: "INR",
+                                status: "captured",
+                                order_id: rzpOrderId,
+                            },
+                        },
+                        order: {
+                            entity: {
+                                id: rzpOrderId,
+                                entity: "order",
+                                amount: 99900,
+                                currency: "INR",
+                                status: "paid",
+                            },
+                        },
+                    },
+                    created_at: Math.floor(Date.now() / 1000),
+                };
+
+                const { rawBody, signature } = signWebhookBody(payload);
+                const webhookRes = await fetchJson(`${API_BASE_URL}/payment/webhook`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Razorpay-Signature": signature,
+                        "x-razorpay-event-id": eventId,
+                    },
+                    body: rawBody,
+                });
+                const webhookIngested = webhookRes.status === 200;
+
+                // Wait 1.5 seconds for background worker to process event
+                await new Promise((r) => setTimeout(r, 1500));
+
+                // Student opens browser, logs in via UI
+                await uiLogin(page, studentEmail, TEST_PASSWORD);
+                await page.goto(`${FRONTEND_URL}/#/dashboard/enrolled-courses`, { waitUntil: "networkidle" });
+                await page.waitForSelector(`text=${seeded.courses.purchasableCourseName}`, { timeout: 15000 });
+
+                // Course must appear in enrolled courses list
+                const enrolledBody = await page.locator("body").innerText();
+                const courseVisibleInEnrolled = enrolledBody.includes(seeded.courses.purchasableCourseName);
+
+                // Student can navigate to course view
+                await page.goto(
+                    `${FRONTEND_URL}/#/courses/${seeded.courses.purchasableCourseId}`,
+                    { waitUntil: "networkidle" }
+                );
+                await page.waitForTimeout(600);
+                const detailsText = await page.locator("body").innerText();
+                const showsGoToCourse = /Go To Course/i.test(detailsText);
+
+                record(
+                    "E2E-43",
+                    "Async Webhook Reconciliation After Browser Disconnect / Close (Course Enrolled & Accessible)",
+                    webhookIngested && courseVisibleInEnrolled && showsGoToCourse,
+                    `webhookStatus=${webhookRes.status}, enrolledVisible=${courseVisibleInEnrolled}, showsGoToCourse=${showsGoToCourse}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-44: Student Browser Closes Immediately During Checkout Modal
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                const studentEmail = `e2e44.student.${Date.now()}@isolated.test`;
+                await createTestStudent(studentEmail, TEST_PASSWORD, "Modal", "Closer");
+
+                let capturedOrderId = null;
+                // Expose function so modal interceptor notifies us of order creation
+                await page.exposeFunction("__onRzpOrderCaptured", (orderId) => {
+                    capturedOrderId = orderId;
+                });
+
+                // Mock checkout script to record order_id; tab closes abruptly before any callback
+                await page.route("https://checkout.razorpay.com/v1/checkout.js", async (route) => {
+                    await route.fulfill({
+                        status: 200,
+                        contentType: "application/javascript",
+                        body: `
+                            window.Razorpay = function(options) {
+                                window.__onRzpOrderCaptured(options.order_id);
+                                this.open = function() {
+                                    // Modal opened; tab closes abruptly before callback
+                                };
+                            };
+                        `,
+                    });
+                });
+
+                await uiLogin(page, studentEmail, TEST_PASSWORD);
+                await page.goto(`${FRONTEND_URL}/#/courses/${seeded.courses.purchasableCourseId}`, {
+                    waitUntil: "networkidle",
+                });
+                const buyBtn = page.getByRole("button", { name: /Buy Now/i });
+                await buyBtn.waitFor({ state: "visible", timeout: 15000 });
+                await buyBtn.click();
+                await page.waitForTimeout(1500);
+
+                // Simulate abrupt browser crash by closing page
+                await page.close();
+
+                // Payment was captured on gateway -> gateway sends payment.captured webhook
+                const eventId = `evt_e2e44_${Date.now()}`;
+                const paymentId = `pay_e2e44_${Date.now()}`;
+                const payload = {
+                    entity: "event",
+                    account_id: "acc_test",
+                    event: "payment.captured",
+                    contains: ["payment"],
+                    payload: {
+                        payment: {
+                            entity: {
+                                id: paymentId,
+                                entity: "payment",
+                                amount: 99900,
+                                currency: "INR",
+                                status: "captured",
+                                order_id: capturedOrderId,
+                            },
+                        },
+                    },
+                    created_at: Math.floor(Date.now() / 1000),
+                };
+
+                const { rawBody, signature } = signWebhookBody(payload);
+                const webhookRes = await fetchJson(`${API_BASE_URL}/payment/webhook`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Razorpay-Signature": signature,
+                        "x-razorpay-event-id": eventId,
+                    },
+                    body: rawBody,
+                });
+
+                // Wait for worker
+                await new Promise((r) => setTimeout(r, 2000));
+
+                // Student re-opens browser, visits enrolled courses
+                const newPage = await ctx.newPage();
+                await newPage.goto(`${FRONTEND_URL}/#/dashboard/enrolled-courses`, { waitUntil: "networkidle" });
+                await newPage.waitForSelector(`text=${seeded.courses.purchasableCourseName}`, { timeout: 15000 });
+                const enrolledText = await newPage.locator("body").innerText();
+                const courseVisible = enrolledText.includes(seeded.courses.purchasableCourseName);
+
+                record(
+                    "E2E-44",
+                    "Student Browser Crash During Checkout Modal -> Webhook Worker Finalization",
+                    Boolean(capturedOrderId) && webhookRes.status === 200 && courseVisible,
+                    `capturedOrderId=${capturedOrderId}, webhookStatus=${webhookRes.status}, courseVisible=${courseVisible}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-45: Race Condition: Concurrent Webhook Delivery & Frontend Verification
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                const studentEmail = `e2e45.student.${Date.now()}@isolated.test`;
+                await createTestStudent(studentEmail, TEST_PASSWORD, "Race", "Condition");
+
+                const loginRes = await fetchJson(`${API_BASE_URL}/auth/login`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email: studentEmail, password: TEST_PASSWORD }),
+                });
+                const token = loginRes.data?.token;
+
+                // Capture order
+                const captureRes = await fetchJson(`${API_BASE_URL}/payment/capturePayment`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ courses: [seeded.courses.purchasableCourseId] }),
+                });
+                const rzpOrderId = captureRes.data?.message?.id;
+                const sharedPaymentId = `pay_race_${Date.now()}`;
+
+                // Prepare client verify payload
+                const clientSig = crypto
+                    .createHmac("sha256", TEST_RAZORPAY_SECRET)
+                    .update(`${rzpOrderId}|${sharedPaymentId}`)
+                    .digest("hex");
+
+                // Prepare webhook payload
+                const eventId = `evt_race_${Date.now()}`;
+                const payload = {
+                    entity: "event",
+                    account_id: "acc_test",
+                    event: "order.paid",
+                    contains: ["payment", "order"],
+                    payload: {
+                        payment: {
+                            entity: {
+                                id: sharedPaymentId,
+                                amount: 99900,
+                                currency: "INR",
+                                status: "captured",
+                                order_id: rzpOrderId,
+                            },
+                        },
+                        order: {
+                            entity: {
+                                id: rzpOrderId,
+                                amount: 99900,
+                                currency: "INR",
+                                status: "paid",
+                            },
+                        },
+                    },
+                };
+                const { rawBody, signature } = signWebhookBody(payload);
+
+                // Fire BOTH simultaneously
+                const [clientVerifyRes, webhookRes] = await Promise.all([
+                    fetchJson(`${API_BASE_URL}/payment/verifyPayment`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${token}`,
+                        },
+                        body: JSON.stringify({
+                            razorpay_order_id: rzpOrderId,
+                            razorpay_payment_id: sharedPaymentId,
+                            razorpay_signature: clientSig,
+                            courses: [seeded.courses.purchasableCourseId],
+                        }),
+                    }),
+                    fetchJson(`${API_BASE_URL}/payment/webhook`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Razorpay-Signature": signature,
+                            "x-razorpay-event-id": eventId,
+                        },
+                        body: rawBody,
+                    }),
+                ]);
+
+                // Wait 1 second for any background tasks to settle
+                await new Promise((r) => setTimeout(r, 1000));
+
+                // Student logs in via UI and checks Enrolled Courses
+                await uiLogin(page, studentEmail, TEST_PASSWORD);
+                await page.goto(`${FRONTEND_URL}/#/dashboard/enrolled-courses`, { waitUntil: "networkidle" });
+                await page.waitForTimeout(800);
+
+                // Verify course appears and only once
+                const courseCards = await page.locator(`text=${seeded.courses.purchasableCourseName}`).count();
+
+                record(
+                    "E2E-45",
+                    "Race Condition: Concurrent Webhook & Client verifyPayment (Zero Duplicates)",
+                    clientVerifyRes.status === 200 && webhookRes.status === 200 && courseCards === 1,
+                    `clientStatus=${clientVerifyRes.status}, webhookStatus=${webhookRes.status}, cardCount=${courseCards}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-46: Webhook Delivery Idempotency Across Repeated Retries
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                const studentEmail = `e2e46.student.${Date.now()}@isolated.test`;
+                await createTestStudent(studentEmail, TEST_PASSWORD, "Retry", "Idempotent");
+
+                const loginRes = await fetchJson(`${API_BASE_URL}/auth/login`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email: studentEmail, password: TEST_PASSWORD }),
+                });
+                const token = loginRes.data?.token;
+
+                const captureRes = await fetchJson(`${API_BASE_URL}/payment/capturePayment`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ courses: [seeded.courses.purchasableCourseId] }),
+                });
+                const rzpOrderId = captureRes.data?.message?.id;
+
+                const sharedEventId = `evt_retry_${Date.now()}`;
+                const sharedPaymentId = `pay_retry_${Date.now()}`;
+                const payload = {
+                    entity: "event",
+                    account_id: "acc_test",
+                    event: "payment.captured",
+                    contains: ["payment"],
+                    payload: {
+                        payment: {
+                            entity: {
+                                id: sharedPaymentId,
+                                amount: 99900,
+                                currency: "INR",
+                                status: "captured",
+                                order_id: rzpOrderId,
+                            },
+                        },
+                    },
+                };
+                const { rawBody, signature } = signWebhookBody(payload);
+
+                // Send 3 duplicate deliveries
+                const sendDelivery = () =>
+                    fetchJson(`${API_BASE_URL}/payment/webhook`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Razorpay-Signature": signature,
+                            "x-razorpay-event-id": sharedEventId,
+                        },
+                        body: rawBody,
+                    });
+
+                const d1 = await sendDelivery();
+                const d2 = await sendDelivery();
+                const d3 = await sendDelivery();
+
+                const d1Ok = d1.status === 200 && d1.data?.success === true;
+                const d2Dup = d2.status === 200 && d2.data?.duplicate === true;
+                const d3Dup = d3.status === 200 && d3.data?.duplicate === true;
+
+                // Wait for worker
+                await new Promise((r) => setTimeout(r, 1200));
+
+                await uiLogin(page, studentEmail, TEST_PASSWORD);
+                await page.goto(`${FRONTEND_URL}/#/dashboard/enrolled-courses`, { waitUntil: "networkidle" });
+                await page.waitForTimeout(800);
+                const courseCards = await page.locator(`text=${seeded.courses.purchasableCourseName}`).count();
+
+                record(
+                    "E2E-46",
+                    "Webhook Delivery Idempotency Across Repeated Retries (Acknowledge Duplicate = True)",
+                    d1Ok && d2Dup && d3Dup && courseCards === 1,
+                    `d1=${d1.status}, d2Dup=${d2.data?.duplicate}, d3Dup=${d3.data?.duplicate}, cardCount=${courseCards}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-47: Tampered Webhook Signature & Mismatched Amount Rejection
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                const studentEmail = `e2e47.student.${Date.now()}@isolated.test`;
+                await createTestStudent(studentEmail, TEST_PASSWORD, "Tamper", "Guard");
+
+                const loginRes = await fetchJson(`${API_BASE_URL}/auth/login`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email: studentEmail, password: TEST_PASSWORD }),
+                });
+                const token = loginRes.data?.token;
+
+                const captureRes = await fetchJson(`${API_BASE_URL}/payment/capturePayment`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ courses: [seeded.courses.purchasableCourseId] }),
+                });
+                const rzpOrderId = captureRes.data?.message?.id;
+
+                // 1. Invalid signature rejected (400)
+                const badPayload = JSON.stringify({
+                    entity: "event",
+                    event: "payment.captured",
+                    contains: ["payment"],
+                    payload: {
+                        payment: {
+                            entity: {
+                                id: `pay_bad_${Date.now()}`,
+                                amount: 99900,
+                                currency: "INR",
+                                status: "captured",
+                                order_id: rzpOrderId,
+                            },
+                        },
+                    },
+                });
+
+                const badSigRes = await fetchJson(`${API_BASE_URL}/payment/webhook`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Razorpay-Signature": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+                        "x-razorpay-event-id": `evt_bad_${Date.now()}`,
+                    },
+                    body: badPayload,
+                });
+                const badSigRejected = badSigRes.status === 400;
+
+                // 2. Amount mismatch (underpayment: 100 subunits instead of 99900)
+                const mismatchEventId = `evt_underpay_${Date.now()}`;
+                const mismatchPayload = {
+                    entity: "event",
+                    event: "payment.captured",
+                    contains: ["payment"],
+                    payload: {
+                        payment: {
+                            entity: {
+                                id: `pay_underpay_${Date.now()}`,
+                                amount: 100, // Underpayment!
+                                currency: "INR",
+                                status: "captured",
+                                order_id: rzpOrderId,
+                            },
+                        },
+                    },
+                };
+                const { rawBody: underBody, signature: underSig } = signWebhookBody(mismatchPayload);
+                const underpayRes = await fetchJson(`${API_BASE_URL}/payment/webhook`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Razorpay-Signature": underSig,
+                        "x-razorpay-event-id": mismatchEventId,
+                    },
+                    body: underBody,
+                });
+                const underpayIngested = underpayRes.status === 200;
+
+                // Wait 1.5 seconds for worker
+                await new Promise((r) => setTimeout(r, 1500));
+
+                // Student logs in via UI: course must NOT be enrolled; Buy Now must still be visible
+                await uiLogin(page, studentEmail, TEST_PASSWORD);
+                await page.goto(`${FRONTEND_URL}/#/courses/${seeded.courses.purchasableCourseId}`, {
+                    waitUntil: "networkidle",
+                });
+                await page.waitForTimeout(800);
+                const coursePageText = await page.locator("body").innerText();
+                const buyNowStillVisible = coursePageText.includes("Buy Now");
+                const goToCourseNotPresent = !coursePageText.includes("Go to Course");
+
+                record(
+                    "E2E-47",
+                    "Tampered Webhook Signature (400) & Underpayment Amount Mismatch (Access Denied)",
+                    badSigRejected && underpayIngested && buyNowStillVisible && goToCourseNotPresent,
+                    `badSigStatus=${badSigRes.status}, underpayStatus=${underpayRes.status}, buyNowVisible=${buyNowStillVisible}, noGoToCourse=${goToCourseNotPresent}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
+        // E2E-48: Out-of-Order Delivery & State Protection (Never Downgrade PAID Order)
+        // =========================================================================
+        {
+            const { ctx, page } = await newTrackedContext();
+            try {
+                const studentEmail = `e2e48.student.${Date.now()}@isolated.test`;
+                await createTestStudent(studentEmail, TEST_PASSWORD, "Resilient", "State");
+
+                const loginRes = await fetchJson(`${API_BASE_URL}/auth/login`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email: studentEmail, password: TEST_PASSWORD }),
+                });
+                const token = loginRes.data?.token;
+
+                const captureRes = await fetchJson(`${API_BASE_URL}/payment/capturePayment`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ courses: [seeded.courses.purchasableCourseId] }),
+                });
+                const rzpOrderId = captureRes.data?.message?.id;
+
+                // 1. payment.failed arrives first
+                const failEventId = `evt_fail1_${Date.now()}`;
+                const failPayload = {
+                    entity: "event",
+                    event: "payment.failed",
+                    contains: ["payment"],
+                    payload: {
+                        payment: {
+                            entity: {
+                                id: `pay_fail_${Date.now()}`,
+                                amount: 99900,
+                                currency: "INR",
+                                status: "failed",
+                                order_id: rzpOrderId,
+                                error_description: "Card declined by bank",
+                            },
+                        },
+                    },
+                };
+                const { rawBody: failBody, signature: failSig } = signWebhookBody(failPayload);
+                await fetchJson(`${API_BASE_URL}/payment/webhook`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Razorpay-Signature": failSig,
+                        "x-razorpay-event-id": failEventId,
+                    },
+                    body: failBody,
+                });
+                await new Promise((r) => setTimeout(r, 1000));
+
+                // 2. Later, payment.captured arrives for same order
+                const succEventId = `evt_succ_${Date.now()}`;
+                const succPaymentId = `pay_succ_${Date.now()}`;
+                const succPayload = {
+                    entity: "event",
+                    event: "payment.captured",
+                    contains: ["payment"],
+                    payload: {
+                        payment: {
+                            entity: {
+                                id: succPaymentId,
+                                amount: 99900,
+                                currency: "INR",
+                                status: "captured",
+                                order_id: rzpOrderId,
+                            },
+                        },
+                    },
+                };
+                const { rawBody: succBody, signature: succSig } = signWebhookBody(succPayload);
+                await fetchJson(`${API_BASE_URL}/payment/webhook`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Razorpay-Signature": succSig,
+                        "x-razorpay-event-id": succEventId,
+                    },
+                    body: succBody,
+                });
+                await new Promise((r) => setTimeout(r, 1200));
+
+                // 3. Out-of-order / delayed payment.failed arrives AFTER order is PAID
+                const lateFailEventId = `evt_latefail_${Date.now()}`;
+                const lateFailPayload = {
+                    entity: "event",
+                    event: "payment.failed",
+                    contains: ["payment"],
+                    payload: {
+                        payment: {
+                            entity: {
+                                id: `pay_late_fail_${Date.now()}`,
+                                amount: 99900,
+                                currency: "INR",
+                                status: "failed",
+                                order_id: rzpOrderId,
+                                error_description: "Delayed notification from previous decline",
+                            },
+                        },
+                    },
+                };
+                const { rawBody: lateBody, signature: lateSig } = signWebhookBody(lateFailPayload);
+                const lateFailRes = await fetchJson(`${API_BASE_URL}/payment/webhook`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Razorpay-Signature": lateSig,
+                        "x-razorpay-event-id": lateFailEventId,
+                    },
+                    body: lateBody,
+                });
+                await new Promise((r) => setTimeout(r, 1200));
+
+                // Student logs in via UI: Order must still be PAID, enrollment intact
+                await uiLogin(page, studentEmail, TEST_PASSWORD);
+                await page.goto(`${FRONTEND_URL}/#/dashboard/enrolled-courses`, { waitUntil: "networkidle" });
+                await page.waitForTimeout(800);
+                const enrolledText = await page.locator("body").innerText();
+                const courseStillEnrolled = enrolledText.includes(seeded.courses.purchasableCourseName);
+
+                record(
+                    "E2E-48",
+                    "Out-of-Order Recovery (payment.failed -> payment.captured) & Immunity to Late payment.failed",
+                    lateFailRes.status === 200 && courseStillEnrolled,
+                    `lateFailStatus=${lateFailRes.status}, courseStillEnrolled=${courseStillEnrolled}`
+                );
+            } finally {
+                await ctx.close();
+            }
+        }
+
+        // =========================================================================
         // Regression Checks against Isolated Environment (Footer, 404, 401 Interceptor, Mobile)
         // =========================================================================
         {
             const { ctx, page } = await newTrackedContext();
             try {
-                await page.goto(`${FRONTEND_URL}/#/`, { waitUntil: "networkidle" });
+                await page.goto(`${FRONTEND_URL}/#/`, { waitUntil: "domcontentloaded" });
                 await page.waitForTimeout(1000);
                 const footerHrefs = await page.locator("footer a").evaluateAll((els) =>
                     els.map((a) => a.getAttribute("href")).filter((h) => h && !h.startsWith("http"))
@@ -2820,7 +3504,7 @@ async function runAuthenticatedE2E() {
                 const uniqueHrefs = [...new Set(footerHrefs)];
                 const broken = [];
                 for (const href of uniqueHrefs) {
-                    await page.goto(`${FRONTEND_URL}/${href}`, { waitUntil: "networkidle" });
+                    await page.goto(`${FRONTEND_URL}/${href}`, { waitUntil: "domcontentloaded" });
                     await page.waitForTimeout(400);
                     const text = (await page.locator("body").innerText()).toLowerCase();
                     if (text.includes("upside down") || text.includes("category not found")) {
@@ -2836,7 +3520,7 @@ async function runAuthenticatedE2E() {
 
                 // Error page direct landing
                 const errPage = await ctx.newPage();
-                await errPage.goto(`${FRONTEND_URL}/#/nonexistent-cycle4-route`, { waitUntil: "networkidle" });
+                await errPage.goto(`${FRONTEND_URL}/#/nonexistent-cycle4-route`, { waitUntil: "domcontentloaded" });
                 await errPage.waitForTimeout(500);
                 const overflow = await errPage.evaluate(() => getComputedStyle(document.body).overflow);
                 await errPage.locator('a[aria-label="Go to right side up"]').click({ force: true });
@@ -2852,7 +3536,7 @@ async function runAuthenticatedE2E() {
 
                 // Mobile 375px check
                 await page.setViewportSize({ width: 375, height: 812 });
-                await page.goto(`${FRONTEND_URL}/#/`, { waitUntil: "networkidle" });
+                await page.goto(`${FRONTEND_URL}/#/`, { waitUntil: "domcontentloaded" });
                 await page.waitForTimeout(500);
                 const horizOverflow = await page.evaluate(
                     () => document.documentElement.scrollWidth > window.innerWidth

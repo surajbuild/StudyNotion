@@ -263,20 +263,20 @@ flowchart TD
 ---
 
 ### Cycle #13 — Payment Reliability & Asynchronous Webhook Reconciliation
+- **Status:** **COMPLETE & VERIFIED** (2026-11-19)
 - **Objective:** Ensure 100% payment data integrity and guaranteed course enrollment even when user client connections fail or terminate abruptly.
-- **Issues Addressed:** Missing server-side payment webhook listener, interrupted checkout recovery, payment failure auditing.
-- **Files & Modules Likely to Change:**
-  - `server/controllers/Payments.js` (Webhook controller, signature validator).
-  - `server/routes/Payment.js` (Mounting `/payment/webhook` with raw body parser).
-  - `server/index.js` (Raw express body parser configuration for webhook route).
-  - `server/models/Order.js` (Webhook event logs, payment metadata).
-- **Dependencies:** Cycle #12 completion.
-- **Testing Requirements:**
-  - Supertest tests simulating Razorpay `order.paid` and `payment.captured` webhooks with valid and invalid HMAC signatures.
-  - Idempotency test: verifying that receiving both client `verifyPayment` and server webhook results in exactly one enrollment and one receipt email.
-  - Interrupted recovery test: simulating dropped client connection where order transitions from `PENDING` to `PAID` exclusively via webhook.
-- **Definition of Completion:** Webhook endpoint deployed and verified via Razorpay CLI or automated signature simulation; 100% pass rate.
-- **Expected Deliverables:** Production webhook handler, idempotent enrollment worker, payment reconciliation test suite.
+- **Issues Addressed:** Missing server-side payment webhook listener, interrupted checkout recovery, payment failure auditing (`GAP-010`).
+- **Files & Modules Changed:**
+  - `server/index.js`: Mounted `express.raw({ type: "*/*", limit: "2mb" })` on `/api/v1/payment/webhook` before `express.json()`, capturing original HTTP bytes without mutation; initialized worker background hooks.
+  - `server/controllers/Webhook.js`: Cryptographic signature validator (`crypto.timingSafeEqual`) with dual-secret rotation (`RAZORPAY_WEBHOOK_SECRET` & `RAZORPAY_WEBHOOK_OLD_SECRET`), duplicate delivery acknowledgement, and Admin inspection/retry controllers.
+  - `server/routes/Payment.js`: Mounted public unauthenticated `POST /webhook` -> `handleRazorpayWebhook`.
+  - `server/models/WebhookEvent.js`: Durable MongoDB event store with compound unique index on `eventId`, tracking event states, lease timestamps, attempt counters, and error logs.
+  - `server/workers/webhookWorker.js`: Distributed background worker with atomic `findOneAndUpdate` lease claiming (`claimNextEvent`), exponential backoff retries, expired lease recovery, and standalone CLI support (`npm run worker:webhook`).
+  - `server/services/paymentReconciliation.js`: Shared authoritative payment finalizer (`finalizeCapturedPayment`) reused by client `verifyPayment` and webhook worker, enforcing authoritative order matching, amount/currency validation, duplicate payment ID replay defense (`409`), atomic enrollment, cart cleanup, and idempotent receipt emails (`Order.receiptEmailSent`).
+  - `server/controllers/Payments.js`: Refactored `verifyPayment` to delegate to `finalizeCapturedPayment`; idempotent payment success emails.
+  - `server/routes/Admin.js`: Mounted `GET /api/v1/admin/webhook-events` and `POST /api/v1/admin/webhook-events/:eventId/retry` behind `auth, isAdmin`.
+  - `server/models/Order.js`: Added `receiptEmailSent: { type: Boolean, default: false }`.
+- **Verification:** 39 new tests: 23 unit tests in `webhook.unit.test.js`, 10 real MongoDB integration tests `BE-DB-21`–`BE-DB-30` in `integration.realdb.test.js`, and 6 isolated Playwright E2E tests `E2E-43`–`E2E-48` in `authenticated.e2e.js`. 100% passing across all suites (`417/417` live-executed + `25` historical = `442/442` cumulative).
 
 ---
 
@@ -366,10 +366,9 @@ Before declaring StudyNotion complete and production-ready, the engineering team
 ## 12. Current Blockers & Next Immediate Step
 
 ### Current Blockers to Production
-1. **Missing Webhook Handler**: High commercial risk of user payment loss during network disconnects or browser tab crashes.
-2. **Pending Atlas Migration**: Live database contains legacy instructor records without explicit `approvalStatus`.
-3. **Transactional Email Setup**: Production domain SMTP/API required to prevent email delivery throttling.
+1. **Pending Atlas Migration**: Live database contains legacy instructor records without explicit `approvalStatus` (`migrateInstructorApproval.js` ready for execution).
+2. **Transactional Email Setup**: Production domain SMTP/API required to prevent email delivery throttling.
 
 ### Recommended Immediate Next Task
-> **Execute Cycle #13 (Payment Reliability & Asynchronous Webhook Reconciliation).**  
-> Specifically, build the `/payment/webhook` endpoint with cryptographic signature validation (`x-razorpay-signature`), idempotent order reconciliation (`PENDING` -> `PAID`), and asynchronous student enrollment recovery.
+> **Execute Cycle #14 (Production Readiness, Observability & Live Migration Execution).**  
+> Specifically, run `migrateInstructorApproval.js` against Atlas, configure production connection pooling, structured logging, and automated GitHub Actions CI/CD.

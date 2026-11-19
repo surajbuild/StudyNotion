@@ -6,6 +6,7 @@
     "start": "node index.js",
     "dev": "node --watch index.js",
     "start:test-env": "node test-env/startIsolatedEnv.js",
+    "worker:webhook": "node workers/webhookWorker.js",
     "test": "jest --runInBand --forceExit",
     "test:unit": "jest --testPathIgnorePatterns=integration.realdb.test.js --runInBand --forceExit",
     "test:integration": "jest __tests__/integration.realdb.test.js --runInBand --forceExit"

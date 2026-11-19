@@ -1,7 +1,7 @@
 # StudyNotion — Bug Tracker & Root Cause Analysis
 
-> **Last Updated:** 2026-11-18  
-> **Audit Cycle:** Cycle #11 (`F-INS-11` Instructor Student Roster & Progress Tracking + `BUG-036`)  
+> **Last Updated:** 2026-11-19  
+> **Audit Cycle:** Cycle #13 (Razorpay Webhooks & Asynchronous Payment Reconciliation: Dual-Secret HMAC-SHA256, Durable Event Inbox, Atomic Distributed Worker Leases, Shared Authoritative Finalization)  
 > **Severity Levels:** `CRITICAL` | `HIGH` | `MEDIUM` | `LOW`  
 > **Total Logged:** 34 (`BUG-001`–`BUG-036`, excluding unused gap) | **Fixed & Verified:** 34 | **Open:** 0
 
@@ -9,7 +9,27 @@
 
 ## Open Bugs
 
-*None — all tracked bugs across Cycles #1–#11 have been fixed and verified.*
+*None — all tracked bugs across Cycles #1–#13 have been fixed and verified.*
+
+---
+
+## Cycle #13 — Architectural Delivery: Razorpay Webhook Implementation & Asynchronous Payment Reconciliation
+
+### `GAP-010` *(Tracked Separately)* — Asynchronous Webhook Payment Reconciliation & Crash Recovery
+- **Module:** Payment Reconciliation & Enrollment Architecture (`Payments.js`, `Webhook.js`, `WebhookEvent.js`, `paymentReconciliation.js`, `webhookWorker.js`)
+- **Status:** `RESOLVED & VERIFIED`
+- **Implementation Summary:**
+  - **Preserved Raw Body Bytes:** Configured Express middleware in [`server/index.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/index.js) with `express.raw({ type: "*/*", limit: "2mb" })` mounted specifically on `/api/v1/payment/webhook` before `express.json()`, capturing original HTTP bytes without mutation while preserving standard JSON parsing on all other routes.
+  - **Dual-Secret Cryptographic Verification:** Implemented `verifyWebhookSignature` in [`server/controllers/Webhook.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/controllers/Webhook.js) utilizing `crypto.createHmac("sha256", secret)` and `crypto.timingSafeEqual` with buffer length validation. Supports zero-downtime secret rotation by falling back to `RAZORPAY_WEBHOOK_OLD_SECRET` if the primary secret check fails.
+  - **Durable MongoDB Event Store:** Created [`server/models/WebhookEvent.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/models/WebhookEvent.js) with unique compound index on `eventId`, tracking event states (`RECEIVED`, `PROCESSING`, `PROCESSED`, `FAILED`, `NEEDS_REVIEW`), retry attempts, error logs, and worker lease expirations (`leaseUntil`).
+  - **Atomic Distributed Background Worker:** Built [`server/workers/webhookWorker.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/workers/webhookWorker.js) with `claimNextEvent` using `findOneAndUpdate` to atomically acquire processing leases and reclaim expired leases. Includes standalone CLI execution (`npm run worker:webhook`), exponential backoff retries, and escalation to `NEEDS_REVIEW`.
+  - **Shared Authoritative Reconciliation:** Created [`server/services/paymentReconciliation.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/services/paymentReconciliation.js) (`finalizeCapturedPayment`) shared identically by client `verifyPayment` and webhook worker. Enforces authoritative MongoDB order matching, amount/currency validation against local order records, duplicate payment ID replay defense (`409`), atomic enrollment, persistent cart cleanup, and idempotent receipt emails (`Order.receiptEmailSent`).
+  - **Administrative Oversight & Manual Retry:** Added `GET /api/v1/admin/webhook-events` and `POST /api/v1/admin/webhook-events/:eventId/retry` in [`server/routes/Admin.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/routes/Admin.js) guarded by `auth, isAdmin`.
+- **Regression Verification:**
+  - `server/__tests__/webhook.unit.test.js`: 23/23 PASS
+  - `server/__tests__/payment.test.js`: 18/18 PASS
+  - Real MongoDB Integration Tests: `BE-DB-21` through `BE-DB-30` (10/10 PASS)
+  - Isolated Playwright E2E: `E2E-43` through `E2E-48` (6/6 PASS)
 
 ---
 
@@ -288,13 +308,13 @@
 
 ---
 
-## Remaining Tracked Security Findings (Cycle #13 Backlog)
+## Remaining Tracked Security Findings (Cycle #14 Backlog)
 
 | ID | Title | Severity | Planned Cycle | Scope |
 |----|-------|----------|---------------|-------|
-| `SEC-005` | Account enumeration through distinct error messages | `LOW` | Cycle #13 | Standardize login, signup, and reset error responses (`"Invalid credentials"` / `"If that email exists, an email has been sent"`) |
-| `SEC-007` | In-memory rate limiting resets across cluster restarts | `MEDIUM` | Cycle #13 | Redis-backed distributed rate limiter with fallback to memory store |
-| `SEC-008` | File upload MIME/extension spoofing | `MEDIUM` | Cycle #13 | Magic-byte buffer validation (`file-type` header inspection) for thumbnail images & video lectures |
+| `SEC-005` | Account enumeration through distinct error messages | `LOW` | Cycle #14 | Standardize login, signup, and reset error responses (`"Invalid credentials"` / `"If that email exists, an email has been sent"`) |
+| `SEC-007` | In-memory rate limiting resets across cluster restarts | `MEDIUM` | Cycle #14 | Redis-backed distributed rate limiter with fallback to memory store |
+| `SEC-008` | File upload MIME/extension spoofing | `MEDIUM` | Cycle #14 | Magic-byte buffer validation (`file-type` header inspection) for thumbnail images & video lectures |
 
 ---
 

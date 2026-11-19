@@ -9,6 +9,11 @@ const { courseEnrollmentEmail } = require("../mail/templates/courseEnrollmentEma
 const { paymentSuccessEmail } = require("../mail/templates/paymentSuccessEmail");
 const CourseProgress = require("../models/CourseProgress");
 const cache = require("../utils/cache");
+const {
+    enrollStudents,
+    sendReceiptEmailIdempotent,
+    finalizeCapturedPayment,
+} = require("../services/paymentReconciliation");
 
 const OBJECT_ID_REGEX = /^[a-fA-F0-9]{24}$/;
 const ALLOWED_ORDER_STATUSES = new Set(["PENDING", "PAID", "FAILED", "CANCELLED", "REFUNDED"]);
@@ -410,26 +415,7 @@ exports.verifyPayment = async (req, res) => {
             });
         }
 
-        // Step 3: Validate authoritative amount, currency, and course list if client provided them
-        if (amount !== undefined && amount !== null && amount !== "") {
-            const numericAmount = Number(amount);
-            if (!Number.isFinite(numericAmount) || numericAmount !== order.amountInSubunits) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Payment verification failed: amount mismatch",
-                });
-            }
-        }
-
-        if (currency !== undefined && currency !== null && currency !== "") {
-            if (String(currency).trim().toUpperCase() !== String(order.currency).toUpperCase()) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Payment verification failed: currency mismatch",
-                });
-            }
-        }
-
+        // Step 3: Validate authoritative course list if client provided them
         const authoritativeCourseIds = (Array.isArray(order.courses) ? order.courses : []).map(
             (id) => id.toString()
         );
@@ -444,127 +430,59 @@ exports.verifyPayment = async (req, res) => {
             }
         }
 
-        // Step 4: Duplicate payment ID replay check across orders
-        const existingPaymentOrder = await Order.findOne({
+        // Delegate to single shared, authoritative payment reconciliation service
+        const reconciliation = await finalizeCapturedPayment({
+            order,
+            razorpayOrderId: razorpay_order_id,
             razorpayPaymentId: razorpay_payment_id,
+            amountInSubunits:
+                amount !== undefined && amount !== null && amount !== ""
+                    ? Number(amount)
+                    : undefined,
+            currency,
+            source: "CLIENT_VERIFY",
+            sendEmail: false,
         });
-        if (
-            existingPaymentOrder &&
-            existingPaymentOrder._id.toString() !== order._id.toString()
-        ) {
-            return res.status(409).json({
-                success: false,
-                message: "Duplicate payment ID: this payment has already been processed",
-            });
-        }
 
-        // Step 5: Idempotent handling for already PAID orders (including interrupted-request recovery)
-        if (order.status === "PAID") {
-            if (order.razorpayPaymentId && order.razorpayPaymentId !== razorpay_payment_id) {
+        if (!reconciliation.success) {
+            if (reconciliation.reason === "ORDER_NOT_FOUND") {
+                return res.status(404).json({
+                    success: false,
+                    message: reconciliation.message,
+                });
+            }
+            if (
+                reconciliation.reason === "AMOUNT_MISMATCH" ||
+                reconciliation.reason === "CURRENCY_MISMATCH" ||
+                reconciliation.reason === "INVALID_ORDER_STATUS"
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message: reconciliation.message,
+                });
+            }
+            if (
+                reconciliation.reason === "PAYMENT_ALREADY_USED" ||
+                reconciliation.reason === "DUPLICATE_PAYMENT_ID" ||
+                reconciliation.reason === "ORDER_ALREADY_PAID_DIFFERENT_PAYMENT" ||
+                reconciliation.reason === "CONCURRENT_STATE_CHANGE"
+            ) {
                 return res.status(409).json({
                     success: false,
-                    message: "Order has already been paid with a different payment ID",
+                    message: reconciliation.message,
                 });
             }
-
-            if (order.enrollmentCompleted) {
-                return res.status(200).json({
-                    success: true,
-                    message: "Payment already verified",
-                    alreadyProcessed: true,
-                    data: { order },
-                });
-            }
-
-            // Interrupted-request recovery: payment was captured/marked PAID earlier, complete enrollment safely
-            await enrollStudents(authoritativeCourseIds, userId);
-            const recoveredOrder = await Order.findByIdAndUpdate(
-                order._id,
-                { $set: { enrollmentCompleted: true } },
-                { new: true }
-            );
-            return res.status(200).json({
-                success: true,
-                message: "Payment verified",
-                data: { order: recoveredOrder || order },
-            });
-        }
-
-        if (order.status === "CANCELLED" || order.status === "REFUNDED") {
             return res.status(400).json({
                 success: false,
-                message: `Cannot verify payment for an order with status ${order.status}`,
+                message: reconciliation.message || "Payment verification failed",
             });
         }
-
-        // Step 6: Atomic conditional state transition (PENDING / FAILED -> PAID)
-        let claimedOrder;
-        try {
-            claimedOrder = await Order.findOneAndUpdate(
-                {
-                    _id: order._id,
-                    user: userId,
-                    status: { $in: ["PENDING", "FAILED"] },
-                },
-                {
-                    $set: {
-                        status: "PAID",
-                        razorpayPaymentId: razorpay_payment_id,
-                        paidAt: new Date(),
-                        failureReason: "",
-                    },
-                },
-                { new: true }
-            );
-        } catch (updateErr) {
-            if (updateErr?.code === 11000) {
-                return res.status(409).json({
-                    success: false,
-                    message: "Duplicate payment ID: this payment has already been processed",
-                });
-            }
-            throw updateErr;
-        }
-
-        // Handle concurrent duplicate callback race cleanly
-        if (!claimedOrder) {
-            const latestOrder = await Order.findById(order._id);
-            if (
-                latestOrder?.status === "PAID" &&
-                latestOrder.razorpayPaymentId === razorpay_payment_id
-            ) {
-                if (!latestOrder.enrollmentCompleted) {
-                    await enrollStudents(authoritativeCourseIds, userId);
-                    await Order.findByIdAndUpdate(latestOrder._id, {
-                        $set: { enrollmentCompleted: true },
-                    });
-                }
-                return res.status(200).json({
-                    success: true,
-                    message: "Payment already verified",
-                    alreadyProcessed: true,
-                    data: { order: latestOrder },
-                });
-            }
-            return res.status(409).json({
-                success: false,
-                message: "Order could not be verified due to a concurrent state change",
-            });
-        }
-
-        // Step 7: Enroll student using ONLY authoritative server-side order courses
-        await enrollStudents(authoritativeCourseIds, userId);
-
-        const finalizedOrder = await Order.findByIdAndUpdate(
-            claimedOrder._id,
-            { $set: { enrollmentCompleted: true } },
-            { new: true }
-        );
 
         return res.status(200).json({
             success: true,
-            message: "Payment verified",
-            data: { order: finalizedOrder || claimedOrder },
+            message: reconciliation.alreadyProcessed ? "Payment already verified" : "Payment verified",
+            alreadyProcessed: reconciliation.alreadyProcessed,
+            data: { order: reconciliation.order },
         });
     } catch (error) {
         console.error("verifyPayment enrollment failed:", error?.message || "Unknown error");
@@ -768,72 +686,10 @@ exports.getOrderDetails = async (req, res) => {
     }
 };
 
-const enrollStudents = async (courses, userId) => {
-    if (!courses || !userId) {
-        throw new Error("Courses and userId are required for enrollment");
-    }
-
-    // Check existing progress records first to prevent duplicate CourseProgress documents
-    const existingProgress = await CourseProgress.find({ courseID: { $in: courses }, userId });
-    const existingCourseIds = new Set(
-        (existingProgress || [])
-            .map((doc) => doc?.courseID?.toString())
-            .filter(Boolean)
-    );
-    const coursesNeedingProgress = courses.filter(
-        (courseId) => !existingCourseIds.has(courseId.toString())
-    );
-
-    const enrolledAt = new Date();
-    await Promise.all([
-        Course.updateMany(
-            { _id: { $in: courses } },
-            { $addToSet: { studentEnrolled: userId } }
-        ),
-        ...coursesNeedingProgress.map((courseId) =>
-            CourseProgress.create({
-                courseID: courseId,
-                userId,
-                completedVideos: [],
-                enrolledAt,
-            })
-        ),
-    ]);
-
-    const progressDocs = await CourseProgress.find({ courseID: { $in: courses }, userId });
-
-    // Atomically enroll student, attach progress records, and remove enrolled courses from persistent DB cart
-    await User.findByIdAndUpdate(userId, {
-        $addToSet: {
-            courses: { $each: courses },
-            courseProgress: { $each: (progressDocs || []).map((doc) => doc._id) },
-        },
-        $pull: {
-            cart: { $in: courses },
-        },
-    });
-
-    // Invalidate course caches so studentEnrolled reflects immediately on CourseDetails
-    cache.del("getAllCourses");
-    for (const courseId of courses) {
-        cache.del(`getCourseDetails:${courseId}`);
-    }
-
-    const student = await User.findById(userId);
-    const courseDocs = await Course.find({ _id: { $in: courses } }, { courseName: 1 });
-
-    if (student?.email && Array.isArray(courseDocs)) {
-        await Promise.allSettled(
-            courseDocs.map((courseDoc) =>
-                mailSender(
-                    student.email,
-                    `Successfully Enrolled into ${courseDoc.courseName}`,
-                    courseEnrollmentEmail(courseDoc.courseName, student.firstName)
-                )
-            )
-        );
-    }
-};
+// Re-export shared payment reconciliation utilities
+exports.enrollStudents = enrollStudents;
+exports.verifySignatureTimingSafe = verifySignatureTimingSafe;
+exports.buildCourseSnapshots = buildCourseSnapshots;
 
 // ============================================================
 // SEND PAYMENT SUCCESS EMAIL
@@ -854,16 +710,31 @@ exports.sendPaymentSuccessEmail = async (req, res) => {
             return res.status(404).json({ success: false, message: "User not found" });
         }
 
-        await mailSender(
-            student.email,
-            "Payment Received - StudyNotion",
-            paymentSuccessEmail(
-                `${student.firstName} ${student.lastName}`,
-                amount / 100,
-                orderId,
-                paymentId
-            )
-        );
+        // Deduplicate receipt emails against stored Order record if available
+        let order = null;
+        if (isValidObjectId(orderId)) {
+            order = await Order.findById(orderId);
+        } else {
+            order = await Order.findOne({ razorpayOrderId: orderId });
+        }
+
+        if (order) {
+            const emailResult = await sendReceiptEmailIdempotent(order);
+            if (!emailResult.sent && emailResult.reason === "ALREADY_SENT") {
+                return res.status(200).json({ success: true, message: "Payment success email already sent" });
+            }
+        } else {
+            await mailSender(
+                student.email,
+                "Payment Received - StudyNotion",
+                paymentSuccessEmail(
+                    `${student.firstName} ${student.lastName}`,
+                    amount / 100,
+                    orderId,
+                    paymentId
+                )
+            );
+        }
 
         return res.status(200).json({ success: true, message: "Payment success email sent" });
     } catch (error) {
