@@ -81,7 +81,8 @@ const ensureIsolatedMongo = async ({ dbName = DEFAULT_TEST_DB_NAME, port = DEFAU
     if (requestedUri) {
         assertSafeTestDatabaseUri(requestedUri, process.env);
         const target = parseHostPort(requestedUri);
-        if (await isPortOpen(target.host, target.port)) {
+        // Wait up to 30 seconds for external/CI service container (e.g. GitHub Actions container service or Docker)
+        if (await waitForPort(target.host, target.port, 60, 500)) {
             return {
                 uri: requestedUri,
                 managed: false,
@@ -89,6 +90,9 @@ const ensureIsolatedMongo = async ({ dbName = DEFAULT_TEST_DB_NAME, port = DEFAU
                 stop: async () => {},
             };
         }
+        throw new Error(
+            `Explicit MONGODB_TEST_URL was provided (${requestedUri}) but host ${target.host}:${target.port} did not become reachable within 30 seconds.`
+        );
     }
 
     // Spawn a dedicated ephemeral mongod on 127.0.0.1:<port>
