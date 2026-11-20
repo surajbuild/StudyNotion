@@ -26,30 +26,32 @@
   - Added toggleable generic response in `ResetPassword.js` (`GENERIC_RESET_RESPONSES` defaulting to true) returning `"If an account with this email exists, a password reset link has been sent"` for unregistered emails while preserving reset token dispatch for registered emails.
 - **Regression Verification:** [`server/__tests__/securityCycle14.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/securityCycle14.test.js) (`SEC-14-01` through `SEC-14-04`).
 
-### `SEC-007` — Distributed Rate Limiting via Redis Store with Graceful In-Memory Fallback
-- **Module:** Production Rate Limiting (`rateLimiters.js`)
+### `SEC-007` — Distributed Rate Limiting via Redis Store with Graceful In-Memory Fallback & Readiness Gating
+- **Module:** Production Rate Limiting (`rateLimiters.js`, `index.js`)
 - **Severity:** `MEDIUM` | **Priority:** P1 | **Status:** `RESOLVED & VERIFIED`
-- **Location:** [`server/middlewares/rateLimiters.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/middlewares/rateLimiters.js), [`server/routes/Contact.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/routes/Contact.js)
-- **Root Cause:** Rate limiters stored state in volatile memory, which did not persist across server restarts and could not share counters across multiple horizontal backend instances.
+- **Location:** [`server/middlewares/rateLimiters.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/middlewares/rateLimiters.js), [`server/routes/Contact.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/routes/Contact.js), [`server/index.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/index.js)
+- **Root Cause:** Rate limiters stored state in volatile memory, which did not persist across server restarts and could not share counters across multiple horizontal backend instances. Furthermore, silent fallback to memory in production could allow multi-instance clusters to operate in degraded state unnoticed.
 - **Resolution:**
   - Integrated `ioredis` and `rate-limit-redis`.
   - Initialized distributed Redis store when `REDIS_URL` or `REDIS_HOST` is configured.
   - Implemented automatic graceful fallback to in-memory store if Redis is unconfigured or temporarily disconnected, logging operational warnings via Winston.
+  - Enhanced `/readyz` probe (Cycle #14.1) to return `503 Service Unavailable` (`status: "degraded"`) when distributed rate limiting is mandated (`REQUIRE_DISTRIBUTED_RATE_LIMITING=true` or production with `REDIS_URL`) but Redis is disconnected.
   - Test mode (`NODE_ENV=test`) is isolated and uses memory store with bypass controls to prevent flaky test runs.
   - Protected public contact form (`contactLimiter`) alongside login, signup, OTP, and password reset endpoints.
-- **Regression Verification:** [`server/__tests__/securityCycle14.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/securityCycle14.test.js) (`SEC-14-05` through `SEC-14-07`).
+- **Regression Verification:** [`server/__tests__/securityCycle14.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/securityCycle14.test.js) (`SEC-14-05` through `SEC-14-07`, and `GET /readyz` test).
 
-### `SEC-008` — File Upload Magic-Byte Binary Signature Validation
+### `SEC-008` — File Upload Magic-Byte Binary Signature Validation & SVG XSS Rejection
 - **Module:** Media Upload Security (`fileSignatureValidator.js`, `validateUpload.js`)
 - **Severity:** `MEDIUM` | **Priority:** P1 | **Status:** `RESOLVED & VERIFIED`
 - **Location:** [`server/utils/fileSignatureValidator.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/utils/fileSignatureValidator.js), [`server/middlewares/validateUpload.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/middlewares/validateUpload.js)
-- **Root Cause:** Endpoints relied exclusively on client-supplied MIME types and file extensions, allowing attackers to upload arbitrary malicious binary files disguised with fake `.jpg` or `.mp4` extensions.
+- **Root Cause:** Endpoints relied exclusively on client-supplied MIME types and file extensions, allowing attackers to upload arbitrary malicious binary files disguised with fake `.jpg` or `.mp4` extensions. Furthermore, raw SVG vector uploads could contain embedded JavaScript `<script>` tags or `onload` handlers causing Stored Cross-Site Scripting (XSS).
 - **Resolution:**
-  - Implemented binary magic-byte detection checking the first 32 bytes for valid signatures (JPEG `FF D8 FF`, PNG `89 50 4E 47`, GIF `47 49 46 38`, WebP `RIFF...WEBP`, SVG `<svg`, MP4 `ftyp`, WebM `1A 45 DF A3`).
+  - Implemented binary magic-byte detection checking the first 32 bytes for valid signatures (JPEG `FF D8 FF`, PNG `89 50 4E 47`, GIF `47 49 46 38`, WebP `RIFF...WEBP`, MP4 `ftyp`, WebM `1A 45 DF A3`).
+  - Disallowed SVG file uploads entirely (Cycle #14.1) across all media endpoints (`ALLOWED_IMAGE_EXTS` restricted to `.jpg, .jpeg, .png, .gif, .webp`), detecting and rejecting SVG XML headers (`<svg`, `<?xml`) with explicit security errors.
   - Added strict validation rejecting spoofed MIME types, mismatched extensions, malformed files, and oversized uploads (5MB avatar, 10MB thumbnail, 500MB video).
   - Ensured safe asynchronous unlinking of temporary files upon validation failure.
   - Mounted middleware across `/createCourse`, `/editCourse`, `/addSubSection`, `/updateSubSection`, and `/updateDisplayPicture`.
-- **Regression Verification:** [`server/__tests__/securityCycle14.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/securityCycle14.test.js) (`SEC-14-08` through `SEC-14-10`), real-DB integration `integration.realdb.test.js`.
+- **Regression Verification:** [`server/__tests__/securityCycle14.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/securityCycle14.test.js) (`SEC-14-08` through `SEC-14-13`), real-DB integration `integration.realdb.test.js`.
 
 ---
 

@@ -8,7 +8,7 @@ const SIZE_LIMITS = {
     VIDEO: 500 * 1024 * 1024,     // 500 MB
 };
 
-const ALLOWED_IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"]);
+const ALLOWED_IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp"]);
 const ALLOWED_VIDEO_EXTS = new Set([".mp4", ".m4v", ".webm", ".mov", ".mkv"]);
 
 /**
@@ -103,7 +103,7 @@ function detectBinaryFormat(buffer) {
     // SVG: Check first 256 bytes for text '<svg' or '<?xml'
     const headerStr = buffer.toString("utf8", 0, Math.min(buffer.length, 256)).trim().toLowerCase();
     if (headerStr.includes("<svg") || (headerStr.includes("<?xml") && headerStr.includes("<svg"))) {
-        return { mime: "image/svg+xml", ext: ".svg", type: "image" };
+        return { mime: "image/svg+xml", ext: ".svg", type: "disallowed_svg" };
     }
 
     return null;
@@ -146,9 +146,18 @@ function validateUploadedFile(file, { expectedCategory = "image", maxSizeBytes =
     const declaredMime = (file.mimetype || "").toLowerCase();
 
     // Check declared extension against allowed sets
-    if (expectedCategory === "image" && !ALLOWED_IMAGE_EXTS.has(declaredExt)) {
-        cleanupTempFile(file);
-        return { valid: false, message: `Invalid image file extension: ${declaredExt}. Allowed: .jpg, .jpeg, .png, .gif, .webp, .svg` };
+    if (expectedCategory === "image") {
+        if (declaredExt === ".svg") {
+            cleanupTempFile(file);
+            return {
+                valid: false,
+                message: "SVG image uploads are not permitted due to script execution (XSS) risks; please upload JPEG, PNG, GIF, or WebP.",
+            };
+        }
+        if (!ALLOWED_IMAGE_EXTS.has(declaredExt)) {
+            cleanupTempFile(file);
+            return { valid: false, message: `Invalid image file extension: ${declaredExt}. Allowed: .jpg, .jpeg, .png, .gif, .webp` };
+        }
     }
     if (expectedCategory === "video" && !ALLOWED_VIDEO_EXTS.has(declaredExt)) {
         cleanupTempFile(file);
@@ -166,6 +175,15 @@ function validateUploadedFile(file, { expectedCategory = "image", maxSizeBytes =
     if (!detected) {
         cleanupTempFile(file);
         return { valid: false, message: "File header does not match any allowed binary format (corrupted or unrecognized signature)" };
+    }
+
+    // Explicitly reject SVG even if renamed to another extension (e.g. evil.png with SVG XML payload)
+    if (detected.type === "disallowed_svg" || detected.mime === "image/svg+xml") {
+        cleanupTempFile(file);
+        return {
+            valid: false,
+            message: "SVG image uploads are not permitted due to script execution (XSS) risks; please upload JPEG, PNG, GIF, or WebP.",
+        };
     }
 
     // Verify binary format matches expected category

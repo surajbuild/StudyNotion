@@ -119,10 +119,19 @@ exports.contactLimiter = rateLimit(
 );
 
 // Diagnostics helper for readiness check
-exports.getRateLimiterStatus = () => ({
-    mode: redisStore ? "distributed_redis" : "in_memory",
-    redisConnected,
-    isDistributed: Boolean(redisStore && redisConnected),
-});
+exports.getRateLimiterStatus = () => {
+    const isRedisConfigured = Boolean(redisUrl);
+    let mode = "in_memory";
+    if (isRedisConfigured) {
+        mode = (redisStore && redisConnected) ? "distributed_redis" : "in_memory_fallback";
+    }
+    return {
+        mode,
+        configured: isRedisConfigured,
+        redisConnected: Boolean(redisConnected),
+        isDistributed: Boolean(redisStore && redisConnected),
+        degraded: Boolean(isRedisConfigured && !redisConnected),
+    };
+};
 
 exports.getRedisClient = () => redisClient;

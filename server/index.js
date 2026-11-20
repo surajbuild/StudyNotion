@@ -66,12 +66,21 @@ app.get("/healthz", (req, res) => {
 app.get("/readyz", (req, res) => {
     const dbHealth = database.getDatabaseHealth();
     const rlStatus = getRateLimiterStatus();
-    const isReady = dbHealth.healthy;
+
+    // In production or when distributed rate limiting is explicitly required,
+    // Redis connectivity failure prevents readiness probe from reporting fully ready,
+    // preventing the cluster from silently falling back to in-memory mode unnoticed.
+    const requireDistributed = process.env.REQUIRE_DISTRIBUTED_RATE_LIMITING === "true" ||
+        (process.env.NODE_ENV === "production" && Boolean(process.env.REDIS_URL));
+
+    const rateLimiterHealthy = !requireDistributed || rlStatus.isDistributed;
+    const isReady = dbHealth.healthy && rateLimiterHealthy;
 
     res.status(isReady ? 200 : 503).json({
-        status: isReady ? "ready" : "not_ready",
+        status: isReady ? "ready" : (dbHealth.healthy ? "degraded" : "not_ready"),
         database: dbHealth,
         rateLimiter: rlStatus,
+        degraded: !rateLimiterHealthy,
         timestamp: new Date().toISOString(),
     });
 });

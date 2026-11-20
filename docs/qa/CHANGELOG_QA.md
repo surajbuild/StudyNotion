@@ -4,6 +4,19 @@
 
 ---
 
+## 2026-11-21 — QA Cycle #14.1 (Staging Deployment & External Integration Verification: SVG XSS Rejection, Redis Readiness Probe Enforcement, Staging Verification Report, Production Launch Checklist)
+
+| Task / Finding ID | Files Modified / Added | Changes Made | Tests Executed | Verification Status |
+|---|---|---|---|---|
+| `CHECKPOINT` | Cycle #14 commit `fd82540` | Staged and created clean local checkpoint commit for Cycle #14 preserving all previous cycles | `git status`, `git log` | `VERIFIED` |
+| `SEC-008-SVG` (Anti-XSS SVG Rejection) | `server/utils/fileSignatureValidator.js`, `server/__tests__/securityCycle14.test.js` | Removed `.svg` from allowed image extensions; explicitly detect SVG XML markup (`<svg`, `<?xml`) and reject SVG uploads across all endpoints with explicit error to defeat Stored XSS attacks via embedded scripts or onload attributes | `securityCycle14.test.js` (+2 tests, 13/13) | `VERIFIED` |
+| `SEC-007-READYZ` (Distributed Rate Limit Readiness) | `server/middlewares/rateLimiters.js`, `server/index.js`, `server/__tests__/securityCycle14.test.js` | Enhanced `getRateLimiterStatus()` with explicit degradation state; updated `/readyz` probe to return 503 Service Unavailable when distributed rate limiting is mandated but Redis is disconnected, preventing silent in-memory fallback in multi-instance production | `securityCycle14.test.js` (+1 test, 13/13) | `VERIFIED` |
+| `MIGRATION-SAFETY` (Read-Only Enforcement & Confirmation) | `server/scripts/migrateInstructorApproval.js` | Enforced strict read-only dry-run by default; mandated `CONFIRM_MIGRATION_WRITE="CONFIRMED"` environment variable and `--apply` flag for write execution; added target database host and index presence audit | Script audit & tests | `VERIFIED` |
+| `STAGING-DOCS` (Verification Report & Launch Checklist) | `docs/STAGING_VERIFICATION_REPORT.md` (new), `docs/PRODUCTION_LAUNCH_CHECKLIST.md` (new), `docs/FINAL_PROJECT_ROADMAP.md` | Authored complete staging verification report with Mermaid architecture diagram, staging environment variable manifest, phase-by-phase external integration breakdown, and master production launch checklist with go/no-go gates | Architectural review | `VERIFIED` |
+| `REGRESSION-RUN` | Full test suite | Re-verified all test layers: 240 backend unit (+3), 30 real-DB integration, 120 frontend unit, 36 isolated Playwright E2E, strict ESLint (`--max-warnings=0`), production build | 430 active live + 25 historical = 455/455 PASS (100%) | `VERIFIED` |
+
+---
+
 ## 2026-11-20 — QA Cycle #14 (Production Readiness, Observability & Deployment Preparation: `SEC-005`, `SEC-007`, `SEC-008`, Health Checks, Structured Logging, Sentry, CI Pipeline, Disaster Recovery)
 
 | Task / Finding ID | Files Modified / Added | Changes Made | Tests Executed | Verification Status |

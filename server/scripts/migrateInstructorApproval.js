@@ -111,14 +111,50 @@ if (require.main === module) {
     const database = require("../config/database");
 
     dotenv.config({ path: path.join(__dirname, "../.env") });
-    const dryRun = process.argv.includes("--dry-run");
+
+    // Safety: CLI defaults strictly to read-only dry-run unless --apply is explicitly specified AND confirmed
+    const isExplicitApply = process.argv.includes("--apply") || process.argv.includes("--write");
+    const dryRun = !isExplicitApply || process.argv.includes("--dry-run");
 
     (async () => {
         try {
-            console.log(`[migrateInstructorApproval] Starting migration runner (dryRun: ${dryRun})`);
+            console.log(`[migrateInstructorApproval] Initializing migration runner (dryRun: ${dryRun})`);
+
+            if (!dryRun) {
+                if (process.env.CONFIRM_MIGRATION_WRITE !== "CONFIRMED") {
+                    console.error("[migrateInstructorApproval] REFUSED: Production write execution requires explicit human confirmation via CONFIRM_MIGRATION_WRITE='CONFIRMED' environment variable.");
+                    process.exit(1);
+                }
+            }
+
             await database.connect();
+
+            // Audit target database & indexes
+            const dbHealth = database.getDatabaseHealth();
+            let indexReport = {};
+            try {
+                const indexes = await User.collection.getIndexes();
+                indexReport = {
+                    totalIndexes: Object.keys(indexes).length,
+                    hasApprovalIndex: Boolean(indexes["accountType_1_approvalStatus_1_createdAt_-1"] || indexes["approvalStatus_1"]),
+                };
+            } catch (idxErr) {
+                indexReport = { error: idxErr.message };
+            }
+
             const summary = await migrateExistingInstructors({ dryRun });
-            console.log("[migrateInstructorApproval] Report:", JSON.stringify(summary, null, 2));
+
+            const finalReport = {
+                targetEnvironment: {
+                    database: dbHealth.name,
+                    host: dbHealth.host,
+                    connectionState: dbHealth.state,
+                },
+                indexAudit: indexReport,
+                ...summary,
+            };
+
+            console.log("[migrateInstructorApproval] Pre-flight / Execution Report:\n", JSON.stringify(finalReport, null, 2));
             await database.closeDatabase();
             process.exit(0);
         } catch (err) {
