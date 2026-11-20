@@ -1,6 +1,6 @@
 # StudyNotion — Complete Feature Matrix
 
-> **Last Updated:** 2026-11-19  
+> **Last Updated:** 2026-11-21  
 > **Rule:** Implementation Status and Test Status are tracked **independently**.  
 > **Implementation Statuses:** `FULLY IMPLEMENTED` | `PARTIALLY IMPLEMENTED` | `IMPLEMENTED BUT BROKEN` | `NOT IMPLEMENTED` | `BLOCKED / NOT VERIFIED`  
 > **Test Statuses:** `PASS` | `PASS (MOCKED)` | `PARTIAL` | `FAIL` | `BLOCKED` | `NOT RUN`
@@ -93,10 +93,15 @@
 
 ---
 
-## Module F — Backend Infrastructure & Tooling (3 Features)
+## Module F — Backend Infrastructure & Tooling (8 Features)
 
 | ID | Feature | Impl. Status | Frontend | Backend | API Integration | Test Status | Missing Pieces / Related Bugs | Next Action |
 |----|---------|--------------|----------|---------|-----------------|-------------|-------------------------------|-------------|
-| `F-INF-01` | In-Memory Caching, Rate Limiting & Strict CORS | `FULLY IMPLEMENTED` | N/A | `cache.js`, `rateLimiters.js`, `corsConfig.js` | N/A | `PASS` | Hardened in Cycle #12 (`SEC-001`): wildcard Vercel CORS removed, exact normalized origin allowlisting enforced via `corsConfig.js`; verified in `cors.test.js` (14/14), `cache.test.js`, real-DB `BE-DB-20`, and Playwright `E2E-42` | Done |
+| `F-INF-01` | Distributed Rate Limiting & Strict CORS | `FULLY IMPLEMENTED` | N/A | `rateLimiters.js`, `corsConfig.js` | N/A | `PASS` | Hardened in Cycle #12 (`SEC-001`) & Cycle #14 (`SEC-007`): Redis-backed distributed rate limiting with graceful in-memory fallback, contact form limiter; verified in `cors.test.js`, `securityCycle14.test.js` | Done |
 | `F-INF-02` | Production Build & SPA Routing (`vercel.json`) | `FULLY IMPLEMENTED` | `package.json`, `vercel.json` | `server/index.js` | Connected | `PASS` | Fixed `BUG-027`: `npx eslint src --max-warnings=0` exits 0 (0 warnings); `npm run build` exits 0 with 0 ESLint warnings | Done |
-| `F-INF-03` | Isolated MongoDB Test Database | `FULLY IMPLEMENTED` | `e2e/authenticated.e2e.js` | `testSafety.js`, `mongoInstance.js`, `seed.js`, `startIsolatedEnv.js`, `docker-compose.test.yml` | Connected | `PASS` | Resolved `GAP-009` in Cycle #4: strict `MONGODB_TEST_URL` isolation, ephemeral MongoDB 8.0 on `127.0.0.1:27018`, real-DB integration (`6/6 PASS`) & unblocked `E2E-16`–`E2E-21` (`9/9 PASS`) | Done |
+| `F-INF-03` | Isolated MongoDB Test Database | `FULLY IMPLEMENTED` | `e2e/authenticated.e2e.js` | `testSafety.js`, `mongoInstance.js`, `seed.js`, `startIsolatedEnv.js`, `docker-compose.test.yml` | Connected | `PASS` | Resolved `GAP-009` in Cycle #4: strict `MONGODB_TEST_URL` isolation, ephemeral MongoDB 8.0 on `127.0.0.1:27018`, real-DB integration (`30/30 PASS`) & unblocked Playwright E2E (`36/36 PASS`) | Done |
+| `F-INF-04` | File Upload Binary Signature Validation | `FULLY IMPLEMENTED` | `Upload.jsx` | `fileSignatureValidator.js`, `validateUpload.js` | Connected | `PASS` | Resolved `SEC-008` in Cycle #14: magic byte checking for JPEG/PNG/GIF/WebP/SVG/MP4/WebM, size limit enforcement, safe temp file cleanup, spoofed MIME rejection | Done |
+| `F-INF-05` | Database Connection Pooling & Health Checks | `FULLY IMPLEMENTED` | N/A | `config/database.js`, `index.js` (`/healthz`, `/readyz`) | Connected | `PASS` | Resolved Cycle #14: configurable pool settings (`maxPoolSize`, `minPoolSize`, timeouts, IPv4 preference), liveness/readiness probes, graceful shutdown | Done |
+| `F-INF-06` | Transactional Email & Durable Outbox | `FULLY IMPLEMENTED` | N/A | `EmailOutbox.js`, `emailOutboxService.js`, `mailSender.js` | Connected | `PASS` | Resolved Cycle #14: durable MongoDB outbox, exponential backoff retries, multi-provider abstraction (SMTP, Resend, SendGrid, mock), idempotent receipt delivery | Done |
+| `F-INF-07` | Structured JSON Logging & PII Redaction | `FULLY IMPLEMENTED` | N/A | `logger.js`, `requestLogger.js` | Connected | `PASS` | Resolved Cycle #14: Winston JSON logger with automatic deep redaction of passwords, tokens, OTPs, cookies, secrets, and correlation ID tracing | Done |
+| `F-INF-08` | Sentry Error Monitoring & APM | `FULLY IMPLEMENTED` | `src/utils/sentry.js` | `server/config/sentry.js`, `index.js` | Connected | `PASS` | Resolved Cycle #14: full frontend/backend Sentry instrumentation with PII redaction, test-mode isolation, `/api/v1/sentry-test` verification endpoint | Done |

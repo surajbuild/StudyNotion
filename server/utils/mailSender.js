@@ -19,7 +19,41 @@ const htmlToText = (html) =>
         .replace(/\s{2,}/g, " ")
         .trim();
 
+/**
+ * Builds transporter configuration supporting SMTP, Gmail, Resend SMTP, SendGrid SMTP, and AWS SES.
+ */
 const getTransportConfig = () => {
+    const provider = (process.env.MAIL_PROVIDER || "smtp").toLowerCase().trim();
+
+    if (provider === "sendgrid") {
+        const apiKey = process.env.SENDGRID_API_KEY || process.env.MAIL_PASS;
+        if (!apiKey) throw new Error("Missing SENDGRID_API_KEY environment variable");
+        return {
+            host: "smtp.sendgrid.net",
+            port: 587,
+            secure: false,
+            auth: {
+                user: "apikey",
+                pass: apiKey.replace(/\s/g, ""),
+            },
+        };
+    }
+
+    if (provider === "resend") {
+        const apiKey = process.env.RESEND_API_KEY || process.env.MAIL_PASS;
+        if (!apiKey) throw new Error("Missing RESEND_API_KEY environment variable");
+        return {
+            host: "smtp.resend.com",
+            port: 465,
+            secure: true,
+            auth: {
+                user: "resend",
+                pass: apiKey.replace(/\s/g, ""),
+            },
+        };
+    }
+
+    // Standard SMTP / Gmail SMTP
     const host = (process.env.MAIL_HOST || "smtp.gmail.com").trim();
     const port = Number((process.env.MAIL_PORT || "465").trim());
     const secure = process.env.MAIL_SECURE
@@ -57,9 +91,8 @@ const mailSender = async (email, title, body) => {
         return { messageId: mockMessageId, mocked: true };
     }
 
-    // console.log("email:" ,email)
     const transporter = nodemailer.createTransport(getTransportConfig());
-    const from = process.env.MAIL_FROM || process.env.MAIL_USER?.trim();
+    const from = process.env.MAIL_FROM || process.env.MAIL_USER?.trim() || "no-reply@studynotion.com";
     const attachments = [];
 
     if (body.includes(`cid:${inlineLogoCid}`) && fs.existsSync(inlineLogoPath)) {
@@ -79,7 +112,7 @@ const mailSender = async (email, title, body) => {
         attachments,
     });
 
-    console.log(`Email sent to ${email} (ID: ${info.messageId})`);
+    console.log(`[MailSender] Email dispatched to ${email} (MessageID: ${info.messageId})`);
     return info;
 };
 

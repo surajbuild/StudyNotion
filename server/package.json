@@ -16,6 +16,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@sentry/node": "^11.16.0",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.8.0",
@@ -28,13 +29,16 @@
     "express": "^5.1.0",
     "express-fileupload": "^1.5.2",
     "express-rate-limit": "^8.7.0",
+    "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.19.0",
     "node-schedule": "^2.1.1",
     "nodemailer": "^7.0.6",
     "nodemon": "^3.1.10",
     "otp-generator": "^4.0.1",
-    "razorpay": "^2.9.6"
+    "rate-limit-redis": "^6.0.2",
+    "razorpay": "^2.9.6",
+    "winston": "^3.19.0"
   },
   "devDependencies": {
     "jest": "^30.5.2",

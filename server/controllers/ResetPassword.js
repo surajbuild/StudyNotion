@@ -17,10 +17,17 @@ exports.resetPasswordToken = async (req, res) => {
         //check user for this email, email validation
         const user = await User.findOne({email: email});
         if(!user){
+            // If configured in production to obscure account existence:
+            if (process.env.SECURE_GENERIC_FORGOT_PASSWORD === "true") {
+                return res.status(200).json({
+                    success: true,
+                    message: "If that email is registered with us, a password reset link has been sent",
+                });
+            }
             return res.status(401).json({
                 success: false,
-                message: 'Your email is not registered with us',
-            })
+                message: "Your email is not registered with us",
+            });
         }
         //generate cryptographically secure raw token and persist only its SHA-256 hash (SEC-002)
         const rawToken = generateSecureResetToken();

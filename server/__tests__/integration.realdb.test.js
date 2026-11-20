@@ -51,6 +51,7 @@ describe("Isolated Real-MongoDB Full-Stack Integration Suite (GAP-009)", () => {
     let instructorToken;
     let adminToken;
     let tempUploadFile;
+    let tempUploadVideo;
 
     const fixturePassword = getTestFixturePassword();
 
@@ -76,14 +77,20 @@ describe("Isolated Real-MongoDB Full-Stack Integration Suite (GAP-009)", () => {
         instructorToken = (await loginAs(seeded.users.instructorEmail)).token;
         adminToken = (await loginAs(seeded.users.adminEmail)).token;
 
-        // Create tiny temporary file for mocked Cloudinary upload endpoints
+        // Create tiny temporary files for mocked Cloudinary upload endpoints
         tempUploadFile = path.join(os.tmpdir(), `studynotion-test-upload-${Date.now()}.png`);
         fs.writeFileSync(tempUploadFile, Buffer.from("89504e470d0a1a0a", "hex"));
+
+        tempUploadVideo = path.join(os.tmpdir(), `studynotion-test-video-${Date.now()}.mp4`);
+        fs.writeFileSync(tempUploadVideo, Buffer.from("00000018667479706d7034320000000069736f6d6d703432", "hex"));
     });
 
     afterAll(async () => {
         if (tempUploadFile && fs.existsSync(tempUploadFile)) {
             fs.unlinkSync(tempUploadFile);
+        }
+        if (tempUploadVideo && fs.existsSync(tempUploadVideo)) {
+            fs.unlinkSync(tempUploadVideo);
         }
         await teardownTestDatabase({ dropDb: true });
         if (mongoHandle) {
@@ -359,7 +366,7 @@ describe("Isolated Real-MongoDB Full-Stack Integration Suite (GAP-009)", () => {
                 .field("title", "Integration Video 1")
                 .field("description", "Mocked video lecture")
                 .field("timeDuration", "90")
-                .attach("videoFile", tempUploadFile);
+                .attach("videoFile", tempUploadVideo);
             expect(subRes.status).toBe(200);
             const subSectionId = subRes.body.data.subSection[0]._id;
 

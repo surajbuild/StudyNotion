@@ -1,0 +1,88 @@
+name: StudyNotion CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend Quality & Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Frontend Strict ESLint
+        run: npx eslint src --max-warnings=0
+
+      - name: Frontend Unit & Component Tests (Jest)
+        run: npm test -- --watchAll=false --ci
+        env:
+          CI: true
+
+      - name: Frontend Production Build
+        run: npm run build
+        env:
+          NODE_ENV: production
+          CI: false
+
+  backend:
+    name: Backend Quality & Real-DB Integration
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:8.0
+        ports:
+          - 27017:27017
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Backend Dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Backend Unit Tests
+        working-directory: server
+        run: npm run test:unit
+        env:
+          NODE_ENV: test
+          STUDYNOTION_TEST_MODE: "true"
+          TEST_MOCK_EXTERNAL_SERVICES: "true"
+          JWT_SECRET: "ci-mock-jwt-secret-for-testing"
+          RAZORPAY_SECRET: "ci-mock-razorpay-secret"
+          RAZORPAY_WEBHOOK_SECRET: "ci-mock-webhook-secret"
+
+      - name: Real MongoDB Integration Tests
+        working-directory: server
+        run: npm run test:integration
+        env:
+          NODE_ENV: test
+          STUDYNOTION_TEST_MODE: "true"
+          TEST_MOCK_EXTERNAL_SERVICES: "true"
+          MONGODB_TEST_URL: "mongodb://127.0.0.1:27017/studynotion_integration_test"
+          JWT_SECRET: "ci-mock-jwt-secret-for-testing"
+          RAZORPAY_SECRET: "ci-mock-razorpay-secret"
+          RAZORPAY_WEBHOOK_SECRET: "ci-mock-webhook-secret"
+          FOLDER_NAME: "studynotion_ci_test_uploads"

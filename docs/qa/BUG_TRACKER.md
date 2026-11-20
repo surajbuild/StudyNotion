@@ -1,15 +1,55 @@
 # StudyNotion — Bug Tracker & Root Cause Analysis
 
-> **Last Updated:** 2026-11-19  
-> **Audit Cycle:** Cycle #13 (Razorpay Webhooks & Asynchronous Payment Reconciliation: Dual-Secret HMAC-SHA256, Durable Event Inbox, Atomic Distributed Worker Leases, Shared Authoritative Finalization)  
+> **Last Updated:** 2026-11-21  
+> **Audit Cycle:** Cycle #14 (Production Readiness, Observability & Deployment Preparation: SEC-005, SEC-007, SEC-008, Database Pooling, Durable Outbox, Structured Logging, Sentry APM, CI/CD)  
 > **Severity Levels:** `CRITICAL` | `HIGH` | `MEDIUM` | `LOW`  
-> **Total Logged:** 34 (`BUG-001`–`BUG-036`, excluding unused gap) | **Fixed & Verified:** 34 | **Open:** 0
+> **Total Logged:** 34 (`BUG-001`–`BUG-036`, excluding unused gap) + 8 Security Findings (`SEC-001`–`SEC-008`) | **Fixed & Verified:** 42 | **Open:** 0
 
 ---
 
 ## Open Bugs
 
-*None — all tracked bugs across Cycles #1–#13 have been fixed and verified.*
+*None — all tracked bugs across Cycles #1–#14 have been fixed and verified.*
+
+---
+
+## Cycle #14 — Production Readiness & Security Hardening (`SEC-005`, `SEC-007`, `SEC-008`)
+
+### `SEC-005` — Account Enumeration via Auth Responses
+- **Module:** Authentication & Security (`Auth.js`, `ResetPassword.js`)
+- **Severity:** `MEDIUM` | **Priority:** P1 | **Status:** `RESOLVED & VERIFIED`
+- **Location:** [`server/controllers/Auth.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/controllers/Auth.js), [`server/controllers/ResetPassword.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/controllers/ResetPassword.js)
+- **Root Cause:** Explicit user existence messages (`"User is not registered"`, `"User already registered"`, `"Email is not registered"`) allowed attackers to enumerate valid email addresses. Additionally, non-existent users failed instantly, introducing timing differences compared to existing accounts requiring bcrypt computation.
+- **Resolution:**
+  - Implemented timing-neutral dummy bcrypt comparison for non-existent users (`DUMMY_PASSWORD_HASH`) in `Auth.js`.
+  - Unified error message to `"Invalid credentials: email is not registered or password is incorrect"`, simultaneously preventing account enumeration and maintaining compatibility with legacy assertion regexes (`/not registered/i` and `/Password is incorrect/i`).
+  - Added toggleable generic response in `ResetPassword.js` (`GENERIC_RESET_RESPONSES` defaulting to true) returning `"If an account with this email exists, a password reset link has been sent"` for unregistered emails while preserving reset token dispatch for registered emails.
+- **Regression Verification:** [`server/__tests__/securityCycle14.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/securityCycle14.test.js) (`SEC-14-01` through `SEC-14-04`).
+
+### `SEC-007` — Distributed Rate Limiting via Redis Store with Graceful In-Memory Fallback
+- **Module:** Production Rate Limiting (`rateLimiters.js`)
+- **Severity:** `MEDIUM` | **Priority:** P1 | **Status:** `RESOLVED & VERIFIED`
+- **Location:** [`server/middlewares/rateLimiters.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/middlewares/rateLimiters.js), [`server/routes/Contact.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/routes/Contact.js)
+- **Root Cause:** Rate limiters stored state in volatile memory, which did not persist across server restarts and could not share counters across multiple horizontal backend instances.
+- **Resolution:**
+  - Integrated `ioredis` and `rate-limit-redis`.
+  - Initialized distributed Redis store when `REDIS_URL` or `REDIS_HOST` is configured.
+  - Implemented automatic graceful fallback to in-memory store if Redis is unconfigured or temporarily disconnected, logging operational warnings via Winston.
+  - Test mode (`NODE_ENV=test`) is isolated and uses memory store with bypass controls to prevent flaky test runs.
+  - Protected public contact form (`contactLimiter`) alongside login, signup, OTP, and password reset endpoints.
+- **Regression Verification:** [`server/__tests__/securityCycle14.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/securityCycle14.test.js) (`SEC-14-05` through `SEC-14-07`).
+
+### `SEC-008` — File Upload Magic-Byte Binary Signature Validation
+- **Module:** Media Upload Security (`fileSignatureValidator.js`, `validateUpload.js`)
+- **Severity:** `MEDIUM` | **Priority:** P1 | **Status:** `RESOLVED & VERIFIED`
+- **Location:** [`server/utils/fileSignatureValidator.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/utils/fileSignatureValidator.js), [`server/middlewares/validateUpload.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/middlewares/validateUpload.js)
+- **Root Cause:** Endpoints relied exclusively on client-supplied MIME types and file extensions, allowing attackers to upload arbitrary malicious binary files disguised with fake `.jpg` or `.mp4` extensions.
+- **Resolution:**
+  - Implemented binary magic-byte detection checking the first 32 bytes for valid signatures (JPEG `FF D8 FF`, PNG `89 50 4E 47`, GIF `47 49 46 38`, WebP `RIFF...WEBP`, SVG `<svg`, MP4 `ftyp`, WebM `1A 45 DF A3`).
+  - Added strict validation rejecting spoofed MIME types, mismatched extensions, malformed files, and oversized uploads (5MB avatar, 10MB thumbnail, 500MB video).
+  - Ensured safe asynchronous unlinking of temporary files upon validation failure.
+  - Mounted middleware across `/createCourse`, `/editCourse`, `/addSubSection`, `/updateSubSection`, and `/updateDisplayPicture`.
+- **Regression Verification:** [`server/__tests__/securityCycle14.test.js`](file:///c:/Users/Suraj%20Kumar/OneDrive/Desktop/CODING/projects/StudyNotion/server/__tests__/securityCycle14.test.js) (`SEC-14-08` through `SEC-14-10`), real-DB integration `integration.realdb.test.js`.
 
 ---
 

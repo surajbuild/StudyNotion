@@ -1,6 +1,6 @@
 # StudyNotion — Missing Functionality & Feature Gap Analysis
 
-> **Last Updated:** 2026-11-19  
+> **Last Updated:** 2026-11-21  
 > **Classification Rule:** Findings are strictly separated into **(1) Confirmed Project Requirements / Broken Expectations**, **(2) Inferred Core Ed-Tech Expectations**, **(3) Security Vulnerabilities & Hardening**, and **(4) Optional Enhancements**. Optional recommendations are never labeled as bugs.
 
 ---
@@ -102,7 +102,7 @@
 | `SEC-002` | **Plaintext Password Reset Tokens in Database** | **HIGH** | **RESOLVED** | **Cycle #12**: Implemented SHA-256 token hashing (`resetPasswordTokenHash` in `User.js`, `tokenSecurity.js`). Raw tokens exist solely in reset URLs; database stores only SHA-256 digests. Legacy plaintext tokens safely rejected. |
 | `SEC-003` | **JWT Validity After Password Changes & Resets** | **HIGH** | **RESOLVED** | **Cycle #12**: Added `tokenVersion` on `User.js` model, embedded in JWT payload on login. Checked authoritatively against DB in `auth.js` middleware, rejecting stale tokens with `401 Unauthorized` (`code: "TOKEN_REVOKED"`). Atomically incremented on password changes and resets. Hardened auth cookies (`SameSite`, `Secure`). |
 | `SEC-004` | **Public Reviewer Email PII Exposure** | **HIGH** | **RESOLVED** | **Cycle #12**: Sanitized reviewer projection in `server/controllers/RatingAndReview.js` to `select("firstName lastName image")`. Email is completely removed from public API responses. |
-| `SEC-005` | **Account Enumeration via Auth Responses** | **MEDIUM** | **BACKLOG** | Tracked for Cycle #14 / Production Hardening: Standardize authentication responses (login, signup, forgot-password) to avoid disclosing account existence. |
+| `SEC-005` | **Account Enumeration via Auth Responses** | **MEDIUM** | **RESOLVED** | **Cycle #14**: Unified login error message (`"Invalid credentials: email is not registered or password is incorrect"`), timing-neutral dummy bcrypt comparison for non-existent users, generic password reset response option. Tested in `securityCycle14.test.js`. |
 | `SEC-006` | **Authentication JWT Accepted from Request Body** | **HIGH** | **RESOLVED** | **Cycle #12**: Removed `req.body.token` fallback in `server/middlewares/auth.js`. Tokens accepted strictly via `Authorization: Bearer <token>` header or `httpOnly` secure cookie. |
-| `SEC-007` | **In-Memory Rate Limiting Not Distributed** | **MEDIUM** | **BACKLOG** | Tracked for Production Infra: Back `express-rate-limit` with Redis store (`rate-limit-redis`) for multi-instance clusters. |
-| `SEC-008` | **File Upload Magic-Byte Validation** | **MEDIUM** | **BACKLOG** | Tracked for Production Infra: Validate file magic numbers (signatures) buffer checks before Cloudinary upload. |
+| `SEC-007` | **In-Memory Rate Limiting Not Distributed** | **MEDIUM** | **RESOLVED** | **Cycle #14**: Distributed Redis-backed rate limiting via `ioredis` + `rate-limit-redis` with automatic graceful fallback to in-memory store. Protected contact form, login, signup, OTP, password reset. Tested in `securityCycle14.test.js`. |
+| `SEC-008` | **File Upload Magic-Byte Validation** | **MEDIUM** | **RESOLVED** | **Cycle #14**: Magic-byte binary signature inspection (JPEG, PNG, GIF, WebP, SVG, MP4, WebM), MIME/extension mismatch checks, file size enforcement, safe temp file unlinking. Tested in `securityCycle14.test.js` & `integration.realdb.test.js`. |

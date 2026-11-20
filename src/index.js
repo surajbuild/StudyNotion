@@ -11,6 +11,9 @@ import { registerUnauthorizedHandler } from "./services/apiconnector";
 import { setToken } from "./slices/authSlice";
 import { setUser } from "./slices/profileSlice";
 import { resetCart } from "./slices/cartSlice";
+import { initFrontendSentry } from "./utils/sentry";
+
+initFrontendSentry();
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 

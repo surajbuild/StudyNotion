@@ -7,6 +7,7 @@ const mailSender = require("../utils/mailSender");
 const cache = require("../utils/cache");
 const { courseEnrollmentEmail } = require("../mail/templates/courseEnrollmentEmail");
 const { paymentSuccessEmail } = require("../mail/templates/paymentSuccessEmail");
+const { enqueueEmail, EMAIL_TYPES } = require("./emailOutboxService");
 
 /**
  * Idempotently enrolls a student into the specified courses:
@@ -114,15 +115,7 @@ async function sendReceiptEmailIdempotent(order) {
         return { sent: false, reason: "INVALID_ORDER" };
     }
 
-    // Atomic claim on receiptEmailSent flag
-    const claimed = await Order.findOneAndUpdate(
-        { _id: order._id, receiptEmailSent: { $ne: true } },
-        { $set: { receiptEmailSent: true } },
-        { new: true }
-    );
-
-    if (!claimed) {
-        // Notification already claimed or sent
+    if (order.receiptEmailSent === true) {
         return { sent: false, reason: "ALREADY_SENT" };
     }
 
@@ -137,18 +130,40 @@ async function sendReceiptEmailIdempotent(order) {
                 ? order.amount
                 : (order.amountInSubunits || 0) / 100;
 
-        await mailSender(
-            student.email,
-            "Payment Received - StudyNotion",
-            paymentSuccessEmail(
-                `${student.firstName || ""} ${student.lastName || ""}`.trim() || "Student",
-                amountFormatted,
-                order.razorpayOrderId || order._id.toString(),
-                order.razorpayPaymentId || "N/A"
-            )
+        const emailBody = paymentSuccessEmail(
+            `${student.firstName || ""} ${student.lastName || ""}`.trim() || "Student",
+            amountFormatted,
+            order.razorpayOrderId || order._id.toString(),
+            order.razorpayPaymentId || "N/A"
         );
 
-        return { sent: true };
+        // Durable Outbox: Enqueue before delivery so emails survive process crashes
+        const outboxResult = await enqueueEmail({
+            to: student.email,
+            subject: "Payment Received - StudyNotion",
+            body: emailBody,
+            emailType: EMAIL_TYPES.PAYMENT_RECEIPT,
+            referenceId: order._id.toString(),
+            immediateSend: true,
+            metadata: {
+                orderId: order._id.toString(),
+                razorpayOrderId: order.razorpayOrderId,
+                razorpayPaymentId: order.razorpayPaymentId,
+            },
+        });
+
+        if (outboxResult.alreadySent) {
+            await Order.updateOne({ _id: order._id }, { $set: { receiptEmailSent: true } });
+            return { sent: false, reason: "ALREADY_SENT" };
+        }
+
+        if (outboxResult.sentImmediately) {
+            await Order.updateOne({ _id: order._id }, { $set: { receiptEmailSent: true } });
+            return { sent: true };
+        }
+
+        // Persisted in outbox for asynchronous retry
+        return { sent: false, reason: "OUTBOX_PENDING", error: outboxResult.error };
     } catch (error) {
         console.error("sendReceiptEmailIdempotent error:", error?.message || error);
         return { sent: false, reason: "MAIL_FAILED", error: error.message };

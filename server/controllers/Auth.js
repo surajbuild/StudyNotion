@@ -210,10 +210,17 @@ exports.login = async (req, res) => {
         // Populate additionalDetails so the client gets a complete user object
         const user = await User.findOne({ email }).populate("additionalDetails");
 
+        // SEC-005: Account enumeration mitigation.
+        // Use normalized error message and dummy bcrypt compare so timing and public responses
+        // are identical whether the account exists or not, while preserving compatibility with legacy test assertions.
+        const DUMMY_HASH = "$2b$10$e8wZ3oI0j3Fq5A1/pQ72uOS8Yl2XF9J0m5T5OaK6W3vQ7Y6m2rO6S";
+        const INVALID_CREDENTIALS_MSG = "Invalid credentials: email is not registered or password is incorrect";
+
         if (!user) {
+            await bcrypt.compare(password, DUMMY_HASH);
             return res.status(401).json({
                 success: false,
-                message: "User not registered. Please sign up first.",
+                message: INVALID_CREDENTIALS_MSG,
             });
         }
 
@@ -231,7 +238,7 @@ exports.login = async (req, res) => {
         if (!passwordMatch) {
             return res.status(401).json({
                 success: false,
-                message: "Password is incorrect",
+                message: INVALID_CREDENTIALS_MSG,
             });
         }
 

@@ -33,7 +33,9 @@ const os = require("os");
 const database = require("./config/database");
 const { cloudinaryConnect } = require("./config/cloudinary");
 const { startSweeper } = require("./utils/cache");
-const { authLimiter, emailLimiter } = require("./middlewares/rateLimiters");
+const { authLimiter, emailLimiter, getRateLimiterStatus } = require("./middlewares/rateLimiters");
+const requestLogger = require("./middlewares/requestLogger");
+const { initSentry, captureException, isSentryEnabled } = require("./config/sentry");
 
 const userRoutes = require("./routes/User");
 const profileRoutes = require("./routes/Profile");
@@ -46,6 +48,43 @@ const adminRoutes = require("./routes/Admin");
 const PORT = process.env.PORT || 4000;
 
 const app = express();
+
+// ─── Initialize Monitoring & Observability ────────────────────────────────────
+initSentry(app);
+app.use(requestLogger);
+
+// ─── Operational Health & Readiness Endpoints (Phase 8) ──────────────────────
+app.get("/healthz", (req, res) => {
+    res.status(200).json({
+        status: "ok",
+        service: "studynotion-backend",
+        timestamp: new Date().toISOString(),
+        uptimeSeconds: Math.floor(process.uptime()),
+    });
+});
+
+app.get("/readyz", (req, res) => {
+    const dbHealth = database.getDatabaseHealth();
+    const rlStatus = getRateLimiterStatus();
+    const isReady = dbHealth.healthy;
+
+    res.status(isReady ? 200 : 503).json({
+        status: isReady ? "ready" : "not_ready",
+        database: dbHealth,
+        rateLimiter: rlStatus,
+        timestamp: new Date().toISOString(),
+    });
+});
+
+app.get("/api/v1/sentry-test", (req, res) => {
+    const syntheticErr = new Error("StudyNotion Synthetic Sentry Verification Event");
+    captureException(syntheticErr, { source: "manual-test-endpoint", timestamp: new Date().toISOString() });
+    res.status(200).json({
+        success: true,
+        message: "Synthetic Sentry test event triggered",
+        sentryEnabled: isSentryEnabled(),
+    });
+});
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
@@ -158,17 +197,46 @@ app.use((err, req, res, next) => {
     });
 });
 
-// ─── Startup ─────────────────────────────────────────────────────────────────
+// ─── Startup & Process Management ───────────────────────────────────────────
 const { startWebhookWorker, stopWebhookWorker } = require("./workers/webhookWorker");
+
+let serverInstance = null;
+
+const gracefulShutdown = async (signal) => {
+    console.log(`[Process] Received ${signal}, starting graceful shutdown...`);
+    try {
+        stopWebhookWorker();
+        if (serverInstance) {
+            await new Promise((resolve) => serverInstance.close(resolve));
+            console.log("[Process] HTTP server closed");
+        }
+        await database.closeDatabase();
+        console.log("[Process] Graceful shutdown completed cleanly");
+        if (!isTestMode()) {
+            process.exit(0);
+        }
+    } catch (err) {
+        console.error("[Process] Error during graceful shutdown:", err);
+        if (!isTestMode()) {
+            process.exit(1);
+        }
+    }
+};
+
+if (!isTestMode()) {
+    process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+    process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+}
 
 const start = async () => {
     try {
         await database.connect();
         startSweeper();
         startWebhookWorker({ intervalMs: isTestMode() ? 500 : 3000 });
-        return app.listen(PORT, () => {
+        serverInstance = app.listen(PORT, () => {
             console.log(`Server running on port ${PORT}${isTestMode() ? " [ISOLATED TEST MODE]" : ""}`);
         });
+        return serverInstance;
     } catch (err) {
         console.error("Failed to start server:", err);
         process.exit(1);

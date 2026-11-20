@@ -57,6 +57,7 @@ const {
   isApprovedInstructor,
   isAdmin,
 } = require("../middlewares/auth");
+const { validateThumbnail, validateVideo } = require("../middlewares/validateUpload");
 
 
 // *******************************************************************************
@@ -64,7 +65,7 @@ const {
 // *******************************************************************************
 
 //Course can only be created by APPROVED instructors
-router.post("/createCourse", auth, isApprovedInstructor, createCourse);
+router.post("/createCourse", auth, isApprovedInstructor, validateThumbnail, createCourse);
 
 //Add a Section to a course
 router.post("/addSection", auth, isApprovedInstructor, createSection);
@@ -76,10 +77,10 @@ router.post("/updateSection", auth, isApprovedInstructor, updateSection);
 router.post("/deleteSection", auth, isApprovedInstructor, deleteSection);
 
 //Add a subsection to a section
-router.post("/addSubSection", auth, isApprovedInstructor, createSubSection);
+router.post("/addSubSection", auth, isApprovedInstructor, validateVideo, createSubSection);
 
 //Update a subsection
-router.post("/updateSubSection", auth, isApprovedInstructor, updateSubSection);
+router.post("/updateSubSection", auth, isApprovedInstructor, validateVideo, updateSubSection);
 
 //Delete a subsection
 router.post("/deleteSubSection", auth, isApprovedInstructor, deleteSubSection);
@@ -97,7 +98,7 @@ router.post("/getCourseDetails", getCourseDetails);
 router.post("/getFullCourseDetails", auth, getFullCourseDetails);
 
 //Edit Course routes
-router.post("/editCourse", auth, isApprovedInstructor, editCourse);
+router.post("/editCourse", auth, isApprovedInstructor, validateThumbnail, editCourse);
 
 //Get all courses under a specific instructor
 router.get("/getInstructorCourses", auth, isApprovedInstructor, getInstructorCourses);

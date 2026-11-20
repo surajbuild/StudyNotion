@@ -1,8 +1,52 @@
 # StudyNotion — Detailed QA Test Report
 
-> **Latest Cycle:** Cycle #13 — Razorpay Webhooks & Asynchronous Payment Reconciliation (`GAP-010`)  
-> **Date:** 2026-11-19  
+> **Latest Cycle:** Cycle #14 — Production Readiness, Observability & Deployment Preparation (`SEC-005`, `SEC-007`, `SEC-008`, Health Probes, Connection Pool, Outbox, Logging, Sentry, CI/CD)  
+> **Date:** 2026-11-21  
 > **Environment:** Windows 11 | Node.js v22.16.0 | React 18 (CRA 5) | Express 5 | Mongoose 8 | MongoDB 8.0 (Isolated Local Ephemeral on `127.0.0.1:27018`) | Chromium 1208 (Playwright)
+
+---
+
+## Cycle #14 — Execution Summary (2026-11-21)
+
+| Test Suite / Verification Gate | Command | Suites | Tests | Passed | Failed | Blocked | Result |
+|-------------------------------|---------|--------|-------|--------|--------|---------|--------|
+| **Frontend Unit & Component Tests** | `npm test -- --watchAll=false` | 34 | 120 | 120 | 0 | 0 | **PASS** (10.95s, 34/34 suites passing) |
+| **Backend Unit, API, Security & Safety Guardrails** | `npx jest --testPathIgnorePatterns=integration.realdb.test.js` | 18 | 237 | 237 | 0 | 0 | **PASS** (+1 suite / +10 tests: `securityCycle14.test.js` [10]) |
+| **Backend Real-MongoDB Full-Stack Integration** | `npx jest __tests__/integration.realdb.test.js --runInBand --forceExit` | 1 | 30 | 30 | 0 | 0 | **PASS** (30/30 real DB tests) |
+| **Isolated Authenticated & Feature Playwright E2E (`E2E-16`–`48` + `REG-01`–`03`)** | `node e2e/authenticated.e2e.js` | 1 | 36 | 36 | 0 | 0 | **PASS** (36/36 live browser journeys, 0 page errors, 0 Swiper warnings) |
+| **Public Catalog & Console/Network Regression (`PUB-01`–`PUB-04`)** | `node scratch/public_regression.js` | 1 | 4 | 4 | 0 | 0 | **PASS** (0 console errors, 0 page errors, 0 failed network requests) |
+| **Cycle #14 Live-Executed Subtotal** | — | **55** | **427** | **427** | **0** | **0** | **PASS (`427 / 427` live + `25` historical Cycle #2–#3 = `452 / 452` cumulative)** |
+| **Strict Frontend ESLint** | `npx eslint src --max-warnings=0` | — | — | 0 errors, 0 warnings | — | — | **PASS** (Exit 0) |
+| **Frontend Production Build** | `npm run build` | — | — | Exit 0 (0 ESLint warnings) | — | — | **PASS** |
+
+### Cycle #14 Actual Verification Outputs
+
+#### A. Automated Unit & Real-MongoDB Integration Suites
+```text
+Frontend (npm test -- --watchAll=false):
+Test Suites: 34 passed, 34 total
+Tests:       120 passed, 120 total
+Time:        10.951 s
+
+Backend Unit & Integration Combined (server/npm test):
+Test Suites: 19 passed, 19 total
+Tests:       267 passed, 267 total (added securityCycle14.test.js [10])
+Time:        62.148 s
+```
+
+#### B. Isolated Playwright E2E Run (`e2e/authenticated.e2e.js`)
+```text
+=== ISOLATED AUTHENTICATED E2E SUMMARY ===
+PAGE ERRORS: 0 []
+SWIPER WARNINGS: 0
+TOTAL: 36 PASSED: 36 FAILED: 0
+```
+
+#### C. Strict ESLint & Production Build
+```text
+$ npx eslint src --max-warnings=0 -> Exit 0 (0 errors, 0 warnings)
+$ npm run build -> Exit 0 (0 [eslint] warnings; production build compiled successfully)
+```
 
 ---
 
